@@ -1,0 +1,11 @@
+{
+  "name": "architect-loop",
+  "owner": { "name": "Juan Gonzalez" },
+  "plugins": [
+    {
+      "name": "architect-loop",
+      "source": "./",
+      "description": "Skills for the Architect Loop: one human decides and promotes, agents frame, build, prove and record."
+    }
+  ]
+}
