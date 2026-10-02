@@ -1,0 +1,7 @@
+{
+  "name": "architect-loop",
+  "version": "0.1.0",
+  "description": "One architect, many agents: skills for a Frame → Decide → Build → Prove → Promote → Record loop, with human-held gates and an evidence gate on real environments.",
+  "author": { "name": "Juan Gonzalez" },
+  "keywords": ["workflow", "rfc", "proposals", "runbooks", "evidence", "agents"]
+}
