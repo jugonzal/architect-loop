@@ -99,14 +99,14 @@ entries, PR bodies), so a fresh session can run the next stage with no chat hist
 **As a Claude Code plugin** (all skills, namespaced as `/architect-loop:<skill>`):
 
 ```bash
-/plugin marketplace add <path-or-git-url-of-this-repo>
+/plugin marketplace add jugonzal/architect-loop
 /plugin install architect-loop@architect-loop
 ```
 
 **With [skills.sh](https://skills.sh)** (any compatible agent):
 
 ```bash
-npx skills add <owner>/architect-loop
+npx skills add jugonzal/architect-loop
 ```
 
 **By copying** (user-wide or into one project):
