@@ -4,7 +4,7 @@ description: Write or correct an operational runbook as actually run, not as ima
 license: MIT
 metadata:
   author: architect-loop
-  version: "0.1"
+  version: "0.2"
 ---
 
 # loop-runbook
