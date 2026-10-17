@@ -4,13 +4,18 @@ These are the habits the method was distilled from. Each was observed repeatedly
 history of a five-month, one-architect build of a live video platform: 196 commits, 138 pull requests,
 15 proposals, 9 runbooks and 28 memory facts. The examples are paraphrased commit subjects.
 
+Generation 2 keeps every one of them. What changed is where state lives; see
+[proposals/concerns-as-functions.md](proposals/concerns-as-functions.md).
+
 ## 1. Document-first: the proposal is the contract
 
 Nearly every large change began as a proposal drafted by an agent from a read of the code. Each
 carries a dated Status line, numbered decisions, questions and gates, and a phased plan with a
 definition of done. Implementation PRs cite sections ("§7.4 reproducer", "Step 3").
 
-*Skill:* `loop-frame`
+In generation 2 the loop and its concerns are the contract, and a PR cites the concern it builds.
+
+*Skills:* `loop-plan`, `loop-design`
 
 ## 2. The agent proposes, the human decides
 
@@ -19,7 +24,7 @@ commit of their own. "Propose what Free, Athletes and Teams each unlock" (agent)
 same day by "Answered pending questions in paywall plan" (human). An evaluation of seven ingest
 servers ended in one recommendation; the human chose the path.
 
-*Skill:* `loop-decide`
+*Skill:* `loop-design`
 
 ## 3. Reality corrects the document
 
@@ -28,7 +33,7 @@ the single most distinctive habit in the log: "Record M0 as complete, and correc
 work disproved"; "Correct the issuance runbook against the sequence as actually run"; "Record the
 iOS build path as executed, not as documented"; "Write down what shipped, and where it departs from the proposal".
 
-*Skills:* `loop-record`, `loop-reconcile`
+*Skill:* `loop-status` (its record step, and `audit`)
 
 ## 4. Measure or spike before committing
 
@@ -50,7 +55,8 @@ was real but unrelated, and the commit says so.
 ## 6. One intent per PR, subject written as an outcome
 
 138 PRs in five months, often five to ten a day. Subjects read as sentences about behaviour ("Stop a
-laptop from paging as production"), so the log is itself a readable changelog.
+laptop from paging as production"), so the log is itself a readable changelog. In generation 2 the
+unit is the concern: one branch and usually one PR each.
 
 *Skill:* `loop-build`
 
@@ -60,15 +66,16 @@ Agents can read servers and open PRs; promotion is a human act. A third of all P
 human-titled promotions to staging or production. Store accounts, payment-provider settings, legal
 sign-off and production secrets stayed with the human.
 
-*Skills:* `loop-init` (writes the gates down), `loop-promote`
+*Skills:* `loop-init` (writes the gates down), `loop-ship`
 
 ## 8. Memory outside the chat
 
 Facts that cost time to learn were written to persistent memory: environment traps (the local
 encoder lacks a codec; the container's `/bin/sh` is dash; iOS builds need a UTF-8 locale), decisions
-and their dates, and what is deployed where. A new session starts where the last one stopped.
+and their dates, and what is deployed where. A new session starts where the last one stopped. (Generation 2 no longer
+writes down what is deployed where: `loop-status` reads it from the environments.)
 
-*Skill:* `loop-record`
+*Skill:* `loop-status` (its record step)
 
 ## 9. Runbooks agents can execute
 
