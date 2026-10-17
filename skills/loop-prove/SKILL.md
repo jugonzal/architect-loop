@@ -1,99 +1,120 @@
 ---
 name: loop-prove
-description: The evidence gate. Proves whether a change, a plan's premise or a spike's question holds, using the strongest evidence available (tests, a reproducer, an end-to-end smoke run, an A/B on identical inputs, or a measurement on real data or a real environment), then writes the verdict (HOLDS, CONTRADICTS or UNPROVEN) into the proposal and the PR. On CONTRADICTS it sends the work back to framing instead of forward. Use after a build and again after a promotion, to run a spike, to settle a choice empirically, to check a claim before relying on it, or when the owner says "prove it", "measure it", "does this actually work", or runs /loop-prove.
+description: The evidence gate for one concern. Proves whether its claims hold, or answers a spike's question, with the strongest evidence available (tests, a reproducer, an end-to-end smoke run, an A/B on identical inputs, a measurement on real data or a real environment), and records each verdict (HOLDS, CONTRADICTS or UNPROVEN) bound to the commit and environment it was made on. Before a merge the verdict goes in the pull request; after it, an evidence line goes in the concern file. CONTRADICTS sends only that concern back to design. Use after a build, after a deploy, to run a spike, to settle a choice empirically, to re-prove a stale concern, or when the owner says "prove it", "measure it", "does this actually work", or runs /loop-prove.
 license: MIT
 metadata:
   author: architect-loop
-  version: "0.1"
+  version: "0.2"
 ---
 
 # loop-prove
 
-Decide with evidence whether the plan still holds.
+Decide with evidence whether a concern's claims hold, and bind the answer to what it was proven on.
 
-An agent will confidently extend whatever the document says. This skill is the counterweight: it
-treats every claim as a hypothesis until something outside the author's head confirms it.
+An agent will confidently extend whatever the document says. This skill is the counterweight: every claim is a
+hypothesis until something outside the author's head confirms it, and a confirmation is only good for the
+commit and the environment it was made on.
 
 ## When it runs
 
-- **Before promotion:** on the branch, with local runs, the smoke test, A/Bs, and read-only checks of
-  any environment `LOOP.md` lets agents read. Output: go or no-go for `/loop-promote`.
-- **After promotion:** on the environment the change now runs in, against the PR's "still to prove"
-  list and the step's **done when**. This is usually the strongest proof available, and the only one
-  that counts for a `G#`.
-- **For a spike:** the step's only output is an answer to a `Q#`. Run the experiment, and write the
-  answer and its evidence into the proposal for `/loop-decide`.
+- **Before the merge**, on the concern's branch: local runs, the smoke test, A/Bs, read-only checks. The
+  verdict goes in the PR body ("How it was proven before the merge"), because loop documents only describe
+  `main`. Output: whether the PR is ready for the owner to merge.
+- **After the merge**, on each environment that serves the concern's work, up to its `ships-to`. This is
+  usually the strongest proof available, and the only kind that makes a concern done.
+- **For a spike** (`/loop-prove <loop>/<concern> Q<n>`): the only output is an answer to a question. Run the
+  experiment and record the answer for `/loop-design` to turn into a decision.
+- **For a stale concern**: code under its `touches`, or a decision it needs, changed after its last proof.
+  Prove again on what is served now.
 
 ## Boundary
 
-This skill runs tests, scripts and read-only checks, and may add a reproducer, a smoke script or an
-evaluation harness on a branch. It reads only environments `LOOP.md` §3 allows, and never changes one.
-It does not fix what it finds: fixing is `/loop-build`, finding the cause is `/loop-diagnose`. It
-writes verdicts into the proposal (step **Proof** field) and the PR, committing only on a branch per
-`LOOP.md` §6.
+This skill runs tests, scripts and read-only checks, and may add a reproducer, a smoke script or an evaluation
+harness through a normal code PR. It reads only environments that `LOOP.md` §3 allows, and never changes one.
+It does not fix what it finds: fixing is `/loop-build`, and finding the cause is `/loop-diagnose`.
 
-**Without `LOOP.md`:** use local runs and tests only, ask the owner before reading any shared
-environment, and mention `/loop-init` once.
+Evidence lines go in the concern file through a PR that changes only `docs/loops/`. Under `LOOP.md` §2.1 it
+merges that PR itself once `scripts/check_loop_pr.sh` from the loop-status skill passes, which it will only if
+every commit the lines cite is on `main`.
+
+**Without `LOOP.md`:** use local runs and tests only, ask the owner before reading any shared environment, leave
+the PR for the owner, and mention `/loop-init` once.
 
 ## Steps
 
-1. **State what is being proven**, as falsifiable claims copied from the step's **done when**, a
-   `G#`, a `Q#` (for a spike) or the PR's "still to prove" list. For example: "A report requested
-   during peak load completes within 30 s on staging." Rewrite vague claims ("it works") until they can fail.
+1. **Find what to prove.** Run `/loop-status <loop>/<concern>`. It says which claims lack a current HOLDS, on
+   which environment, at which commit. Prove those, unless the owner named others.
 
-2. **Choose the strongest evidence you can get**, in this order, and say which rung you used:
+2. **State each claim so it can fail**, from the concern's Done when (or the question, for a spike). For example:
+   "A report requested during peak load completes within 30 s on staging." Rewrite vague claims ("it works")
+   until they can fail, and if the rewrite changes what the claim means, that is a question for `/loop-design`.
+
+3. **Choose the strongest evidence you can get**, in this order, and say which rung you used:
    1. A real environment with real input (live traffic, production-like data, a real device)
    2. A real environment with synthetic input (a smoke run with generated input or fixtures)
    3. A local stack that matches the environment (same images, same config shape)
    4. An A/B: the same input through both versions or both candidates, compared on a stated metric
-   5. Automated tests
+   5. Automated tests (CI on the commit counts here)
    6. Reading the code (the weakest; say so if it is all you have)
 
-   When the owner must supply reality (a device, a real dataset, an account, a read of production),
-   ask for exactly that rather than silently settling for a weaker rung.
+   When the owner must supply reality (a device, a real dataset, an account, a read of production), ask for
+   exactly that rather than silently settling for a weaker rung.
 
-3. **Run it and keep the raw evidence**: commands, outputs, numbers with units, sample sizes, dates,
-   the commit and the environment. For measurements, run enough to see the variance, and report it.
-   For A/Bs, fix everything except the variable, and choose the metric **before** looking at results.
+4. **Pin what you prove it on.** Record the commit: the branch head before the merge, or the environment's served
+   commit after it (from `LOOP.md` §3). A proof without a commit and an environment is not evidence.
 
-4. **Reach a verdict** per claim:
+5. **Run it and keep the raw evidence**: commands, outputs, numbers with units, sample sizes, dates. For
+   measurements, run enough to see the variance, and report it. For A/Bs, fix everything except the variable,
+   and choose the metric **before** looking at the results.
+
+6. **Reach a verdict** per claim:
    - **HOLDS**: the evidence supports the claim, at the rung stated.
    - **CONTRADICTS**: the evidence disproves the claim, or the premise under it.
    - **UNPROVEN**: the evidence could not be obtained. Say what is missing and who can supply it.
 
-5. **Write it down where the next session will look.** One line in the step's **Proof** field:
-   `HOLDS (rung 2, staging, YYYY-MM-DD): <one-line evidence>`. For a spike, also write the answer
-   under its `Q#`. If there is a PR, add the full report as a comment or in the body's "How it was
-   proven" section.
+7. **Write it down where the next session will look.**
+   - Before the merge: in the PR body, one line per claim:
+     `C1: HOLDS (rung 3, local, @<branch-sha>): <evidence>`.
+   - After the merge: append one line per claim to the concern's Evidence, on a `docs/<loop>-proof-<date>`
+     branch: `- YYYY-MM-DD · C1 · HOLDS · rung 1 · staging @<served-sha> · <one line of evidence, with numbers>`.
+     Never edit or delete an earlier line; a newer one supersedes it. Open the PR and merge it as described in
+     Boundary.
+   - A spike: `- YYYY-MM-DD · Q2 · HOLDS · rung 4 · local @<sha> · <the answer>`. It may cite a branch, because
+     a spike's code may never merge.
 
-6. **Act on the verdict:**
-   - **HOLDS, before promotion:** hand off to `/loop-promote`.
-   - **HOLDS, after promotion:** hand off to `/loop-record`.
-   - **CONTRADICTS:** stop going forward. Name the statement in the proposal, runbook or PR that the
-     evidence contradicts. Recommend `/loop-frame` to revise the plan, or `/loop-diagnose` if the
-     cause is unknown. After promotion, also tell the owner whether users are affected and whether to
-     roll back; that call is theirs. Do not patch forward on a false premise.
-   - **UNPROVEN:** record it as a named gap. Never report it as passing.
+8. **Act on the verdict:**
+   - **HOLDS** everywhere it must: say so, and let `/loop-status` show the concern as done.
+   - **HOLDS before the merge**: the PR is ready for the owner.
+   - **CONTRADICTS**: stop going forward with this concern, and only this one. Name the claim or the statement in
+     its design that the evidence contradicts, and recommend `/loop-design <loop>/<concern>`, or `/loop-diagnose`
+     if the cause is unknown. If the contradiction falsifies a shared decision or another loop's published
+     decision, say so in the evidence line ("contradicts <loop>/D2"), so `/loop-status` raises it with the owner.
+     On a shared environment, also tell the owner whether users are affected and whether to roll back; that call
+     is theirs. Do not patch forward on a false premise.
+   - **UNPROVEN**: record it as a named gap, with who can close it. Never report it as passing.
 
-7. **Report** in the format below, leading with the verdict.
+9. **Report** in the format below, leading with the verdict.
 
 ## Report format
 
 ```text
-Verdict: HOLDS | CONTRADICTS | UNPROVEN
-Claim:   <the falsifiable statement>
-When:    before promotion | after promotion to <env> | spike for Q#
-Rung:    <evidence level from step 2>
+Verdict:  HOLDS | CONTRADICTS | UNPROVEN
+Concern:  <loop>/<concern>, C<n> (or Q<n> for a spike)
+Claim:    <the falsifiable statement>
+On:       <environment> @<sha>, rung <n>
 Evidence:
   - <command or procedure> → <result, with numbers and units>
-Contradicts: <doc/section or PR text that is now wrong, if any>
-Next:    /loop-promote | /loop-record | /loop-frame | /loop-diagnose | owner must supply X
+Contradicts: <the design text or shared decision that is now wrong, if any>
+Recorded: PR #<n> body | evidence line in docs/loops/<loop>/<concern>.md (PR #<n>, merged | left for the owner)
+Next:     /loop-status | /loop-design | /loop-diagnose | owner must supply X
 ```
 
 ## Traps
 
 - A test that passes because it no longer exercises the path. Check that it fails without the change.
-- Proving on your laptop what only matters in the environment: a different shell, missing codecs or
-  libraries, another CPU architecture, no TLS. If the environment differs, say so in the verdict.
+- Proving on your laptop what only matters in the environment: a different shell, missing codecs or libraries,
+  another CPU architecture, no TLS. If the environment differs, say so in the verdict.
 - One sample. A single real run is a case, not a calibration. Say how many you have.
 - Crediting the last change for a result without an A/B on otherwise identical code.
+- Recording an environment proof against a commit the environment does not actually serve. Read the served
+  commit first, every time.
