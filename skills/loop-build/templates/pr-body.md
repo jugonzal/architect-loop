@@ -2,23 +2,28 @@
 
 <One paragraph in behaviour terms: what a user, operator or downstream system sees differently.>
 
-Implements <proposal title>, §<section> / Step <n> (`docs/proposals/<slug>.md`). Decisions relied on: D<n>, D<m>.
+Builds `<loop>/<concern>` ([`docs/loops/<loop>/<concern>.md`](docs/loops/<loop>/<concern>.md)), claims
+C<n>, C<m>. Relies on: <its needs, e.g. `job-contract`, `<loop>/D2`>.
 
 ## Why this way
 
-<The reasoning in 2–4 sentences: the alternatives considered and why this one.>
+<The reasoning in 2–4 sentences: the alternatives considered and why this one, citing the concern's decisions.>
 
-## How it was proven
+## How it was proven before the merge
 
 - [ ] Unit tests: `<command>`, <result>
 - [ ] Reproducer / regression test: <name>, fails before, passes after
 - [ ] Smoke test: `<command>`, <result>
-- [ ] Still to prove on <environment>: <what, and how> (for `loop-prove` after promotion)
+- [ ] C<n>: HOLDS | CONTRADICTS | UNPROVEN (rung <r>, <where>, @<sha>): <one line of evidence>
 
-## Risks and rollback
+## Still to prove after the merge
 
-<What could go wrong once deployed; how to roll back; any data or config that does not roll back.>
+- C<n> on <environment>: <how>. `/loop-prove` records it in the concern once that environment serves this.
 
-## Needs the owner
+## Effects and rollback
 
-<Gated actions this PR does not perform: migrations to run, secrets to set, settings to change. "None" if none.>
+<The concern's declared effects that this PR carries, and exactly what the owner must do for each: migrations to
+run, secrets to set, settings to change ("None" if none). What could go wrong once deployed; how to roll back;
+what does not roll back.>
+
+Concern: <loop>/<concern>

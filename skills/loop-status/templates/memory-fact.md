@@ -11,4 +11,4 @@ verified: YYYY-MM-DD
 
 **How to apply:** <what to do differently: the command, the check, the person to ask>
 
-**Related:** [<other fact>](<other-fact-slug>.md) · [`<proposal>` §<n>](../proposals/<slug>.md)
+**Related:** [<other fact>](<other-fact-slug>.md) · [`<loop>/<concern>`](../loops/<loop>/<concern>.md)

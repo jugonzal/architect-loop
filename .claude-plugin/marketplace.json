@@ -5,7 +5,7 @@
     {
       "name": "architect-loop",
       "source": "./",
-      "description": "Skills for the Architect Loop: one human decides and promotes, agents frame, build, prove and record."
+      "description": "Skills for the Architect Loop: one human decides and ships; agents plan, design, build, prove and record concerns in parallel, and status is computed from facts."
     }
   ]
 }

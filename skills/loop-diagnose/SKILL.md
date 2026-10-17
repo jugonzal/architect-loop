@@ -4,7 +4,7 @@ description: Find the root cause of a bug or a surprising result with evidence r
 license: MIT
 metadata:
   author: architect-loop
-  version: "0.1"
+  version: "0.2"
 ---
 
 # loop-diagnose
@@ -55,7 +55,11 @@ mention `/loop-init` once.
    responsible, and the A/B that showed it. Keep anything from the earlier fix that is still
    independently correct, and say so.
 
-7. **Record the technique** that ended the guessing, if it is reusable, in memory or `LOOP.md` §7.
+7. **Record the cause where the next session will look.** If the symptom belongs to a concern, append an
+   evidence line to the claim it explains, citing the commit on `main` where the cause was shown:
+   `- YYYY-MM-DD · C2 · CONTRADICTS · rung 4 · staging @<sha> · cause: <X>, shown by <the A/B>`, through a PR that
+   changes only `docs/loops/` (see `loop-prove`), and point `/loop-design` at the concern. Record the technique
+   that ended the guessing, if it is reusable, in memory or `LOOP.md` §7, through `/loop-status`'s record step.
 
-8. **Report**: symptom → cause (with the discriminating evidence) → fix (or hand-off to `loop-build`)
-   → what was retracted.
+8. **Report**: symptom → cause (with the discriminating evidence) → fix (or hand-off to `/loop-build` for the
+   concern, or `/loop-design` if the cause changes its design) → what was retracted.

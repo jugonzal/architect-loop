@@ -1,14 +1,14 @@
 # LOOP.md
 
 How the owner and agents work in this repository. Every agent reads this before starting work.
-Last reviewed: YYYY-MM-DD by <owner>.
+Architect Loop, generation 2. Last reviewed: YYYY-MM-DD by <owner>.
 
 ## 1. Roles
 
-- **Owner:** <name>. Sets goals, answers open questions, merges, promotes, and holds every gate in §2.
-- **Agents:** draft proposals, build, prove, diagnose and record. They commit on their own branches
-  and open pull requests (§6). They never merge to `<main>` and never deploy to a shared environment,
-  unless §2.1 delegates that specific action.
+- **Owner:** <name>. Sets goals, answers questions, merges code, ships, and holds every gate in §2.
+- **Agents:** plan, design, build, prove and record. They build each concern on its own branch, in its own
+  worktree, and open pull requests (§6). They never merge code to `<main>` and never deploy to a shared
+  environment, unless §2.1 delegates that specific action.
 
 ## 2. Gates: always stop for the owner
 
@@ -28,24 +28,29 @@ explicit yes in the conversation.
   - Sending anything to real users
   - <project-specific additions>
 
+A concern declares the gates it crosses in its `effects`, so they are visible before any work starts.
+
 ### 2.1 Delegated actions
 
 Standing permissions the owner grants on purpose. Anything not listed here is not delegated.
 
 | Action | Scope | Granted by, date |
 | --- | --- | --- |
-| <e.g. merge to `staging` branch, which CD deploys to staging> | <staging only> | <owner, YYYY-MM-DD> |
+| Merge a loop-document PR: its base is `<main>`, every file it changes is under `docs/loops/`, every commit its new evidence lines cite is already on `<main>`, and its checks pass. Run loop-status's `scripts/check_loop_pr.sh` first; if it fails, leave the PR for the owner | `docs/loops/` only, never a PR that changes anything else | architect-loop default; delete this row to revoke |
+| <e.g. merge to the `staging` branch, which CD deploys to staging> | <staging only> | <owner, YYYY-MM-DD> |
 
 ## 3. Environments
 
-| Environment | Where | Agents may read | Agents may write | Deployed by | Deployed version: how to see it | Verify with |
+| Environment | Where | Agents may read | Agents may write | Deployed by | Served commit: a command that prints its SHA | Verify with |
 | --- | --- | --- | --- | --- | --- | --- |
-| local | laptop / containers | yes | yes | anyone | `git rev-parse HEAD` | `<command>` |
-| staging | `<host, URL, cluster or account>` | yes | no | owner | `<command or endpoint>` | `<command>` |
-| production | `<host, URL, cluster or account>` | yes | no | owner | `<command or endpoint>` | `<command>` |
+| main | the `<main>` branch | yes | `docs/loops/` only (§2.1) | owner, by merging | `git rev-parse origin/<main>` | CI on that commit |
+| staging | `<host, URL, cluster or account>` | yes | no | owner | `<command or endpoint that prints the SHA>` | `<command>` |
+| production | `<host, URL, cluster or account>` | yes | no | owner | `<command or endpoint that prints the SHA>` | `<command>` |
 
-The deployed state of an environment is what the environment serves, not what a document says.
-Check it there before writing it down.
+List environments from lowest to highest: a concern is proven on each one on its way to its `ships-to`.
+`/loop-status` runs the served-commit command for every environment agents may read. Without that command it
+cannot tell a merged concern from a shipped one, so fill it in first. What an environment serves is what the
+command prints, not what a document says.
 
 ## 4. Commands
 
@@ -55,47 +60,46 @@ Check it there before writing it down.
 | Full suite | `<command>` | |
 | Lint / types | `<command>` | |
 | Smoke test (end to end, synthetic input) | `<command>` | the proof that the whole pipeline works |
+| CI result for a commit | `<e.g. gh run list --commit <sha>>` | |
 | Deploy | `<command>` | owner only (§2) |
 | Verify a deploy | `<command>` | agents may run it against any environment they can read |
 
 ## 5. Where things live
 
-- Proposals: `docs/proposals/<slug>.md`: living documents, one per initiative, updated in place
-- Runbooks: `docs/runbooks/<topic>.md`: corrected after every real run
-- Memory: `docs/memory/<slug>.md`, shared by every person and agent tool. (Use an agent's private
-  memory only for personal preferences; project facts go here.)
-- Reference docs (API, config): `<path>`
+- **Loops:** `docs/loops/<loop>/README.md`, plus one `<concern>.md` per concern. The loop skills track every
+  folder here.
+- **Proposals:** `docs/proposals/`, for people: free-form proposals and RFCs, generation 1 history, and loops
+  that were abandoned or deprecated. Moving a loop here stops tracking it. The loop skills do not track this folder.
+- **Runbooks:** `docs/runbooks/<topic>.md`, corrected after every real run.
+- **Memory:** `docs/memory/<slug>.md`, shared by every person and agent tool. (Use an agent's private memory
+  only for personal preferences; project facts go here.)
+- **Reference docs** (API, config): `<path>`
+- **Worktrees:** `<../<repo>-<concern> | the agent tool's own worktree isolation>`
 
 ## 6. Conventions
 
-- **Branches and commits.** Agents commit only on their own branch, never on `<main>`: `feat/`,
-  `fix/`, `perf/`, `chore/` for code, `docs/` for documentation-only changes. Pull requests: <yes,
-  every change | only for code; docs may be pushed by the owner directly>.
+- **Branches.** A concern is built on `<loop>/<concern>`, in its own worktree, from an up-to-date `<main>`.
+  Loop-document changes go on `docs/<loop>-<topic>`. Other work uses `feat/`, `fix/`, `perf/`, `chore/`, `docs/`.
+- **Code and loop documents never share a pull request.** A code PR never changes `docs/loops/`. A
+  loop-document PR changes nothing else, and only records what is already on `<main>`.
+- **Concern trailer.** Every commit for a concern ends with `Concern: <loop>/<concern>`, and so does its PR body.
+  That is how status finds the work.
 - **Commit subjects** state the outcome as a sentence in the imperative, readable in a changelog:
   "Stop retrying failed uploads forever", not "upload fix".
 - **Commit bodies** carry the reasoning and the evidence: what was wrong, how it was measured or
   reproduced, what was ruled out. A correction says what the earlier text or commit got wrong.
-- **PR bodies** cite the proposal section they implement, say how the change was proven, and list
-  what is still to prove on a real environment.
-- **Numbering.** Decisions `D#`, open questions `Q#`, goals and gates `G#`, weak assumptions `A#`,
-  plan steps `Step n`. Numbers are never reused or renumbered. Superseded items are struck through
-  with a pointer to their replacement.
-- **Proposal Status.** The first line under the title is `**Status:** <state> — <date>. <one sentence>`.
-
-  | State | Meaning | Set by |
-  | --- | --- | --- |
-  | Proposed | Written, not yet decided | `loop-frame` |
-  | Accepted | Blocking questions answered; the plan may be built | `loop-decide` |
-  | In progress | At least one step built or promoted | `loop-build`, `loop-record` |
-  | Done | All goals met, with evidence | `loop-record` |
-  | Parked | Deliberately paused; says what would unpark it | owner |
-  | Superseded | Replaced; links the replacement | `loop-frame`, owner |
-
-  `loop-reconcile` may correct any Status line that does not match reality. Every Status change is
-  verified against the environment or `<main>` first.
-- **Plan step status** (inside the proposal): `not started` → `in progress on <branch> (#PR)` →
-  `built, merged #PR` → `on <environment>, verified YYYY-MM-DD` → `done`. A step's latest proof
-  verdict is recorded next to it.
+- **PR bodies** cite the concern, say how the change was proven before the merge, list its declared effects,
+  and list what is still to prove and where.
+- **Numbering.** In a loop's README: goals `G#`, shared decisions `D#`, questions `Q#`. In a concern: claims
+  `C#`, decisions `D#`, questions `Q#`. From outside their file they are written `<loop>/D3` or
+  `<loop>/<concern>/C2`. Numbers are never reused or renumbered, and superseded rows are struck through with a
+  pointer to their replacement.
+- **Evidence lines** are appended to the file whose claim they prove, never edited:
+  `- YYYY-MM-DD · C1 · HOLDS · rung 1 · staging @<sha> · <evidence>`, or
+  `- YYYY-MM-DD · ship · verified · staging @<sha> · <checks>`. Every line about a `C#` or `G#`, and every
+  `ship` line, cites a commit already on `<main>`. Only a spike's answer (`Q#`) may cite a branch.
+- **No status lines.** Nothing under `docs/loops/` records whether something is claimed, built, merged,
+  shipped or done. `/loop-status` derives it from git, pull requests, environments and evidence, every time.
 
 ## 7. Project traps
 
