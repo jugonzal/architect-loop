@@ -40,7 +40,9 @@ steps 1 to 6 say to run the script and keep the table as its specification, and 
 runs disagree, fix the table, then the script. Addressing (who an item waits on) is not part of this concern; it
 comes with `addressed-to-people`.
 
-The queue carries all seven kinds of item that step 6 lists (per D34). A question item takes its options and
+The queue carries all seven kinds of item that step 6 lists (per D34), each with the gate it crosses or null
+(per D38). Step 5 of the table gains a loop state `unknown`, for a loop whose state rests on a fact that could not
+be read (per D37). A question item takes its options and
 recommendation from the reader that `question-options` adds beside this script, so the format has one parser
 (per D33).
 

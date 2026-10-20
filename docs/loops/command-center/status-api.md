@@ -8,10 +8,11 @@ ships-to: main
 
 ## Done when
 
-- **C1** A versioned JSON Schema describes the status of a project. That covers its loops; its concerns, each
-  with its derived state, the reason, and the facts the state came from; queue items, each with its kind (one of
-  the seven in D34), what it unblocks, and who it waits on, and for a question its options and recommendation
-  when the file records them (per D33); and "agents can start now". Prove: the schema validates the fixture
+- **C1** A versioned JSON Schema describes the status of a project. That covers its loops, whose state may be
+  `unknown` (per D37); its concerns, each with its derived state, the reason, and the facts the state came from;
+  queue items, each with its kind (one of the seven in D34), what it unblocks, who it waits on and the gate it
+  crosses (per D38), and for a question its options and recommendation when the file records them (per D33);
+  and "agents can start now". Prove: the schema validates the fixture
   documents and rejects a document missing a required field, in CI on main.
 - **C2** The fixture documents cover every state in the derivation table, plus `unknown`, so the app can be
   built and tested without a running service. Prove: a test that lists the states found in the fixtures against
@@ -27,6 +28,12 @@ ships-to: main
   ee7be83 added moved the call, checked with `grep -n` on main @d4312cb.)
 - Verified 2026-10-20 (`plugin/skills/loop-status/SKILL.md`, step 6): the queue has seven kinds of item, not the
   four this concern first listed (per command-center/D34).
+- Verified 2026-10-20 (PR #11 @c3e5647, open): the build began before D33, D34, D37 and D38, and differs from them
+  in three places. It has four kinds, with contradictions as questions and refused loop-document PRs as reviews,
+  and leaves proofs that need the owner off the queue; D34 keeps all seven, after the owner weighed that mapping
+  (Q37). It reads a question's recommendation from "Default if unanswered", but per D33 the default is its own
+  field, and the recommendation and options come from `question-options` or stay empty. Its loop `unknown` and
+  queue `gate` are now D37 and D38.
 
 ### Approach
 

@@ -142,6 +142,8 @@ person in one terminal can push a loop forward.
 | D34 | The status schema carries all seven kinds of queue item that `/loop-status` step 6 produces: question, review, ship, record, a proof that needs something only the person has, a contradiction that needs a call, and a refused loop-document PR. The app has cards for the first four and shows the other three read-only, with the command to run. | Juan, 2026-10-20 | Closes Q34 |
 | D35 | Push and the digest are a new concern, `notifications`, with its own service and store (per D26). It takes over push registration from `app-shell` (C2) and sending from `app-inbox` (C3). | Juan, 2026-10-20 | Closes Q35 |
 | D36 | A person marks a message "record this?". No model reads messages to classify them. | Juan, 2026-10-20 | Closes Q36 |
+| D37 | A loop's state can be `unknown`, when a fact its state depends on cannot be read, and it is never guessed as active. Step 5 of the `loop-status` table gains this, and `status-derivation` writes it. | Juan, 2026-10-20 | Closes Q38 |
+| D38 | Each queue item carries `gate`: the `LOOP.md` §2 gate it crosses, or null. `addressed-to-people` routes an item to that gate's holder by it (G2). | Juan, 2026-10-20 | Closes Q39 |
 
 ## Questions
 
@@ -183,6 +185,9 @@ person in one terminal can push a loop forward.
 | ~~Q34~~ | ~~Which kinds of queue item does the status schema carry?~~ → D34 | | |
 | ~~Q35~~ | ~~Who keeps devices and sends push and the digest?~~ → D35 | | |
 | ~~Q36~~ | ~~Who decides that a thread message looks like a decision?~~ → D36 | | |
+| ~~Q37~~ | ~~Does D34 stand against PR #11's five kinds, where a contradiction is a question and a refused loop-document PR is a review? (raised by `status-api`'s build)~~ → D34 stands (Juan, 2026-10-20) | | |
+| ~~Q38~~ | ~~Can a loop's state be `unknown`? (raised by `status-api`'s build)~~ → D37 | | |
+| ~~Q39~~ | ~~Does a queue item carry the gate it crosses? (raised by `status-api`'s build)~~ → D38 | | |
 
 ## Evidence
 

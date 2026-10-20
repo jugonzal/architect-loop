@@ -28,7 +28,8 @@ ships-to: main
 
 Per D10 and D15: the loop README's front matter gains `owner:` (one person, the architect) and `members:` (a
 list). Each gate line in `LOOP.md` §2 gains `— holder: <name>`. `addressing.py` maps the derived queue onto
-people and fills `waits_on` and `visible_to` in the `status-api` document. Delegation, where the owner hands an
+people and fills `waits_on` and `visible_to` in the `status-api` document, routing an item to its gate's holder
+by the item's `gate` (per D38). Delegation, where the owner hands an
 item to a member, is out of this loop. When it comes, it will be a decision recorded as
 `<name>, delegated by <owner>`.
 
