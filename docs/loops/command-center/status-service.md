@@ -1,5 +1,5 @@
 ---
-needs: [one-repository, status-derivation, status-api]
+needs: [one-repository, status-derivation, status-api, queue-items]
 touches: [services/status/, .github/workflows/status-service.yml]
 effects: [Cloud Run services in the staging and production GCP projects (spending; cloud IAM), the status service's own GitHub App with read access to jugonzal/architect-loop and webhooks on it (identity and access; per D27), the app's private key and webhook secret in Secret Manager (secrets)]
 ships-to: production

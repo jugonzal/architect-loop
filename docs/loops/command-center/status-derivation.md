@@ -1,5 +1,5 @@
 ---
-needs: [one-repository, status-api, question-options]
+needs: [one-repository, status-api, queue-items, question-options]
 touches: [plugin/skills/loop-status/scripts/loop_status.py, plugin/skills/loop-status/SKILL.md, tests/test_loop_status.py, tests/fixtures/loop_status/]
 effects: []
 ships-to: main
