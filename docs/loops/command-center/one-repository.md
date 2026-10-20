@@ -98,3 +98,21 @@ or after it. This concern does not claim that the two repositories derive the sa
 - 2026-10-20 · C4 · HOLDS · rung 1 · main @273aafe · `docs/loops/command-center/` is the same git tree in both repositories at the move (da25027, 15 files: architect-loop 4e7bf9a, jugonzal/loops 9e36bfa, which is still its main), and `diff -r` of the two finds nothing. In jugonzal/loops, 0 of 4 pull requests link any of the 14 concerns (by head branch or `Concern:` line), no branch is `command-center/*` (its heads are main, docs/loop-init and revert-1-docs/loop-init), and its main has 0 trailers in 9 commits. Controls: the tree check catches #5 and #6 (3 files differ at 273aafe), and the same search in architect-loop finds PR #3 and its 2 trailer commits
 
 ## Shipped
+
+2026-10-20, to `main`, its `ships-to`.
+
+- **What shipped.** PR #3 (merge dc17f8f) did four things. It moved the skills to `plugin/` and set the
+  marketplace's source to `./plugin`. It added the independence check to `check.sh`, with its tests. It gave this
+  repository its `LOOP.md`, and it committed the founding proposal. PR #4 (merge 4e7bf9a) moved
+  `docs/loops/command-center/` here from `jugonzal/loops`, byte for byte.
+- **Departures from the design.** C3 asked two `/loop-status` runs, one in each repository, to agree. They did not,
+  so D1 replaced C3 with C4: the loop arrived whole. The proof also produced D19 (a merge in another repository
+  counts on that repository's main) and D20 (the marketplace's full clone is accepted for now). Two effects stay
+  with the owner and are not part of done: the 0.3.0 release, and archiving `jugonzal/loops`.
+- **Learned.** The 0.2.0 derivation is prose, and runs on the same facts can differ. One difference came from a gap
+  in the table (merges in another repository), one from a misread `needs`, and one from a rule read loosely. The
+  table also cannot order a decision made on the same day as the contradiction it answers. Comparing two runs
+  proves little until `status-derivation` makes the derivation one script. Two things made the proof strong and
+  cheap. A real marketplace install runs from the CLI with a throwaway config directory. An A/B with planted
+  `app/` and `services/` folders turns an empty check ("nothing from `app/` arrived" when there is no `app/`)
+  into a real one.

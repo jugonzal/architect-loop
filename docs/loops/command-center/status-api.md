@@ -21,8 +21,10 @@ ships-to: main
 ### Where we are
 
 - Nothing exists. The repository's tests use `python3 -m unittest` with only the standard library
-  (`scripts/check.sh`, line 60), so validation in tests must not need `jsonschema` from PyPI.
-  Either keep a small validator in the test, or validate in the app's CI instead.
+  (`scripts/check.sh`, line 75), so validation in tests must not need `jsonschema` from PyPI.
+  Either keep a small validator in the test, or validate in the app's CI instead. (Corrected 2026-10-20: this
+  said line 60. The independence check that ee7be83 added moved the call, checked with `grep -n` on main
+  @d4312cb.)
 
 ### Approach
 
