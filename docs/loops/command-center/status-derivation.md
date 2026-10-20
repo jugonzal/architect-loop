@@ -23,7 +23,10 @@ ships-to: main
 
 ### Where we are
 
-- The derivation is prose only (`.claude/skills/loop-status/SKILL.md`, steps 1 to 6, read 2026-10-20).
+- The derivation is prose only (`plugin/skills/loop-status/SKILL.md`, steps 1 to 6, read 2026-10-20). (Path
+  corrected 2026-10-20 for the move.)
+- Verified 2026-10-20 (`one-repository` C3's evidence): the table has no rule for a pull request merged in
+  another repository, and runs of the 0.2.0 skill on the same facts returned different boards.
 - The skills' scripts use only the Python 3 standard library (`migrate_gen1.py` imports argparse, subprocess, re,
   dataclasses and similar) and are tested with `python3 -m unittest` (`scripts/check.sh`). This script follows
   both conventions.
@@ -36,6 +39,9 @@ both, and prints the board in the skill's existing text format or, with `--json`
 steps 1 to 6 say to run the script and keep the table as its specification, and the skill's note stays: if two
 runs disagree, fix the table, then the script. Addressing (who an item waits on) is not part of this concern; it
 comes with `addressed-to-people`.
+
+Before the script implements the table, the table gains D19's rule: a pull request merged in another repository
+counts as merged when its merge commit is on that repository's main. C1's fixtures get a row for it (per D19).
 
 ## Decisions
 

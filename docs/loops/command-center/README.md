@@ -41,23 +41,28 @@ person in one terminal can push a loop forward.
 ## Relations
 
 - No other loop exists yet.
-- **Home repository (per D13):** the skills, the method docs, the services and the app all live in
-  [jugonzal/architect-loop](https://github.com/jugonzal/architect-loop). `one-repository` moves this loop there
-  and makes the move safe, and every other concern needs it. All other concerns' `touches` are paths in
-  architect-loop, and nothing is built in `jugonzal/loops`, which is archived once the move is done. Until then,
-  only `one-repository` writes `architect-loop:` paths, because it is built while this loop still lives in loops.
+- **Home repository (per D13):** the skills, the method docs, the services, the app and this loop all live in
+  [jugonzal/architect-loop](https://github.com/jugonzal/architect-loop). `one-repository` moved the loop here and
+  makes the move safe, and every other concern needs it. Every concern's `touches` are paths in this repository.
+  `one-repository`'s `architect-loop:` prefixes name this same repository: they date from when it was built from
+  `jugonzal/loops`, which the owner archives once the move is done. Nothing is built there. (Corrected
+  2026-10-20: this said the loop still lived in `jugonzal/loops`.)
 
 ## Where we are
 
-- **Verified** (`git ls-files` on `main` @1748b7e, 2026-10-20): this repository holds only `LOOP.md`, the
-  proposal, this loop and the vendored skills. There is no code, no CI and no environment beyond `main`.
-  `LOOP.md` §3 and §4 are `TODO(owner)`.
-- **Verified** (`.claude/skills/loop-status/SKILL.md`, steps 1 to 6): the derivation exists only as a table in
+- **Verified** (`git ls-tree` on `main` @355dcb7, 2026-10-20): this repository holds the skills under `plugin/`,
+  the method docs, `LOOP.md`, the proposals, this loop, `scripts/`, `tests/` and CI (`check`). There is no `app/`
+  or `services/` yet, and no environment beyond `main`. In `LOOP.md`, the staging and production rows of §3 and
+  the smoke test and deploy commands of §4 are `TODO(owner)`. (Corrected 2026-10-20: this bullet described
+  `jugonzal/loops` before the move.)
+- **Verified** (`plugin/skills/loop-status/SKILL.md`, steps 1 to 6): the derivation exists only as a table in
   prose. Its facts are git, `gh pr list`, served-commit commands and evidence lines. Its states are parked,
   contradicted, open, blocked, ready, building, merged, shipped, stale and done, plus unknown. Its queue is
-  sorted by how many concerns each item unblocks. Nothing implements it as code. Upstream
-  (`../architect-loop/tests/`) already tests its two scripts in Python (`test_check_loop_pr.py`,
-  `test_migrate_gen1.py`), which is where the new script's tests go (per D15).
+  sorted by how many concerns each item unblocks. Nothing implements it as code. `tests/` already tests its two
+  scripts in Python (`test_check_loop_pr.py`, `test_migrate_gen1.py`), which is where the new script's tests go
+  (per D15). The table has no rule for a pull request merged in another repository, and runs on the same facts
+  returned different boards (`one-repository` C3, 2026-10-20). D19 adds the rule. (Paths corrected 2026-10-20 for
+  the move.)
 - **Verified** (the screen design canvas, https://claude.ai/artifact/2zWJ13odFUV1yNXkYR6urn, read 2026-10-20):
   eight 390×844 phone screens: Inbox, Question, Review, Concern, Loops, Session thread, Agents, Environments.
   There are five tabs: Needs you, Loops, Agents, Environments, More. The type is IBM Plex Sans and Mono. The
@@ -66,13 +71,13 @@ person in one terminal can push a loop forward.
   redrawn.
 - **Verified** (`gcloud` and `amazonaws` references across `../vgami-cloud`, `../gameface` and
   `../nginx-config`, 2026-10-20): the owner already runs services on GCP and AWS. Per D8 this loop uses GCP.
-- **Verified** (`gh repo view jugonzal/architect-loop`, `git log`, `diff -rq`, 2026-10-20): architect-loop is
-  private, MIT, with 0 forks and 21 commits since 2026-10-01. Its CI is `.github/workflows/check.yml`, which runs
-  `scripts/check.sh` and its unittest suite. Its plugin installs from the repository root
-  (`.claude-plugin/marketplace.json`: `"source": "./"`), so anything added at the root would ship with every
-  install, which is why D16 moves the skills to `plugin/`. Its `skills/` folder is identical to this
-  repository's `.claude/skills/`. Its copy of `docs/proposals/command-center.md` is identical to this one, but
-  uncommitted. It has no `LOOP.md` and no `docs/loops/`.
+- **Verified** (`gh repo view jugonzal/architect-loop`, 2026-10-20): architect-loop is private, MIT, with 0 forks.
+  Its CI is `.github/workflows/check.yml`, which runs `scripts/check.sh` and its unittest suite.
+- **Verified** (`one-repository`'s evidence, main @4e7bf9a, 2026-10-20): the marketplace serves `./plugin`, and a
+  real install from `main` ships only `plugin/` (C1). CI fails on any reference to `app/` or `services/` under
+  `plugin/` (C2). Adding the marketplace clones the whole repository into the user's plugin config, but nothing
+  outside `plugin/` loads from it (per D20). (Corrected 2026-10-20: this bullet described architect-loop before
+  the move, when the marketplace served the repository root.)
 - **Assumed:** the Claude Agent SDK can run a skill in a container with its own worktree, report its token and
   money cost, and stop at a budget. This is the riskiest unknown in the loop. Check it with the spike in
   `session-runner` Q1.
@@ -101,6 +106,8 @@ person in one terminal can push a loop forward.
 | D16 | The skills are packaged under `plugin/` (`plugin/.claude-plugin/plugin.json` and `plugin/skills/`), and the marketplace's source is `./plugin`, so installing the plugin ships only the skills. `install.sh` copies from there. | Juan, 2026-10-20 | Closes Q17 |
 | D17 | Changes to the skills are ordinary concerns that the owner reviews and merges. Cutting a release (version bump, tag, marketplace update) is the owner's alone. Agents always work with an installed release of the skills, never the working-tree skills they are editing. | Juan, 2026-10-20 | Closes Q18 |
 | D18 | Phase 1 serves one project, `jugonzal/architect-loop`, the home per D13. Every API and store is keyed by project, so more can be added later. | Juan, 2026-10-20 | Supersedes D3 |
+| D19 | A concern's pull request that merged in another repository counts as merged when its merge commit is on that repository's main, and for `ships-to: main`, that main serves it. The derivation table in `loop-status` gains this rule, and the derivation script a fixture for it. | Juan, 2026-10-20 | Closes Q19 |
+| D20 | Adding the marketplace may clone the whole repository into each user's plugin config, since nothing outside `plugin/` loads from it. Accepted for now. Revisit once `app/` lands, if its size matters, for example by documenting `claude plugin marketplace add jugonzal/architect-loop --sparse .claude-plugin plugin` (tested 2026-10-20). | Juan, 2026-10-20 | Closes Q20 |
 
 ## Questions
 
@@ -124,6 +131,8 @@ person in one terminal can push a loop forward.
 | ~~Q16~~ | ~~Does running from a terminal stay first-class?~~ → D14 | | |
 | ~~Q17~~ | ~~How are the skills packaged so plugin installs do not ship the app?~~ → D16 | | |
 | ~~Q18~~ | ~~How are changes to the skills gated once they are ordinary code?~~ → D17 | | |
+| ~~Q19~~ | ~~How does the derivation count a concern's pull request that merged in another repository? (raised by `one-repository` C3)~~ → D19 | | |
+| ~~Q20~~ | ~~Does the marketplace's full clone of the repository need fixing now?~~ → D20 | | |
 
 ## Evidence
 

@@ -14,19 +14,34 @@ ships-to: main
 - **C2** CI fails when anything under `plugin/` refers to `app/`, `services/` or the command center's runtime, and
   passes on main (per D14). Prove: a test that plants such a reference in a fixture and expects the check to
   fail, in CI on main.
-- **C3** `/loop-status`, run in architect-loop from an installed release, shows the `command-center` loop with
+- ~~**C3** `/loop-status`, run in architect-loop from an installed release, shows the `command-center` loop with
   the same state for every concern as a run in `jugonzal/loops` at the same moment. Prove: both runs side by
-  side, on main, after the loop-document PR that moves `docs/loops/command-center/`.
+  side, on main, after the loop-document PR that moves `docs/loops/command-center/`.~~ Contradicted 2026-10-20,
+  superseded by C4 (per D1).
+- **C4** The loop arrived whole. `docs/loops/command-center/` on architect-loop's main at the move (4e7bf9a) is
+  byte-identical to `jugonzal/loops`'s main (9e36bfa). No concern has work that lives only in `jugonzal/loops`: no
+  pull request there links a concern, no branch there is named `command-center/<concern>`, and no commit on its
+  main carries a `Concern:` trailer (per D1). Prove: `diff -r` of the two trees at those commits, and the pull
+  requests, branches and trailers of `jugonzal/loops`, on main.
 
 ## Design
 
 ### Where we are
 
-- Verified 2026-10-20 (see the loop README, Where we are): architect-loop is private with no forks, so moving
-  the plugin's source breaks no one else's install. Its `skills/` folder is identical to `jugonzal/loops`'s
-  `.claude/skills/`. Its `docs/proposals/command-center.md` is identical but uncommitted. It has no `LOOP.md`. Its
-  CI runs `scripts/check.sh` (`.github/workflows/check.yml`).
-- `scripts/check.sh` and the tests refer to `skills/` by path. They move with the skills.
+- Verified 2026-10-20, when this concern was designed: architect-loop is private with no forks, so moving the plugin's source
+  breaks no one else's install. Its CI runs `scripts/check.sh` (`.github/workflows/check.yml`).
+- Verified 2026-10-20 (`git ls-tree` on main @355dcb7): the skills are under `plugin/skills/`,
+  and `skills/` is gone. The marketplace's source is `./plugin`, and the plugin's version is 0.2.0. `LOOP.md` and
+  `docs/proposals/command-center.md` are committed. `scripts/check.sh` and `scripts/install.sh` read
+  `plugin/skills/`, and `check.sh` holds the D14 check. (Corrected 2026-10-20: this section described the
+  repository before the move.)
+- Verified 2026-10-20 (Evidence below): C1 and C2 hold on main @4e7bf9a, and C3 is contradicted. The 0.2.0
+  `loop-status` table has no rule for a pull request merged in another repository (D19 adds one), and the same
+  run returned different boards on the same facts. The moved documents matched `jugonzal/loops` byte for byte.
+- Verified 2026-10-20 (a real `claude plugin marketplace add`, CLI 2.1.293): adding the marketplace clones the
+  whole repository into the user's plugin config (808 KB). Nothing outside `plugin/` loads from it. With
+  `--sparse .claude-plugin plugin`, the clone is partial and never downloads other files (484 KB). Accepted for
+  now (per D20).
 
 ### Approach
 
@@ -48,15 +63,21 @@ Per D13 and D16, three pull requests in architect-loop, in this order:
    it is on main there. It changes only `docs/loops/`, so the delegation in `LOOP.md` §2.1 covers it once the
    code PR has merged.
 3. **Release** (the owner, per D17): bump to 0.3.0, tag, and update the marketplace. Then the owner archives
-   `jugonzal/loops`, whose PRs #1 to #3 stay readable there as history.
+   `jugonzal/loops`, whose PRs #1 to #4 stay readable there as history.
 
 Rollback: before the release, revert the code PR. After it, release 0.3.1 with the old layout. The archived
 repository can be unarchived.
+
+**Proving the move** (per D1). C4 checks that nothing was lost in the move: the two trees at the move, and
+`jugonzal/loops`'s pull requests, branches and trailers. Archiving keeps them readable, so C4 can be proven before
+or after it. This concern does not claim that the two repositories derive the same states. The prose table in
+`loop-status` cannot promise that, and `status-derivation` C1 makes the derivation one script (per D15, D19).
 
 ## Decisions
 
 | # | Decision | Decided by, date | Closes |
 | --- | --- | --- | --- |
+| D1 | Replace C3 with C4. The move is proven by the loop arriving whole (identical documents, no work left only in `jugonzal/loops`), not by two `/loop-status` runs agreeing. Status parity is `status-derivation` C1's job, where one script derives every state. | Juan, 2026-10-20 | C3's CONTRADICTS, 2026-10-20 |
 
 ## Questions
 
