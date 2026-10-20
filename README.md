@@ -78,16 +78,16 @@ the target environment serves them, and evidence lines like this one, which alwa
 
 | Skill | What it does |
 | --- | --- |
-| [`loop-status`](skills/loop-status/SKILL.md) | **Start here, any time.** Derives every concern's state from facts, shows what needs the owner and what agents can start now, flags drift, and records Shipped notes and corrections on the owner's yes. |
-| [`loop-plan`](skills/loop-plan/SKILL.md) | Adds a loop to the backlog: intent, goals, a first cut of independent concerns, and its relations to the loops already tracked, at the loosest coupling that works. Quick, so a new idea never derails the current loop. |
-| [`loop-design`](skills/loop-design/SKILL.md) | Works out how a loop or a concern will be built by grilling the owner on open decisions and on constraints found in the code. Records decisions, and reshapes concerns so they can be built in parallel. |
-| [`loop-build`](skills/loop-build/SKILL.md) | Builds one concern in its own worktree and branch, as one PR, inside the paths its contract allows. `--ready` builds every ready concern at once, one agent each. |
-| [`loop-prove`](skills/loop-prove/SKILL.md) | The evidence gate: tests, smoke runs, A/Bs, measurements on real environments. Writes HOLDS / CONTRADICTS / UNPROVEN bound to a commit and an environment. Runs spikes. |
-| [`loop-ship`](skills/loop-ship/SKILL.md) | Writes the brief for a deploy (what goes out, declared effects as manual steps, risks, rollback), stops for the owner, then checks what the environment actually serves. |
-| [`loop-init`](skills/loop-init/SKILL.md) | Writes `LOOP.md`, the contract: gates, environments and how each reports the commit it serves, commands, conventions. Upgrades generation 1 projects. |
-| [`loop-diagnose`](skills/loop-diagnose/SKILL.md) | Root-cause discipline: reproduce, isolate with an A/B on identical code, credit a cause only with evidence, retract wrong diagnoses in writing. |
-| [`loop-runbook`](skills/loop-runbook/SKILL.md) | Writes or corrects a runbook *as actually run*, recording each trap with the date it cost time. |
-| [`loop-incident`](skills/loop-incident/SKILL.md) | Turns production pain into a written account, a loop of concerns, and a fix, usually the same day. |
+| [`loop-status`](plugin/skills/loop-status/SKILL.md) | **Start here, any time.** Derives every concern's state from facts, shows what needs the owner and what agents can start now, flags drift, and records Shipped notes and corrections on the owner's yes. |
+| [`loop-plan`](plugin/skills/loop-plan/SKILL.md) | Adds a loop to the backlog: intent, goals, a first cut of independent concerns, and its relations to the loops already tracked, at the loosest coupling that works. Quick, so a new idea never derails the current loop. |
+| [`loop-design`](plugin/skills/loop-design/SKILL.md) | Works out how a loop or a concern will be built by grilling the owner on open decisions and on constraints found in the code. Records decisions, and reshapes concerns so they can be built in parallel. |
+| [`loop-build`](plugin/skills/loop-build/SKILL.md) | Builds one concern in its own worktree and branch, as one PR, inside the paths its contract allows. `--ready` builds every ready concern at once, one agent each. |
+| [`loop-prove`](plugin/skills/loop-prove/SKILL.md) | The evidence gate: tests, smoke runs, A/Bs, measurements on real environments. Writes HOLDS / CONTRADICTS / UNPROVEN bound to a commit and an environment. Runs spikes. |
+| [`loop-ship`](plugin/skills/loop-ship/SKILL.md) | Writes the brief for a deploy (what goes out, declared effects as manual steps, risks, rollback), stops for the owner, then checks what the environment actually serves. |
+| [`loop-init`](plugin/skills/loop-init/SKILL.md) | Writes `LOOP.md`, the contract: gates, environments and how each reports the commit it serves, commands, conventions. Upgrades generation 1 projects. |
+| [`loop-diagnose`](plugin/skills/loop-diagnose/SKILL.md) | Root-cause discipline: reproduce, isolate with an A/B on identical code, credit a cause only with evidence, retract wrong diagnoses in writing. |
+| [`loop-runbook`](plugin/skills/loop-runbook/SKILL.md) | Writes or corrects a runbook *as actually run*, recording each trap with the date it cost time. |
+| [`loop-incident`](plugin/skills/loop-incident/SKILL.md) | Turns production pain into a written account, a loop of concerns, and a fix, usually the same day. |
 
 Each skill is self-contained and reads the project's `LOOP.md` for local conventions. Without one, every skill
 falls back to safe defaults (the gates in `loop-init`, shared environments read-only with permission, nothing
@@ -104,7 +104,7 @@ merged by agents) and suggests `/loop-init`.
 One standing permission makes the loop fast without making it risky: agents may merge pull requests that change
 only `docs/loops/`, as long as every commit their evidence cites is already on `main`. Code and loop documents
 never share a pull request, so a loop document can never describe work that is still on a branch.
-[`check_loop_pr.sh`](skills/loop-status/scripts/check_loop_pr.sh) checks that before every such merge. The owner
+[`check_loop_pr.sh`](plugin/skills/loop-status/scripts/check_loop_pr.sh) checks that before every such merge. The owner
 can revoke it in `LOOP.md` §2.1.
 
 ## Install
@@ -129,6 +129,10 @@ npx skills add jugonzal/architect-loop
 ./scripts/install.sh --project /path/to/project
 ```
 
+Every route installs only [`plugin/`](plugin): the skills and the plugin manifest. The rest of this repository
+(the method docs, the tests, and the command center that is being built here) never ships, and nothing in
+`plugin/` depends on it, so the loop always runs from a terminal alone. `scripts/check.sh` enforces that.
+
 Then, in a project:
 
 ```text
@@ -145,7 +149,7 @@ You:  /loop-status                          # what is true, what needs you, what
 ## Upgrading from generation 1
 
 If your project has `docs/proposals/` with Status lines and numbered steps, reinstall the skills and run
-`/loop-init`. It runs [`migrate_gen1.py`](skills/loop-init/scripts/migrate_gen1.py) as a dry run, shows you what
+`/loop-init`. It runs [`migrate_gen1.py`](plugin/skills/loop-init/scripts/migrate_gen1.py) as a dry run, shows you what
 becomes a loop and what stays as history, and applies it on your yes. See [docs/upgrading.md](docs/upgrading.md).
 
 ## What a project looks like

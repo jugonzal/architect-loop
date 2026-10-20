@@ -4,7 +4,7 @@
   "plugins": [
     {
       "name": "architect-loop",
-      "source": "./",
+      "source": "./plugin",
       "description": "Skills for the Architect Loop: one human decides and ships; agents plan, design, build, prove and record concerns in parallel, and status is computed from facts."
     }
   ]

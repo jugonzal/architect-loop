@@ -17,7 +17,7 @@ case "${1:-}" in
 esac
 
 mkdir -p "$dest"
-for skill in "$here"/skills/loop-*; do
+for skill in "$here"/plugin/skills/loop-*; do
   name=$(basename "$skill")
   rm -rf "${dest:?}/$name"
   cp -R "$skill" "$dest/$name"

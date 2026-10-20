@@ -3,19 +3,23 @@
 # name matches the directory, description fits the 1024-character limit,
 # every relative link inside the skill resolves, and every shell script parses.
 # Retired skills (generation 1 names) must be stubs, and live skills must not
-# send anyone to them. Then run the tests, if Python 3 is available.
+# send anyone to them. Nothing in the plugin may refer to the app or the services, so a loop always runs
+# from a terminal alone. Then run the tests, if Python 3 is available (CHECK_SKIP_TESTS=1 skips them).
 set -eu
 
 here=$(cd "$(dirname "$0")/.." && pwd)
 fail=0
 retired="loop-frame loop-decide loop-promote loop-record loop-reconcile"
+# Paths of the command center's runtime. A skill that names one depends on it. Add each service's host here
+# once it has one.
+runtime_refs='(^|[^A-Za-z0-9_.-])(app|services)/'
 
 is_retired() {
   for r in $retired; do [ "$r" = "$1" ] && return 0; done
   return 1
 }
 
-for dir in "$here"/skills/*/; do
+for dir in "$here"/plugin/skills/*/; do
   dir=${dir%/}
   name=$(basename "$dir")
   bad=0
@@ -55,7 +59,18 @@ for dir in "$here"/skills/*/; do
   if [ "$bad" -eq 0 ]; then echo "ok   $name"; else fail=1; fi
 done
 
-if [ -d "$here/tests" ]; then
+refs=$(cd "$here" && grep -rnE "$runtime_refs" plugin 2>/dev/null || true)
+if [ -n "$refs" ]; then
+  printf '%s\n' "$refs" | while IFS= read -r ref; do echo "FAIL independence: $ref"; done
+  echo "     the skills must work without the app or the services; see LOOP.md §6"
+  fail=1
+else
+  echo "ok   independence"
+fi
+
+if [ "${CHECK_SKIP_TESTS:-}" = 1 ]; then
+  echo "skip tests: CHECK_SKIP_TESTS=1"
+elif [ -d "$here/tests" ]; then
   if command -v python3 >/dev/null 2>&1; then
     if (cd "$here" && python3 -m unittest discover -s tests -q) >/dev/null 2>&1; then
       echo "ok   tests"
