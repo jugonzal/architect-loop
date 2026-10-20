@@ -1,0 +1,459 @@
+{
+  "schema_version": 1,
+  "project": "example/reports",
+  "as_of": "2026-10-20T15:00:00Z",
+  "main": {"branch": "main", "sha": "dca84f408e1eca9424246c07e9f19d0daf59382a", "ci": "success"},
+  "environments": [
+    {"name": "main", "served": "dca84f408e1eca9424246c07e9f19d0daf59382a", "error": null},
+    {"name": "staging", "served": "780d0c58789a29f8c9a2ae676289b4945ebc1874", "error": null},
+    {"name": "production", "served": "d1b62eda1e9ba70d07976e477aa8f0784d87df81", "error": null}
+  ],
+  "loops": [
+    {
+      "id": "report-pipeline",
+      "title": "Reports are generated in the background and emailed when ready",
+      "path": "docs/loops/report-pipeline/README.md",
+      "state": "active",
+      "reason": "Its concerns have linked work, and not every one is done",
+      "next": null,
+      "owner": "ana",
+      "members": ["ana", "ben"],
+      "goals": [
+        {"id": "G1", "text": "A report requested at 09:00 arrives by 09:05. Prove: 20 timed requests on production.", "struck": false, "evidence": [], "current_holds": false}
+      ],
+      "concerns": [
+        {
+          "id": "job-contract",
+          "title": "Every report job carries a versioned payload",
+          "path": "docs/loops/report-pipeline/job-contract.md",
+          "contract": {"needs": [], "touches": ["src/jobs/contract.py", "tests/test_contract.py"], "effects": [], "ships_to": "main", "prs": [], "parked": null},
+          "claims": [
+            {"id": "C1", "text": "A job payload without a version is rejected before it is queued. Prove: unit tests, in CI on main.", "struck": false, "evidence": [
+              {"date": "2026-10-12", "verdict": "HOLDS", "rung": 5, "environment": "main", "commit": "7c02eb4", "text": "check run on 7c02eb4 green: test_contract, 12 tests"}
+            ], "current_holds": true}
+          ],
+          "state": "done",
+          "reason": "Every claim has a current HOLDS on main: C1 holds by CI, which is green on dca84f4",
+          "next": null,
+          "inputs": {
+            "main": "dca84f408e1eca9424246c07e9f19d0daf59382a",
+            "served": {"environment": "main", "commit": "dca84f408e1eca9424246c07e9f19d0daf59382a", "error": null, "serves": true},
+            "prs": [
+              {"repository": "example/reports", "number": 3, "url": "https://github.com/example/reports/pull/3", "title": "Reject a report job whose payload has no version", "head": "report-pipeline/job-contract", "base": "main", "state": "merged", "draft": false, "merge_commit": "7c02eb4ee28d3ff34e0dba0fd7a72b29f0631f08", "on_main": true, "checks": "success"}
+            ],
+            "commits": ["7c02eb4ee28d3ff34e0dba0fd7a72b29f0631f08"],
+            "branch": {"name": "report-pipeline/job-contract", "exists": false}
+          }
+        },
+        {
+          "id": "queue",
+          "title": "Jobs wait in a durable queue and survive a restart",
+          "path": "docs/loops/report-pipeline/queue.md",
+          "contract": {"needs": ["job-contract"], "touches": ["src/queue/"], "effects": [], "ships_to": "staging", "prs": [], "parked": null},
+          "claims": [
+            {"id": "C1", "text": "A job queued before a restart runs after it. Prove: restart the queue with jobs pending, on staging.", "struck": false, "evidence": [
+              {"date": "2026-10-15", "verdict": "HOLDS", "rung": 1, "environment": "staging", "commit": "780d0c5", "text": "restarted the queue with 50 jobs pending; all 50 ran"}
+            ], "current_holds": true},
+            {"id": "C2", "text": "10,000 queued jobs drain in under 10 minutes. Prove: a load run, on staging.", "struck": false, "evidence": [
+              {"date": "2026-10-16", "verdict": "UNPROVEN", "rung": 1, "environment": "staging", "commit": "780d0c5", "text": "needs a 10,000-job load on staging, which only the owner can start"}
+            ], "current_holds": false}
+          ],
+          "state": "shipped",
+          "reason": "staging serves its work (307f81e is an ancestor of 780d0c5), and C2 has no current HOLDS there",
+          "next": "/loop-prove report-pipeline/queue staging",
+          "inputs": {
+            "main": "dca84f408e1eca9424246c07e9f19d0daf59382a",
+            "served": {"environment": "staging", "commit": "780d0c58789a29f8c9a2ae676289b4945ebc1874", "error": null, "serves": true},
+            "prs": [
+              {"repository": "example/reports", "number": 5, "url": "https://github.com/example/reports/pull/5", "title": "Keep queued jobs across a restart", "head": "report-pipeline/queue", "base": "main", "state": "merged", "draft": false, "merge_commit": "307f81efe75a29f2e5460322d2756daa3aecf578", "on_main": true, "checks": "success"}
+            ],
+            "commits": ["307f81efe75a29f2e5460322d2756daa3aecf578"],
+            "branch": {"name": "report-pipeline/queue", "exists": false}
+          }
+        },
+        {
+          "id": "worker",
+          "title": "A worker generates each report within 30 seconds",
+          "path": "docs/loops/report-pipeline/worker.md",
+          "contract": {"needs": ["queue"], "touches": ["src/worker/"], "effects": [], "ships_to": "staging", "prs": [], "parked": null},
+          "claims": [
+            {"id": "C1", "text": "A report job produces a PDF. Prove: 50 jobs, on staging.", "struck": false, "evidence": [
+              {"date": "2026-10-17", "verdict": "HOLDS", "rung": 1, "environment": "staging", "commit": "780d0c5", "text": "50 of 50 jobs produced a PDF"}
+            ], "current_holds": true},
+            {"id": "C2", "text": "The p95 generation time is at most 30 s. Prove: 200 jobs, on staging.", "struck": false, "evidence": [
+              {"date": "2026-10-18", "verdict": "CONTRADICTS", "rung": 1, "environment": "staging", "commit": "780d0c5", "text": "p95 41 s over 200 jobs, needs at most 30 s"}
+            ], "current_holds": false}
+          ],
+          "state": "contradicted",
+          "reason": "C2's latest verdict is CONTRADICTS (2026-10-18, p95 41 s), and no decision is dated after it",
+          "next": "/loop-design report-pipeline/worker",
+          "inputs": {
+            "main": "dca84f408e1eca9424246c07e9f19d0daf59382a",
+            "served": {"environment": "staging", "commit": "780d0c58789a29f8c9a2ae676289b4945ebc1874", "error": null, "serves": true},
+            "prs": [
+              {"repository": "example/reports", "number": 7, "url": "https://github.com/example/reports/pull/7", "title": "Generate reports in a background worker", "head": "report-pipeline/worker", "base": "main", "state": "merged", "draft": false, "merge_commit": "98d01bc631315a501f7746da7cd972c4e0a54a7b", "on_main": true, "checks": "success"}
+            ],
+            "commits": ["98d01bc631315a501f7746da7cd972c4e0a54a7b"],
+            "branch": {"name": "report-pipeline/worker", "exists": false}
+          }
+        },
+        {
+          "id": "scheduler",
+          "title": "Reports scheduled for a time are queued at that time",
+          "path": "docs/loops/report-pipeline/scheduler.md",
+          "contract": {"needs": ["queue"], "touches": ["src/scheduler/"], "effects": ["the SMTP password in production's secret store (secrets)"], "ships_to": "production", "prs": [], "parked": null},
+          "claims": [
+            {"id": "C1", "text": "A report scheduled for 09:00 is queued between 09:00 and 09:01. Prove: 20 schedules, on staging and production.", "struck": false, "evidence": [
+              {"date": "2026-10-19", "verdict": "HOLDS", "rung": 1, "environment": "staging", "commit": "780d0c5", "text": "20 of 20 schedules queued within 40 s of their time"}
+            ], "current_holds": false}
+          ],
+          "state": "merged",
+          "reason": "Its work is on main (93f049a), and production serves d1b62ed, which does not include it",
+          "next": "/loop-ship production",
+          "inputs": {
+            "main": "dca84f408e1eca9424246c07e9f19d0daf59382a",
+            "served": {"environment": "production", "commit": "d1b62eda1e9ba70d07976e477aa8f0784d87df81", "error": null, "serves": false},
+            "prs": [
+              {"repository": "example/reports", "number": 9, "url": "https://github.com/example/reports/pull/9", "title": "Queue scheduled reports at their time", "head": "report-pipeline/scheduler", "base": "main", "state": "merged", "draft": false, "merge_commit": "93f049a0c408fa70a2b199f835e8a4e6e02f9352", "on_main": true, "checks": "success"}
+            ],
+            "commits": ["93f049a0c408fa70a2b199f835e8a4e6e02f9352"],
+            "branch": {"name": "report-pipeline/scheduler", "exists": false}
+          }
+        },
+        {
+          "id": "retries",
+          "title": "A failed report job is retried at most three times",
+          "path": "docs/loops/report-pipeline/retries.md",
+          "contract": {"needs": ["queue"], "touches": ["src/retries.py", "tests/test_retries.py"], "effects": [], "ships_to": "staging", "prs": [], "parked": null},
+          "claims": [
+            {"id": "C1", "text": "A job that fails three times is marked failed and not retried again. Prove: a failing job, on staging.", "struck": false, "evidence": [], "current_holds": false}
+          ],
+          "state": "building",
+          "reason": "#14 is open and ready for review, and none of its work is on main",
+          "next": "The owner reviews #14: its checks are green and its body carries the proof",
+          "inputs": {
+            "main": "dca84f408e1eca9424246c07e9f19d0daf59382a",
+            "served": {"environment": "staging", "commit": "780d0c58789a29f8c9a2ae676289b4945ebc1874", "error": null, "serves": false},
+            "prs": [
+              {"repository": "example/reports", "number": 14, "url": "https://github.com/example/reports/pull/14", "title": "Retry a failed report job at most three times", "head": "report-pipeline/retries", "base": "main", "state": "open", "draft": false, "merge_commit": null, "on_main": null, "checks": "success"}
+            ],
+            "commits": [],
+            "branch": {"name": "report-pipeline/retries", "exists": true}
+          }
+        },
+        {
+          "id": "exporter",
+          "title": "Reports can be exported as CSV",
+          "path": "docs/loops/report-pipeline/exporter.md",
+          "contract": {"needs": ["job-contract"], "touches": ["src/export/"], "effects": [], "ships_to": "production", "prs": [], "parked": null},
+          "claims": [
+            {"id": "C1", "text": "Every report has a CSV export with the same rows as its PDF. Prove: 20 reports, on production.", "struck": false, "evidence": [], "current_holds": false}
+          ],
+          "state": "ready",
+          "reason": "Nothing is built yet: no linked pull request, no report-pipeline/exporter branch, no commit with its trailer; job-contract, which it needs, is done",
+          "next": "/loop-build report-pipeline/exporter",
+          "inputs": {
+            "main": "dca84f408e1eca9424246c07e9f19d0daf59382a",
+            "served": {"environment": "production", "commit": "d1b62eda1e9ba70d07976e477aa8f0784d87df81", "error": null, "serves": false},
+            "prs": [],
+            "commits": [],
+            "branch": {"name": "report-pipeline/exporter", "exists": false}
+          }
+        },
+        {
+          "id": "notifier",
+          "title": "The requester is emailed when a report is ready",
+          "path": "docs/loops/report-pipeline/notifier.md",
+          "contract": {"needs": ["worker"], "touches": ["src/notify/"], "effects": [], "ships_to": "staging", "prs": [], "parked": null},
+          "claims": [
+            {"id": "C1", "text": "An email goes out within 1 minute of a report being ready. Prove: 20 reports, on staging.", "struck": false, "evidence": [], "current_holds": false}
+          ],
+          "state": "blocked",
+          "reason": "Nothing is built yet, and worker, which it needs, is contradicted",
+          "next": "/loop-design report-pipeline/worker",
+          "inputs": {
+            "main": "dca84f408e1eca9424246c07e9f19d0daf59382a",
+            "served": {"environment": "staging", "commit": "780d0c58789a29f8c9a2ae676289b4945ebc1874", "error": null, "serves": false},
+            "prs": [],
+            "commits": [],
+            "branch": {"name": "report-pipeline/notifier", "exists": false}
+          }
+        },
+        {
+          "id": "dashboard",
+          "title": "Operators see queue depth and failures on one page",
+          "path": "docs/loops/report-pipeline/dashboard.md",
+          "contract": {"needs": ["queue"], "touches": ["src/dashboard/"], "effects": [], "ships_to": "production", "prs": [], "parked": null},
+          "claims": [
+            {"id": "C1", "text": "The queue depth shown is never more than 30 s old. Prove: a timed check, on production.", "struck": false, "evidence": [], "current_holds": false}
+          ],
+          "state": "open",
+          "reason": "Q1 (which store holds the metrics?) blocks C1 and is unanswered",
+          "next": "/loop-design report-pipeline/dashboard",
+          "inputs": {
+            "main": "dca84f408e1eca9424246c07e9f19d0daf59382a",
+            "served": {"environment": "production", "commit": "d1b62eda1e9ba70d07976e477aa8f0784d87df81", "error": null, "serves": false},
+            "prs": [],
+            "commits": [],
+            "branch": {"name": "report-pipeline/dashboard", "exists": false}
+          }
+        },
+        {
+          "id": "metrics",
+          "title": "Each report job records its duration and outcome",
+          "path": "docs/loops/report-pipeline/metrics.md",
+          "contract": {"needs": ["job-contract"], "touches": ["src/metrics.py"], "effects": [], "ships_to": "staging", "prs": [], "parked": null},
+          "claims": [
+            {"id": "C1", "text": "Every finished job writes one duration and one outcome. Prove: 200 jobs, on staging.", "struck": false, "evidence": [
+              {"date": "2026-10-14", "verdict": "HOLDS", "rung": 1, "environment": "staging", "commit": "9561be8", "text": "200 of 200 jobs wrote both"}
+            ], "current_holds": false}
+          ],
+          "state": "stale",
+          "reason": "C1 had a current HOLDS on staging @9561be8, but src/metrics.py changed since, in 9f4b172",
+          "next": "/loop-prove report-pipeline/metrics staging",
+          "inputs": {
+            "main": "dca84f408e1eca9424246c07e9f19d0daf59382a",
+            "served": {"environment": "staging", "commit": "780d0c58789a29f8c9a2ae676289b4945ebc1874", "error": null, "serves": true},
+            "prs": [
+              {"repository": "example/reports", "number": 4, "url": "https://github.com/example/reports/pull/4", "title": "Record each job's duration and outcome", "head": "report-pipeline/metrics", "base": "main", "state": "merged", "draft": false, "merge_commit": "86d43b8f4c3094b41fe4964862b6f6e59ef8daa5", "on_main": true, "checks": "success"}
+            ],
+            "commits": ["86d43b8f4c3094b41fe4964862b6f6e59ef8daa5"],
+            "branch": {"name": "report-pipeline/metrics", "exists": false}
+          }
+        }
+      ]
+    },
+    {
+      "id": "billing",
+      "title": "Customers pay for reports by usage",
+      "path": "docs/loops/billing/README.md",
+      "state": "parked",
+      "reason": "Its README has parked: D2, until the pricing review is published",
+      "next": null,
+      "goals": [],
+      "concerns": [
+        {
+          "id": "invoices",
+          "title": "Each customer gets a monthly invoice for the reports they ran",
+          "path": "docs/loops/billing/invoices.md",
+          "contract": {"needs": [], "touches": ["src/billing/"], "effects": ["prices and the payment provider's settings (money)"], "ships_to": "production", "prs": [], "parked": "D1"},
+          "claims": [
+            {"id": "C1", "text": "An invoice lists every report the customer ran that month. Prove: one month of real usage, on production.", "struck": false, "evidence": [], "current_holds": false}
+          ],
+          "state": "parked",
+          "reason": "Front matter has parked: D1",
+          "next": "Nothing until D1's condition holds: the pricing review is published",
+          "inputs": {
+            "main": "dca84f408e1eca9424246c07e9f19d0daf59382a",
+            "served": {"environment": "production", "commit": "d1b62eda1e9ba70d07976e477aa8f0784d87df81", "error": null, "serves": false},
+            "prs": [],
+            "commits": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "search",
+      "title": "Anyone can find a past report in seconds",
+      "path": "docs/loops/search/README.md",
+      "state": "backlog",
+      "reason": "None of its concerns has a decision, linked work or evidence",
+      "next": null,
+      "goals": [],
+      "concerns": [
+        {
+          "id": "indexer",
+          "title": "Reports are searchable by title and requester",
+          "path": "docs/loops/search/indexer.md",
+          "contract": {"needs": [], "touches": ["src/search/index.py"], "effects": [], "ships_to": "production", "prs": [], "parked": null},
+          "claims": [
+            {"id": "C1", "text": "A report is found by its title within 5 s of being generated. Prove: 20 reports, on production.", "struck": false, "evidence": [], "current_holds": false}
+          ],
+          "state": "ready",
+          "reason": "Nothing is built yet: no linked pull request, no search/indexer branch, no commit with its trailer",
+          "next": "/loop-build search/indexer",
+          "inputs": {
+            "main": "dca84f408e1eca9424246c07e9f19d0daf59382a",
+            "served": {"environment": "production", "commit": "d1b62eda1e9ba70d07976e477aa8f0784d87df81", "error": null, "serves": false},
+            "prs": [],
+            "commits": [],
+            "branch": {"name": "search/indexer", "exists": false}
+          }
+        },
+        {
+          "id": "ranking",
+          "title": "Search results are ranked by how recently a report ran",
+          "path": "docs/loops/search/ranking.md",
+          "contract": {"needs": ["indexer"], "touches": [], "effects": [], "ships_to": null, "prs": [], "parked": null},
+          "claims": [
+            {"id": "C1", "text": "The most recent matching report is listed first.", "struck": false, "evidence": [], "current_holds": null}
+          ],
+          "state": "open",
+          "reason": "Nothing is built yet, and the contract lacks touches and ships-to",
+          "next": "/loop-design search/ranking",
+          "inputs": {
+            "main": "dca84f408e1eca9424246c07e9f19d0daf59382a",
+            "served": {"environment": null, "commit": null, "error": "the contract has no ships-to", "serves": null},
+            "prs": [],
+            "commits": [],
+            "branch": {"name": "search/ranking", "exists": false}
+          }
+        }
+      ]
+    },
+    {
+      "id": "onboarding",
+      "title": "New customers get a welcome email with a sample report",
+      "path": "docs/loops/onboarding/README.md",
+      "state": "done",
+      "reason": "Every concern is done, and G1 has a current HOLDS",
+      "next": null,
+      "goals": [
+        {"id": "G1", "text": "A new customer receives the welcome email within 5 minutes of signing up. Prove: CI on main.", "struck": false, "evidence": [
+          {"date": "2026-10-09", "verdict": "HOLDS", "rung": 5, "environment": "main", "commit": "618f5e2", "text": "check run on 618f5e2 green: test_welcome_flow"}
+        ], "current_holds": true}
+      ],
+      "concerns": [
+        {
+          "id": "welcome-email",
+          "title": "Signing up sends a welcome email with a sample report",
+          "path": "docs/loops/onboarding/welcome-email.md",
+          "contract": {"needs": [], "touches": ["src/onboarding/"], "effects": [], "ships_to": "main", "prs": [], "parked": null},
+          "claims": [
+            {"id": "C1", "text": "Signing up queues one welcome email with a sample report attached. Prove: unit tests, in CI on main.", "struck": false, "evidence": [
+              {"date": "2026-10-09", "verdict": "HOLDS", "rung": 5, "environment": "main", "commit": "618f5e2", "text": "check run on 618f5e2 green: test_welcome_flow, 6 tests"}
+            ], "current_holds": true},
+            {"id": "C2", "text": "The email is sent from a verified domain.", "struck": true, "evidence": [
+              {"date": "2026-10-07", "verdict": "CONTRADICTS", "rung": 6, "environment": "main", "commit": null, "text": "migrated without a commit: the sender is set per deployment, not in this code"}
+            ], "current_holds": null}
+          ],
+          "state": "done",
+          "reason": "Every claim has a current HOLDS on main; C2 is struck",
+          "next": null,
+          "inputs": {
+            "main": "dca84f408e1eca9424246c07e9f19d0daf59382a",
+            "served": {"environment": "main", "commit": "dca84f408e1eca9424246c07e9f19d0daf59382a", "error": null, "serves": true},
+            "prs": [
+              {"repository": "example/reports", "number": 2, "url": "https://github.com/example/reports/pull/2", "title": "Send a welcome email with a sample report on sign-up", "head": "onboarding/welcome-email", "base": "main", "state": "merged", "draft": false, "merge_commit": "618f5e250ba29a812d036a1fdacc066fe61c84f7", "on_main": true, "checks": "success"}
+            ],
+            "commits": ["618f5e250ba29a812d036a1fdacc066fe61c84f7"],
+            "branch": {"name": "onboarding/welcome-email", "exists": false}
+          }
+        }
+      ]
+    },
+    {
+      "id": "audit-log",
+      "title": "Every change to a report schedule is recorded",
+      "path": "docs/loops/audit-log/README.md",
+      "state": "open",
+      "reason": "It has no concerns yet",
+      "next": "/loop-design audit-log",
+      "goals": [],
+      "concerns": []
+    }
+  ],
+  "queue": [
+    {
+      "id": "report-pipeline/worker/C2",
+      "kind": "question",
+      "title": "worker's C2 is contradicted: redesign it, or roll back?",
+      "why": "C2 CONTRADICTS on staging (rung 1, 2026-10-18), and no decision is dated after it",
+      "loop": "report-pipeline",
+      "concerns": ["report-pipeline/worker"],
+      "unblocks": ["report-pipeline/worker", "report-pipeline/notifier"],
+      "waits_on": "ana",
+      "visible_to": ["ana", "ben"],
+      "gate": null,
+      "detail": {
+        "ref": "report-pipeline/worker/C2",
+        "question": "The p95 generation time is 41 s on staging, against at most 30 s. Redesign the worker, or roll back #7?",
+        "options": ["Redesign: /loop-design report-pipeline/worker", "Roll back #7 and keep generating reports inline"],
+        "recommendation": "Redesign: /loop-design report-pipeline/worker",
+        "blocks": ["C2"]
+      }
+    },
+    {
+      "id": "report-pipeline/dashboard/Q1",
+      "kind": "question",
+      "title": "Which store holds the dashboard's metrics?",
+      "why": "Q1 blocks C1 and is unanswered",
+      "loop": "report-pipeline",
+      "concerns": ["report-pipeline/dashboard"],
+      "unblocks": ["report-pipeline/dashboard"],
+      "waits_on": "ana",
+      "visible_to": ["ana", "ben"],
+      "gate": null,
+      "detail": {
+        "ref": "report-pipeline/dashboard/Q1",
+        "question": "Which store holds the dashboard's metrics?",
+        "options": ["The reports database", "A separate time-series store"],
+        "recommendation": "The reports database, until the page needs more than one sample a minute",
+        "blocks": ["C1"]
+      }
+    },
+    {
+      "id": "example/reports#14",
+      "kind": "review",
+      "title": "Retry a failed report job at most three times",
+      "why": "Ready for review: its checks are green and its body carries the proof",
+      "loop": "report-pipeline",
+      "concerns": ["report-pipeline/retries"],
+      "unblocks": ["report-pipeline/retries"],
+      "waits_on": "ana",
+      "visible_to": ["ana", "ben"],
+      "gate": null,
+      "detail": {
+        "pr": {"repository": "example/reports", "number": 14, "url": "https://github.com/example/reports/pull/14", "title": "Retry a failed report job at most three times", "head": "report-pipeline/retries", "base": "main", "state": "open", "draft": false, "merge_commit": null, "on_main": null, "checks": "success"},
+        "proof": "- [x] Unit tests: `python3 -m unittest -v`, 31 passed\n- [x] C1: HOLDS (rung 5, local, @bd994e4): a job that fails 4 times is attempted 3 times and marked failed"
+      }
+    },
+    {
+      "id": "ship/production",
+      "kind": "ship",
+      "title": "Ship scheduler to production",
+      "why": "scheduler is merged, and production does not serve it yet",
+      "loop": "report-pipeline",
+      "concerns": ["report-pipeline/scheduler"],
+      "unblocks": ["report-pipeline/scheduler"],
+      "waits_on": "carla",
+      "visible_to": ["ana", "ben"],
+      "gate": "Secrets",
+      "detail": {
+        "environment": "production",
+        "manual_steps": ["Set the SMTP password in production's secret store (secrets)"]
+      }
+    },
+    {
+      "id": "record/report-pipeline/job-contract",
+      "kind": "record",
+      "title": "Add a Shipped note to job-contract",
+      "why": "job-contract is done and has no Shipped note",
+      "loop": "report-pipeline",
+      "concerns": ["report-pipeline/job-contract"],
+      "unblocks": [],
+      "waits_on": "ana",
+      "visible_to": ["ana", "ben"],
+      "gate": null,
+      "detail": {
+        "path": "docs/loops/report-pipeline/job-contract.md",
+        "text": "Shipped to main in #3 (7c02eb4), as designed. C1 holds by CI. Learned: rejecting an unversioned payload when it is queued found two callers the tests did not cover."
+      }
+    }
+  ],
+  "agents_can_start": [
+    {"concern": "report-pipeline/exporter", "action": "build", "command": "/loop-build report-pipeline/exporter"},
+    {"concern": "search/indexer", "action": "build", "command": "/loop-build search/indexer"},
+    {"concern": "report-pipeline/queue", "action": "prove", "command": "/loop-prove report-pipeline/queue staging"},
+    {"concern": "report-pipeline/metrics", "action": "prove", "command": "/loop-prove report-pipeline/metrics staging"},
+    {"concern": "search/ranking", "action": "design", "command": "/loop-design search/ranking"}
+  ],
+  "drift": [
+    {
+      "where": "docs/loops/report-pipeline/worker.md, Where we are",
+      "finding": "Says the worker retries a failed job forever; since #7 it gives up after 3 attempts",
+      "checked": "git grep -n MAX_ATTEMPTS dca84f4 -- src/worker/"
+    }
+  ],
+  "missing": []
+}
