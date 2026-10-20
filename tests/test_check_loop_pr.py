@@ -1,4 +1,4 @@
-"""Tests for skills/loop-status/scripts/check_loop_pr.sh, the guard on the loop-document delegation.
+"""Tests for plugin/skills/loop-status/scripts/check_loop_pr.sh, the guard on the loop-document delegation.
 
 Each case builds a branch in a throwaway repository and checks that the script lets an agent merge it
 (exit 0) or leaves it for the owner (exit 1).
@@ -10,7 +10,7 @@ import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(ROOT, "skills", "loop-status", "scripts", "check_loop_pr.sh")
+SCRIPT = os.path.join(ROOT, "plugin", "skills", "loop-status", "scripts", "check_loop_pr.sh")
 
 
 def git(repo, *args):

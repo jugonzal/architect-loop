@@ -1,4 +1,4 @@
-"""Tests for skills/loop-init/scripts/migrate_gen1.py.
+"""Tests for plugin/skills/loop-init/scripts/migrate_gen1.py.
 
 Each test builds a small synthetic generation 1 repository in a temporary directory: a few commits,
 one of them a squash merge whose subject ends in "(#12)" and one a merge commit for PR #14, so that
@@ -17,7 +17,7 @@ import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SCRIPT = os.path.join(HERE, "..", "skills", "loop-init", "scripts", "migrate_gen1.py")
+SCRIPT = os.path.join(HERE, "..", "plugin", "skills", "loop-init", "scripts", "migrate_gen1.py")
 FIXTURES = os.path.join(HERE, "fixtures", "gen1")
 TODAY = "2026-10-17"
 
