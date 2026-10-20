@@ -1,0 +1,5 @@
+#!/bin/sh
+# Installed by the runner in each session's clone: every commit names its sponsor beside its concern.
+git interpret-trailers --in-place --if-exists doNothing \
+  --trailer "Concern: command-center/q1-spike" \
+  --trailer "Sponsored-by: jugonzal" "$1"
