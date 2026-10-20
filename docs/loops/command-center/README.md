@@ -73,12 +73,15 @@ person in one terminal can push a loop forward.
   owner already runs services on GCP and AWS. Per D8 this loop uses GCP. Of the 7 GCP region names in those
   repositories, 6 are `us-east1` (per D32). (Corrected 2026-10-20: this bullet named those repositories, which
   this repository keeps out of new text, per D25.)
-- **Verified** (`gh repo view jugonzal/architect-loop`, 2026-10-20): architect-loop is private, MIT, with 0 forks.
-  Its CI is `.github/workflows/check.yml`, which runs `scripts/check.sh` and its unittest suite.
-- **Verified** (`gh api repos/jugonzal/architect-loop/branches/main/protection` and `…/rulesets`, 2026-10-20):
-  `main` has no protection, and cannot have any on this plan while the repository is private. Both calls answer
-  403, "Upgrade to GitHub Pro or make this repository public to enable this feature". `session-runner` D3 and D4
-  rested on a protected `main`, so the repository goes public (per D24).
+- **Verified** (`gh repo view jugonzal/architect-loop`, 2026-10-20): architect-loop is public and MIT (per D24).
+  Its CI is `.github/workflows/check.yml`, which runs `scripts/check.sh` and its unittest suite. (Corrected
+  2026-10-20: this said the repository was private, which it was until the owner carried out D24.)
+- **Verified** (`gh api repos/jugonzal/architect-loop/rulesets/<id>`, 2026-10-20): `main` is protected by an
+  active ruleset, "main", with no bypass actors. It blocks deletion and force pushes, requires a pull request
+  (no approvals), and requires the `skills` check. `trailers` joins it once `session-runner` adds the workflow
+  (per D24). (Corrected 2026-10-20: this said `main` had no protection. While the repository was private, both
+  the branch protection and the rulesets APIs answered 403, "Upgrade to GitHub Pro or make this repository public
+  to enable this feature", and that is why it went public.)
 - **Verified** (`git log --all -p`, `gh pr list` bodies, and every PR's issue and review comments, 2026-10-20):
   before publishing, the only mentions of the owner's private projects are in one old diff (44893df) and in
   PR #1's body. Both stay as they are (per D25).
@@ -86,9 +89,9 @@ person in one terminal can push a loop forward.
   read 2026-10-20): a GitHub App registration has one webhook URL, so services that each need webhooks each get
   their own app (per D27).
 - **Verified** (`git tag -l`, `plugin/.claude-plugin/plugin.json`, and `gh repo view jugonzal/loops`,
-  2026-10-20): no release is tagged, the plugin is still 0.2.0, and `jugonzal/loops` is not archived. These are
-  `one-repository`'s remaining effects, the owner's to perform. `session-runner`'s job installs a tagged release,
-  so its staging proof waits for the first one.
+  2026-10-20): release v0.3.0 is tagged at fbd6d0b, the plugin is 0.3.0, and `jugonzal/loops` is archived, so
+  `one-repository`'s remaining effects are done. `session-runner`'s job can install v0.3.0. (Corrected 2026-10-20:
+  this said no release was tagged, the plugin was 0.2.0, and `jugonzal/loops` was not archived.)
 - **Verified** (`one-repository`'s evidence, main @4e7bf9a, 2026-10-20): the marketplace serves `./plugin`, and a
   real install from `main` ships only `plugin/` (C1). CI fails on any reference to `app/` or `services/` under
   `plugin/` (C2). Adding the marketplace clones the whole repository into the user's plugin config, but nothing
