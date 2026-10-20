@@ -22,6 +22,7 @@ ships-to: production
 Follow the Agents artboard (per D4). Its "session slots" come from the runner: 3 per sponsor by default, set
 in the runner's config (per D22). Spend and the estimate before a start come from the runner, and the app
 labels both as estimates (per D23). A budget is a target a session may pass by one model response (per D21).
+The runner's client is generated inside `app/src/features/agents/` from `services/runner/openapi.yaml` (per D29).
 
 ## Decisions
 

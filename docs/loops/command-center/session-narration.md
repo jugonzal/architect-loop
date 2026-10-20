@@ -26,8 +26,9 @@ ships-to: production
 
 This is the one interface between the runner and the thread store (per D1, D6). "What it spent" is the
 runner's final estimate (per D23). It is kept as its own concern so that
-neither needs the other. The runner posts through the threads API under the session's identity, labelled with
-its sponsor. Narration in the app is collapsed to milestones by default.
+neither needs the other. The runner posts through the threads API (`services/threads/openapi.yaml`, per D29)
+with Cloud Run's service identity, as the session and labelled with its sponsor (per D28). Milestones carry the
+milestone kind, so the app collapses the rest of the narration by default.
 
 ## Decisions
 

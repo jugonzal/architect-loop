@@ -1,7 +1,7 @@
 ---
 needs: [one-repository, status-api]
-touches: [app/package.json, app/app.json, app/eas.json, app/tsconfig.json, app/src/app/_layout.tsx, app/src/app/(tabs)/_layout.tsx, app/src/shell/, app/src/api/, app/src/theme/]
-effects: [a GitHub OAuth app for sign-in (identity and access), an Expo account with EAS and push credentials (new vendor account: identity and access; spending; secrets), Apple Developer and Google Play accounts (identity and access; spending), TestFlight and Play internal-testing submissions (owner only)]
+touches: [app/package.json, app/app.json, app/eas.json, app/tsconfig.json, app/src/app/_layout.tsx, app/src/app/(tabs)/_layout.tsx, app/src/shell/, app/src/api/, app/src/theme/, .github/workflows/app.yml]
+effects: [a GitHub OAuth app for sign-in that asks for no repository access (identity and access; per D28), an Expo account with EAS build credentials (new vendor account: identity and access; spending; secrets), Apple Developer and Google Play accounts (identity and access; spending), TestFlight and Play internal-testing submissions (owner only)]
 ships-to: production
 ---
 # A signed-in person has the app on their phone, registered for push, with a tab for each screen
@@ -11,8 +11,9 @@ ships-to: production
 - **C1** A build installs on iOS and Android, signs in with GitHub, and shows the person's name. It shows the
   tabs from the screen design (Needs you, Loops, Agents, Environments) without a More tab (per D4). Prove: a
   TestFlight build and a Play internal build, installed on devices and signed in against staging.
-- **C2** The device registers for push, and a test notification sent to that person arrives on their devices
-  and no one else's. Prove: two devices with two accounts, on staging.
+- ~~**C2** The device registers for push, and a test notification sent to that person arrives on their devices
+  and no one else's. Prove: two devices with two accounts, on staging.~~ Moved to `notifications` C1, which owns
+  registration, the device store and sending (per D35).
 
 ## Design
 
@@ -26,9 +27,13 @@ ships-to: production
 
 Expo with Expo Router and TypeScript (per D7). Routes are file-based, so each screen concern adds its own files
 under `app/src/app/(tabs)/<screen>/` and `app/src/features/<screen>/` without editing a shared file. `src/api/`
-holds a typed client generated from `plugin/skills/loop-status/scripts/status.schema.json` in the same commit (per D15), and stubs
-that load its fixtures. `src/theme/` holds the design's tokens. Rollback: a store build cannot be recalled. An
-EAS update can revert JavaScript, and a native change needs a new build.
+holds the signed-in fetch and a typed client generated from
+`plugin/skills/loop-status/scripts/status.schema.json` in the same commit (per D15), with stubs that load its
+fixtures. The runner's and the threads' clients belong to the screens that use them (per D29). Sign-in proves
+who the person is and asks GitHub for no repository access (per D28). `.github/workflows/app.yml` runs the app's
+tests, which the screen concerns' "in CI on main" claims rely on (per D30). `src/theme/` holds the design's
+tokens. Rollback: a store build cannot be recalled. An EAS update can revert JavaScript, and a native change
+needs a new build.
 
 ## Decisions
 
