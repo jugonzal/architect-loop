@@ -40,7 +40,8 @@ its number, with the recommended option marked. An answered question keeps its o
 beside the decision. The format is fixed by C1's fixtures before the skills' text changes.
 
 `questions.py` uses only the standard library, like the other scripts. `status-derivation` imports it rather than
-parsing questions itself, so the format has one reader, and `status-api`'s question item carries what it returns.
+parsing questions itself, so the format has one reader, and `queue-items`' question item carries what it returns: each option as a text with its
+consequence, the recommendation, and the default kept apart (per D41).
 `loop-plan` and `loop-design` say to write the options whenever a question stays open, and the templates show an
 example.
 

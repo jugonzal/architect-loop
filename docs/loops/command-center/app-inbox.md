@@ -1,5 +1,5 @@
 ---
-needs: [one-repository, app-shell, status-api, session-runner, addressed-to-people]
+needs: [one-repository, app-shell, status-api, queue-items, session-runner, addressed-to-people]
 touches: [app/src/app/(tabs)/inbox/, app/src/features/inbox/]
 effects: [starting sessions that cost money, each card's dispatch naming the person as sponsor with its budget shown before it starts (spending)]
 ships-to: production

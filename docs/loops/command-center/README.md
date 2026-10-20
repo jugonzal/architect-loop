@@ -144,6 +144,9 @@ person in one terminal can push a loop forward.
 | D36 | A person marks a message "record this?". No model reads messages to classify them. | Juan, 2026-10-20 | Closes Q36 |
 | D37 | A loop's state can be `unknown`, when a fact its state depends on cannot be read, and it is never guessed as active. Step 5 of the `loop-status` table gains this, and `status-derivation` writes it. | Juan, 2026-10-20 | Closes Q38 |
 | D38 | Each queue item carries `gate`: the `LOOP.md` §2 gate it crosses, or null. `addressed-to-people` routes an item to that gate's holder by it (G2). | Juan, 2026-10-20 | Closes Q39 |
+| D39 | The three missing queue kinds and D33's options move to a new concern, `queue-items`, which needs `status-api` and works in its three paths. `status-api` keeps what PR #11 delivered (its C3); its C1 is split. The concerns that read queue items need `queue-items`: `status-derivation`, `addressed-to-people`, `status-service`, `app-shell` and `app-inbox`. | Juan, 2026-10-20 | Closes Q40 |
+| D40 | The three read-only kinds each carry the command to run and their facts. A proof names the claim, the environment, what is missing and who can supply it. A contradiction names the claim, its CONTRADICTS line, what it contradicts and whether it escalates to the loop. A refused loop-document PR names the PR and the checker's failure lines. | Juan, 2026-10-20 | Closes Q41 |
+| D41 | A question item's options are each a text with its consequence. Its recommendation names one option or is null, and its default is the table's "Default if unanswered", kept apart. A question written before the format has no options and no recommendation. `question-options`' reader returns this shape. | Juan, 2026-10-20 | Closes Q42 |
 
 ## Questions
 
@@ -188,6 +191,9 @@ person in one terminal can push a loop forward.
 | ~~Q37~~ | ~~Does D34 stand against PR #11's five kinds, where a contradiction is a question and a refused loop-document PR is a review? (raised by `status-api`'s build)~~ → D34 stands (Juan, 2026-10-20) | | |
 | ~~Q38~~ | ~~Can a loop's state be `unknown`? (raised by `status-api`'s build)~~ → D37 | | |
 | ~~Q39~~ | ~~Does a queue item carry the gate it crosses? (raised by `status-api`'s build)~~ → D38 | | |
+| ~~Q40~~ | ~~How does the schema catch up with D33 and D34, now that PR #11 merged with four kinds and plain options? (raised by `status-api`)~~ → D39 | | |
+| ~~Q41~~ | ~~What do the three read-only kinds of queue item carry?~~ → D40 | | |
+| ~~Q42~~ | ~~How does a question item carry its options, recommendation and default?~~ → D41 | | |
 
 ## Evidence
 
