@@ -46,4 +46,6 @@ stopped job leaves its branch and PR for a person to close; nothing is merged by
 
 ## Evidence
 
+- 2026-10-20 · Q1 · HOLDS · rung 3 · local @06f4b37 · Yes, for all six parts. Tested in Docker (python:3.12-slim, claude-agent-sdk 0.2.168 bundling Claude Code 2.1.301, linux/arm64; not Cloud Run) against main c6c859c, with Opus 5.5: 9 sessions, $0.94 estimated. Each session got its own container and a fresh clone. `/architect-loop:loop-status` ran from the plugin mounted read-only: a marker added only to that copy came back in 1 turn with 0 tools. A commit-msg hook installed by the runner added `Sponsored-by:` and `Concern:`, but `git commit --no-verify` skips it. Results report tokens (`usage`, `model_usage`), a client-side cost estimate (`total_cost_usd`) and time. `max_budget_usd` stopped all 4 runs that reached it (`error_max_budget_usd`), but only after the response that crossed it: overshoot +$0.0006, +$0.0057, +$0.0118 and +$0.0121, so C2's "before going over" cannot hold as worded. With `dontAsk` and narrow Bash rules, 2 of 4 full `/loop-status` runs ended without a full board after one compound command was denied
+
 ## Shipped
