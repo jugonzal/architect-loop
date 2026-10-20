@@ -19,8 +19,9 @@ ships-to: production
 
 ### Approach
 
-Follow the Agents artboard (per D4). Its "session slots" (a cap per sponsor) come from the runner. The cap's
-value is a question for the runner's design, once the spike answers `session-runner` Q1.
+Follow the Agents artboard (per D4). Its "session slots" come from the runner: 3 per sponsor by default, set
+in the runner's config (per D22). Spend and the estimate before a start come from the runner, and the app
+labels both as estimates (per D23). A budget is a target a session may pass by one model response (per D21).
 
 ## Decisions
 

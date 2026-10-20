@@ -24,7 +24,8 @@ ships-to: production
 
 ### Approach
 
-This is the one interface between the runner and the thread store (per D1, D6), kept as its own concern so that
+This is the one interface between the runner and the thread store (per D1, D6). "What it spent" is the
+runner's final estimate (per D23). It is kept as its own concern so that
 neither needs the other. The runner posts through the threads API under the session's identity, labelled with
 its sponsor. Narration in the app is collapsed to milestones by default.
 

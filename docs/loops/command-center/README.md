@@ -78,9 +78,10 @@ person in one terminal can push a loop forward.
   `plugin/` (C2). Adding the marketplace clones the whole repository into the user's plugin config, but nothing
   outside `plugin/` loads from it (per D20). (Corrected 2026-10-20: this bullet described architect-loop before
   the move, when the marketplace served the repository root.)
-- **Assumed:** the Claude Agent SDK can run a skill in a container with its own worktree, report its token and
-  money cost, and stop at a budget. This is the riskiest unknown in the loop. Check it with the spike in
-  `session-runner` Q1.
+- **Verified** (`session-runner` Q1, the spike, rung 3, 2026-10-20): the Claude Agent SDK runs a loop skill in a
+  container on its own fresh clone, from an installed plugin. It reports tokens, a client-side cost estimate and
+  time, and stops at a budget, though only after the response that crosses it. (Corrected 2026-10-20: this was
+  the loop's riskiest assumption.)
 - **Missing:** `LOOP.md` §3 rows for staging and production, with a `/version` URL for each service (per D8, D9).
   `status-service` adds them, and the owner merges that change.
 
@@ -108,6 +109,9 @@ person in one terminal can push a loop forward.
 | D18 | Phase 1 serves one project, `jugonzal/architect-loop`, the home per D13. Every API and store is keyed by project, so more can be added later. | Juan, 2026-10-20 | Supersedes D3 |
 | D19 | A concern's pull request that merged in another repository counts as merged when its merge commit is on that repository's main, and for `ships-to: main`, that main serves it. The derivation table in `loop-status` gains this rule, and the derivation script a fixture for it. | Juan, 2026-10-20 | Closes Q19 |
 | D20 | Adding the marketplace may clone the whole repository into each user's plugin config, since nothing outside `plugin/` loads from it. Accepted for now. Revisit once `app/` lands, if its size matters, for example by documenting `claude plugin marketplace add jugonzal/architect-loop --sparse .claude-plugin plugin` (tested 2026-10-20). | Juan, 2026-10-20 | Closes Q20 |
+| D21 | A session's budget is a target it may pass by one model response. The SDK stops a session at the first response that crosses its budget, and the runner reports its estimated spend, overshoot included. | Juan, 2026-10-20 | Closes Q21 |
+| D22 | A sponsor may run at most 3 sessions at once. The cap is set in the runner's config, and a dispatch past it is refused, naming the running sessions. | Juan, 2026-10-20 | Closes Q22 |
+| D23 | The runner publishes each session's spend while it runs (approximate, from per-step usage, at least every 10 seconds) and at the end (the SDK's estimate). Before a start, it estimates a skill on its model as the median of that pairing's last 10 sessions, and a pairing with none has no estimate. Every figure is labelled as an estimate. | Juan, 2026-10-20 | Closes Q23 |
 
 ## Questions
 
@@ -133,6 +137,9 @@ person in one terminal can push a loop forward.
 | ~~Q18~~ | ~~How are changes to the skills gated once they are ordinary code?~~ → D17 | | |
 | ~~Q19~~ | ~~How does the derivation count a concern's pull request that merged in another repository? (raised by `one-repository` C3)~~ → D19 | | |
 | ~~Q20~~ | ~~Does the marketplace's full clone of the repository need fixing now?~~ → D20 | | |
+| ~~Q21~~ | ~~What may a sponsor rely on when a session reaches its budget? (raised by `session-runner` Q1)~~ → D21 | | |
+| ~~Q22~~ | ~~How many sessions may one sponsor run at once? (left to the runner by `app-agents`)~~ → D22 | | |
+| ~~Q23~~ | ~~What spend does the runner publish, and where do estimates come from?~~ → D23 | | |
 
 ## Evidence
 
