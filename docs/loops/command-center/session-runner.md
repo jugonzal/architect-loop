@@ -44,15 +44,16 @@ ships-to: production
   - A commit-msg hook adds trailers, but `git commit --no-verify` skips it.
 - Measured with Opus 5.5 (spike, one sample each, estimates): a full `/loop-status` cost about $0.44 over 20
   turns and 75 s; a one-file commit about $0.10.
-- Verified 2026-10-20 (`gh api repos/jugonzal/architect-loop/branches/main/protection`): `main` has no
-  protection, and a private repository on this plan cannot have any. D3 counts on a protected `main`, so the
-  repository goes public and the owner protects `main` (per command-center/D24).
+- Verified 2026-10-20 (`gh api repos/jugonzal/architect-loop/rulesets/<id>`): the repository is public, and an
+  active ruleset protects `main` with no bypass. It requires a pull request and the `skills` check, and blocks
+  force pushes and deletion, which is what D3 counts on (per command-center/D24). Making `trailers` required is
+  still this concern's effect, once its workflow exists. (Corrected 2026-10-20: this said `main` had no
+  protection and could have none while the repository was private.)
+- Verified 2026-10-20 (`git tag -l`): release v0.3.0 is tagged at fbd6d0b, so the job has a release to install.
+  (Corrected 2026-10-20: this listed a tagged release as missing.)
 - Missing:
-  - a tagged plugin release for the job to install (none exists yet, `git tag -l` 2026-10-20; cutting it is the
-    owner's, per D17);
   - staging's GCP projects (`environments` creates them, per command-center/D31; corrected 2026-10-20: this said
     `status-service`);
-  - the protection on `main` (per command-center/D24);
   - the GitHub App (in effects).
 
 ### Approach

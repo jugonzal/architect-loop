@@ -73,3 +73,23 @@ D2). A keyword outside that list needs the validator, and a test that fails with
 ## Evidence
 
 ## Shipped
+
+2026-10-20, to `main`, its `ships-to`.
+
+- **What shipped.** PR #11 (merge f9a2817) added `plugin/skills/loop-status/scripts/status.schema.json` at
+  `schema_version` 1. It covers loops (which may be `unknown`), concerns with their state, reason and inputs, queue
+  items with `waits_on`, `visible_to` and `gate`, and what agents can start now. It also added three fixtures
+  (`board`, `empty`, `unknown`) that cover every state of the derivation table plus `unknown`, and 30
+  standard-library tests in `tests/test_status_schema.py`, with the small validator of D1 and D2. Nothing reads
+  the schema yet.
+- **Departures from the design.** C1 was split (per D39). The build began from the contract before D33 and D34,
+  so it has four queue kinds and plain-text options. What it delivered became C3, and the three missing kinds and
+  the question options became `queue-items`. The validator implements 14 JSON Schema keywords, not the 6 the
+  Approach first listed (D2). Two readings from the build became shared decisions: loops may be `unknown` (D37),
+  and queue items name their gate (D38).
+- **Learned.** The contract changed under a running build: the design that added D33 and D34 merged while PR #11
+  was open. Recutting the concern to match what was built (D39) was cheaper than reworking a proven PR, and it
+  kept its evidence intact. A small validator can be trusted when it is checked against the real one. Before the
+  merge, `jsonschema` agreed with it on 28,701 single-edit mutations of the fixtures, and disabling any one of its
+  12 keyword checks failed the suite. A test that reads the states from the skill's own table keeps the schema
+  and the specification from drifting apart.

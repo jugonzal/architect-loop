@@ -32,9 +32,9 @@ ships-to: production
   yet, because no service has one.
 - Assumed: no GCP project exists for this repository. Check with `gcloud projects list` on the owner's account
   before the first bootstrap.
-- Verified 2026-10-20 (`gh repo view jugonzal/architect-loop`): the repository is private, so an unauthenticated
-  `/version` would show commits of a private repository until it goes public (command-center/D24). After that,
-  the commit is public anyway (command-center/D32).
+- Verified 2026-10-20 (`gh repo view jugonzal/architect-loop`): the repository is public, so an unauthenticated
+  `/version` shows only a commit anyone can already see (command-center/D24, D32). (Corrected 2026-10-20: this
+  said the repository was private.)
 
 ### Approach
 
