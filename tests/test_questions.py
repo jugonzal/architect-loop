@@ -166,8 +166,8 @@ class BrokenFormatTest(unittest.TestCase):
         (45, "Q10 has 5 options"),
         (53, "(recommended) goes at the end"),
         (59, "- **<option>**: <consequence>"),
-        (63, "Q13 has two options that read \"Yes\""),
-        (65, "a second list of options for Q4"),
+        (64, "Q13 has two options that read \"Yes\""),
+        (66, "a second list of options for Q4"),
     ]
 
     def setUp(self):

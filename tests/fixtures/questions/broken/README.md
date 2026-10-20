@@ -60,6 +60,7 @@ Q6 options:
 
 **Q13 options**
 - **Yes**: once. (recommended)
+- **No**: as written.
 - **Yes**: twice.
 
 **Q4 options**
