@@ -3,16 +3,17 @@
 # name matches the directory, description fits the 1024-character limit,
 # every relative link inside the skill resolves, and every shell script parses.
 # Retired skills (generation 1 names) must be stubs, and live skills must not
-# send anyone to them. Nothing in the plugin may refer to the app or the services, so a loop always runs
-# from a terminal alone. Then run the tests, if Python 3 is available (CHECK_SKIP_TESTS=1 skips them).
+# send anyone to them. Nothing in the plugin may refer to the app, the services or their hosts, so a loop always
+# runs from a terminal alone. Then run the tests, if Python 3 is available (CHECK_SKIP_TESTS=1 skips them).
 set -eu
 
 here=$(cd "$(dirname "$0")/.." && pwd)
 fail=0
 retired="loop-frame loop-decide loop-promote loop-record loop-reconcile"
-# Paths of the command center's runtime. A skill that names one depends on it. Add each service's host here
-# once it has one.
-runtime_refs='(^|[^A-Za-z0-9_.-])(app|services)/'
+# Paths and hosts of the command center's runtime. A skill that names one depends on it. The services run on
+# Cloud Run (command-center/D8, D32), so every service host in every environment is a name under run.app:
+# https://<service>-<project number>.us-east1.run.app, or the hash-style URL Cloud Run also assigns.
+runtime_refs='(^|[^A-Za-z0-9_.-])(app|services)/|[A-Za-z0-9-]+\.run\.app'
 
 is_retired() {
   for r in $retired; do [ "$r" = "$1" ] && return 0; done

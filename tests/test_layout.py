@@ -93,6 +93,24 @@ class IndependenceCheckTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stdout)
         self.assertIn("FAIL independence", result.stdout)
 
+    def test_a_service_host_fails(self):
+        # The services run on Cloud Run in us-east1 (D32), at https://<service>-<project number>.us-east1.run.app.
+        result = self.run_check("Read the served commit from https://status-123456789012.us-east1.run.app/version.")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("FAIL independence", result.stdout)
+        self.assertIn("status-123456789012.us-east1.run.app", result.stdout)
+
+    def test_a_hash_style_service_host_fails(self):
+        # Cloud Run also gives every service a hash-style URL under run.app.
+        result = self.run_check("Dispatch it with POST https://runner-x7k2q4abcd-ue.a.run.app/sessions.")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("FAIL independence", result.stdout)
+
+    def test_a_host_outside_the_services_passes(self):
+        result = self.run_check("Read each served commit with the command in LOOP.md, e.g. GET https://staging.example.com/version.")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("ok   independence", result.stdout)
+
     def test_the_repository_itself_passes(self):
         result = subprocess.run(["sh", CHECK], capture_output=True, text=True, env={**os.environ, "CHECK_SKIP_TESTS": "1"})
         self.assertIn("ok   independence", result.stdout)
