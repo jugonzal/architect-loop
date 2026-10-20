@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "project": "example/reports",
+  "as_of": "2026-10-20T15:05:00Z",
+  "main": {"branch": "main", "sha": "db5da19ad45cbf9c3a78298855471e4cdc6dc291", "ci": "unknown"},
+  "environments": [
+    {"name": "main", "served": "db5da19ad45cbf9c3a78298855471e4cdc6dc291", "error": null},
+    {"name": "staging", "served": null, "error": "GET https://staging.example.com/version timed out after 10 s"},
+    {"name": "production", "served": null, "error": "LOOP.md §3 has no served-commit command for production"}
+  ],
+  "loops": [
+    {
+      "id": "report-pipeline",
+      "title": "Reports are generated in the background and emailed when ready",
+      "path": "docs/loops/report-pipeline/README.md",
+      "state": "active",
+      "reason": "Commits on main carry its concerns' trailers, and not every concern is done",
+      "next": null,
+      "goals": [
+        {"id": "G1", "text": "A report requested at 09:00 arrives by 09:05. Prove: 20 timed requests on production.", "struck": false, "evidence": [], "current_holds": null}
+      ],
+      "concerns": [
+        {
+          "id": "job-contract",
+          "title": "Every report job carries a versioned payload",
+          "path": "docs/loops/report-pipeline/job-contract.md",
+          "contract": {"needs": [], "touches": ["src/jobs/contract.py", "tests/test_contract.py"], "effects": [], "ships_to": "main", "prs": [], "parked": null},
+          "claims": [
+            {"id": "C1", "text": "A job payload without a version is rejected before it is queued. Prove: unit tests, in CI on main.", "struck": false, "evidence": [], "current_holds": null}
+          ],
+          "state": "unknown",
+          "reason": "Its work is on main and main serves it, but C1 holds by CI, and the checks on main cannot be read",
+          "next": "Authenticate gh (gh auth login), then /loop-status again",
+          "inputs": {
+            "main": "db5da19ad45cbf9c3a78298855471e4cdc6dc291",
+            "served": {"environment": "main", "commit": "db5da19ad45cbf9c3a78298855471e4cdc6dc291", "error": null, "serves": true},
+            "prs": [],
+            "commits": ["7c02eb4ee28d3ff34e0dba0fd7a72b29f0631f08"],
+            "branch": {"name": "report-pipeline/job-contract", "exists": false},
+            "missing": ["the checks on main @db5da19: gh is not authenticated"]
+          }
+        },
+        {
+          "id": "queue",
+          "title": "Jobs wait in a durable queue and survive a restart",
+          "path": "docs/loops/report-pipeline/queue.md",
+          "contract": {"needs": ["job-contract"], "touches": ["src/queue/"], "effects": [], "ships_to": "staging", "prs": [], "parked": null},
+          "claims": [
+            {"id": "C1", "text": "A job queued before a restart runs after it. Prove: restart the queue with jobs pending, on staging.", "struck": false, "evidence": [
+              {"date": "2026-10-15", "verdict": "HOLDS", "rung": 1, "environment": "staging", "commit": "780d0c5", "text": "restarted the queue with 50 jobs pending; all 50 ran"}
+            ], "current_holds": null}
+          ],
+          "state": "unknown",
+          "reason": "Its work is on main (307f81e), and whether staging serves it cannot be read",
+          "next": "Check that staging is up, then /loop-status again",
+          "inputs": {
+            "main": "db5da19ad45cbf9c3a78298855471e4cdc6dc291",
+            "served": {"environment": "staging", "commit": null, "error": "GET https://staging.example.com/version timed out after 10 s", "serves": null},
+            "prs": [],
+            "commits": ["307f81efe75a29f2e5460322d2756daa3aecf578"],
+            "branch": {"name": "report-pipeline/queue", "exists": false},
+            "missing": ["staging's served commit: GET https://staging.example.com/version timed out after 10 s"]
+          }
+        },
+        {
+          "id": "dashboard",
+          "title": "Operators see queue depth and failures on one page",
+          "path": "docs/loops/report-pipeline/dashboard.md",
+          "contract": {"needs": ["queue"], "touches": ["src/dashboard/"], "effects": [], "ships_to": "production", "prs": [], "parked": null},
+          "claims": [
+            {"id": "C1", "text": "The queue depth shown is never more than 30 s old. Prove: a timed check, on production.", "struck": false, "evidence": [], "current_holds": null}
+          ],
+          "state": "open",
+          "reason": "Q1 (which store holds the metrics?) blocks C1 and is unanswered; this needs only the loop's files",
+          "next": "/loop-design report-pipeline/dashboard",
+          "inputs": {
+            "main": "db5da19ad45cbf9c3a78298855471e4cdc6dc291",
+            "served": {"environment": "production", "commit": null, "error": "LOOP.md §3 has no served-commit command for production", "serves": null},
+            "prs": [],
+            "commits": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "billing",
+      "title": "Customers pay for reports by usage",
+      "path": "docs/loops/billing/README.md",
+      "state": "parked",
+      "reason": "Its README has parked: D2, until the pricing review is published",
+      "next": null,
+      "goals": [],
+      "concerns": [
+        {
+          "id": "invoices",
+          "title": "Each customer gets a monthly invoice for the reports they ran",
+          "path": "docs/loops/billing/invoices.md",
+          "contract": {"needs": [], "touches": ["src/billing/"], "effects": ["prices and the payment provider's settings (money)"], "ships_to": "production", "prs": [], "parked": "D1"},
+          "claims": [
+            {"id": "C1", "text": "An invoice lists every report the customer ran that month. Prove: one month of real usage, on production.", "struck": false, "evidence": [], "current_holds": null}
+          ],
+          "state": "parked",
+          "reason": "Front matter has parked: D1",
+          "next": "Nothing until D1's condition holds: the pricing review is published",
+          "inputs": {
+            "main": "db5da19ad45cbf9c3a78298855471e4cdc6dc291",
+            "served": {"environment": "production", "commit": null, "error": "LOOP.md §3 has no served-commit command for production", "serves": null},
+            "prs": [],
+            "commits": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "search",
+      "title": "Anyone can find a past report in seconds",
+      "path": "docs/loops/search/README.md",
+      "state": "unknown",
+      "reason": "None of its concerns has a decision, evidence, a branch or a commit, but whether one has an open pull request cannot be read",
+      "next": "Authenticate gh (gh auth login), then /loop-status again",
+      "goals": [],
+      "concerns": [
+        {
+          "id": "indexer",
+          "title": "Reports are searchable by title and requester",
+          "path": "docs/loops/search/indexer.md",
+          "contract": {"needs": [], "touches": ["src/search/index.py"], "effects": [], "ships_to": "production", "prs": [], "parked": null},
+          "claims": [
+            {"id": "C1", "text": "A report is found by its title within 5 s of being generated. Prove: 20 reports, on production.", "struck": false, "evidence": [], "current_holds": null}
+          ],
+          "state": "unknown",
+          "reason": "No search/indexer branch and no commit with its trailer, but whether a pull request links it cannot be read, so ready and building cannot be told apart",
+          "next": "Authenticate gh (gh auth login), then /loop-status again",
+          "inputs": {
+            "main": "db5da19ad45cbf9c3a78298855471e4cdc6dc291",
+            "served": {"environment": "production", "commit": null, "error": "LOOP.md §3 has no served-commit command for production", "serves": null},
+            "prs": [],
+            "commits": [],
+            "branch": {"name": "search/indexer", "exists": false},
+            "missing": ["pull requests: gh is not authenticated"]
+          }
+        }
+      ]
+    }
+  ],
+  "queue": [
+    {
+      "id": "report-pipeline/dashboard/Q1",
+      "kind": "question",
+      "title": "Which store holds the dashboard's metrics?",
+      "why": "Q1 blocks C1 and is unanswered",
+      "loop": "report-pipeline",
+      "concerns": ["report-pipeline/dashboard"],
+      "unblocks": ["report-pipeline/dashboard"],
+      "waits_on": null,
+      "visible_to": [],
+      "gate": null,
+      "detail": {
+        "ref": "report-pipeline/dashboard/Q1",
+        "question": "Which store holds the dashboard's metrics?",
+        "options": [],
+        "recommendation": null,
+        "blocks": ["C1"]
+      }
+    }
+  ],
+  "agents_can_start": [],
+  "drift": [],
+  "missing": [
+    {"fact": "pull requests", "error": "gh is not authenticated; linked work comes from git alone, and open pull requests, drafts and checks are unknown"},
+    {"fact": "checks on main", "error": "gh is not authenticated"},
+    {"fact": "staging's served commit", "error": "GET https://staging.example.com/version timed out after 10 s"},
+    {"fact": "production's served commit", "error": "LOOP.md §3 has no served-commit command for production"}
+  ]
+}
