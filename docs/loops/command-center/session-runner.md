@@ -1,18 +1,19 @@
 ---
 needs: [one-repository]
-touches: [services/runner/, .github/workflows/trailers.yml]
-effects: [Agent SDK sessions that cost money, each with a budget shown to its sponsor before it starts (spending), Cloud Run jobs in the staging and production GCP projects (spending; cloud IAM), the Anthropic API key and a GitHub App that pushes branches and opens PRs on jugonzal/architect-loop (secrets; identity and access), the trailer check made a required status check on main (a repository setting; the owner sets it, per D4)]
+touches: [services/runner/, .github/workflows/trailers.yml, .github/workflows/runner.yml]
+effects: [Agent SDK sessions that cost money, each with a budget shown to its sponsor before it starts (spending), Cloud Run jobs in the staging and production GCP projects (spending; cloud IAM), the runner's own store for sessions and spend in each project (spending; cloud IAM; per command-center/D26), the Anthropic API key and the runner's own GitHub App that pushes branches and opens PRs on jugonzal/architect-loop (secrets; identity and access; per command-center/D27), the repository made public and main protected so that nothing reaches it except through a PR (publishing and a repository setting; the owner does both, per command-center/D24), the trailer check made a required status check on main (a repository setting; the owner sets it, per D4)]
 ships-to: production
 ---
 # A person can start a loop skill on a concern as a session that names them as its sponsor and stops at a budget
 
 ## Done when
 
-- **C1** Dispatching a skill (`/loop-design`, `/loop-build`, `/loop-prove`, `/loop-status`) on a named concern
-  starts one session in its own worktree. Every commit and PR it produces carries `Sponsored-by: <person>` beside
-  `Concern:`, and a PR with a runner commit that lacks it fails the required trailer check (per D4). Prove: a
-  dispatched `/loop-build` on a test concern, with the PR and commits shown, plus a runner commit made with
-  `--no-verify` on a test branch, on staging.
+- **C1** Dispatching a skill (`/loop-design`, `/loop-build`, `/loop-prove`, `/loop-status`) on a named concern,
+  through the API in `services/runner/openapi.yaml` (per command-center/D29), starts one session in its own
+  worktree. Every commit and PR it produces carries `Sponsored-by: <person>` beside `Concern:`, and a PR with a
+  runner commit that lacks it fails the required trailer check (per D4). Prove: the runner's API tests against
+  `openapi.yaml`, in CI on main, then a dispatched `/loop-build` on a test concern, with the PR and commits shown,
+  plus a runner commit made with `--no-verify` on a test branch, on staging.
 - ~~**C2** A session that reaches its budget stops before going over, and reports what it spent in tokens, money
   and wall-clock time. Prove: a dispatch with a deliberately small budget, on staging.~~ Contradicted by the Q1
   spike (2026-10-20): the SDK stops only after the response that crosses the budget. Superseded by C4 (per D21).
@@ -43,16 +44,23 @@ ships-to: production
   - A commit-msg hook adds trailers, but `git commit --no-verify` skips it.
 - Measured with Opus 5.5 (spike, one sample each, estimates): a full `/loop-status` cost about $0.44 over 20
   turns and 75 s; a one-file commit about $0.10.
+- Verified 2026-10-20 (`gh api repos/jugonzal/architect-loop/branches/main/protection`): `main` has no
+  protection, and a private repository on this plan cannot have any. D3 counts on a protected `main`, so the
+  repository goes public and the owner protects `main` (per command-center/D24).
 - Missing:
-  - a tagged plugin release for the job to install (none exists yet; cutting it is the owner's, per D17);
-  - staging's GCP projects (`status-service` creates them);
+  - a tagged plugin release for the job to install (none exists yet, `git tag -l` 2026-10-20; cutting it is the
+    owner's, per D17);
+  - staging's GCP projects (`environments` creates them, per command-center/D31; corrected 2026-10-20: this said
+    `status-service`);
+  - the protection on `main` (per command-center/D24);
   - the GitHub App (in effects).
 
 ### Approach
 
-Per D8, D1 and D2:
+Per command-center/D8, and D1 and D2 here:
 - **Dispatch:** a Cloud Run service takes dispatches and starts one Cloud Run job per session. The sponsor comes
-  from the caller's authenticated GitHub identity, never from the request body. The service refuses a dispatch
+  from the caller's GitHub identity, read with `GET /user` on the caller's token and checked as a collaborator
+  with the runner's own app, never from the request body (per command-center/D27, D28). The service refuses a dispatch
   on a concern that has an open PR or a running session, and one past the sponsor's cap of running sessions
   (per D22).
 - **The job:** it clones `jugonzal/architect-loop` into a fresh worktree on `<loop>/<concern>` and installs the
@@ -68,6 +76,14 @@ Per D8, D1 and D2:
 - **Spend:** the job publishes spend while it runs and at the end (per D23). Before a start, the service answers
   an estimate for a skill and model: the median of that pairing's last 10 sessions. A pairing with no measured
   sessions has no estimate. The Opus 5.5 numbers above seed the first pairings.
+- **API** (per command-center/D29): `services/runner/openapi.yaml` describes dispatch (skill, concern,
+  arguments passed to the skill, budget, plugin release), the sponsor's running sessions with their spend, stop,
+  and the estimate before a start. The app concerns generate their clients from it.
+- **Store** (per command-center/D26): the runner keeps sessions and their spend in a store of its own in each
+  environment, and nothing else does. A dispatch claims its concern there atomically, so two dispatches at once
+  cannot both start. Wiping it loses the estimates' history and nothing about any loop (G4).
+- **Build and deploy:** Python 3.12, tests in `services/runner/tests/`, run by `.github/workflows/runner.yml`
+  (per command-center/D30), and the deploy convention of command-center/D32.
 - **Claims and limits:** the open PR, or a running job, is the claim on a concern (C3). The runner's config
   holds the per-sponsor cap (3) and the skill → model map, and changing either is a config change, not a
   design change.

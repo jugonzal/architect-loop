@@ -34,9 +34,9 @@ person in one terminal can push a loop forward.
 - **G3** The app shows the same state as `/loop-status` for every concern in this repository, derived from the
   same commits, and shows `unknown` wherever `/loop-status` does (per D5). Prove: a comparison run over every
   concern in `docs/loops/` on production, with zero differences.
-- **G4** The repository stays the brain. If the app's own store (threads, membership, sessions) is wiped, no
-  state, decision or evidence shown for any loop changes. Prove: wipe the store on staging and re-run the G3
-  comparison.
+- **G4** The repository stays the brain. If the command center's stores (the threads, the runner's sessions,
+  the notifier's devices and settings) are wiped, no state, decision or evidence shown for any loop changes
+  (per D26). Prove: wipe every store on staging and re-run the G3 comparison.
 
 ## Relations
 
@@ -69,10 +69,26 @@ person in one terminal can push a loop forward.
   state strip uses provisional, designing, ready, building, review, merged, proving, shipped, done and stale,
   which are not the derivation's states. Per D5 the app shows the derivation's states, so the strip has to be
   redrawn.
-- **Verified** (`gcloud` and `amazonaws` references across `../vgami-cloud`, `../gameface` and
-  `../nginx-config`, 2026-10-20): the owner already runs services on GCP and AWS. Per D8 this loop uses GCP.
+- **Verified** (`gcloud` and `amazonaws` references across the owner's other repositories, 2026-10-20): the
+  owner already runs services on GCP and AWS. Per D8 this loop uses GCP. Of the 7 GCP region names in those
+  repositories, 6 are `us-east1` (per D32). (Corrected 2026-10-20: this bullet named those repositories, which
+  this repository keeps out of new text, per D25.)
 - **Verified** (`gh repo view jugonzal/architect-loop`, 2026-10-20): architect-loop is private, MIT, with 0 forks.
   Its CI is `.github/workflows/check.yml`, which runs `scripts/check.sh` and its unittest suite.
+- **Verified** (`gh api repos/jugonzal/architect-loop/branches/main/protection` and `…/rulesets`, 2026-10-20):
+  `main` has no protection, and cannot have any on this plan while the repository is private. Both calls answer
+  403, "Upgrade to GitHub Pro or make this repository public to enable this feature". `session-runner` D3 and D4
+  rested on a protected `main`, so the repository goes public (per D24).
+- **Verified** (`git log --all -p`, `gh pr list` bodies, and every PR's issue and review comments, 2026-10-20):
+  before publishing, the only mentions of the owner's private projects are in one old diff (44893df) and in
+  PR #1's body. Both stay as they are (per D25).
+- **Verified** (GitHub's docs, https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/using-webhooks-with-github-apps,
+  read 2026-10-20): a GitHub App registration has one webhook URL, so services that each need webhooks each get
+  their own app (per D27).
+- **Verified** (`git tag -l`, `plugin/.claude-plugin/plugin.json`, and `gh repo view jugonzal/loops`,
+  2026-10-20): no release is tagged, the plugin is still 0.2.0, and `jugonzal/loops` is not archived. These are
+  `one-repository`'s remaining effects, the owner's to perform. `session-runner`'s job installs a tagged release,
+  so its staging proof waits for the first one.
 - **Verified** (`one-repository`'s evidence, main @4e7bf9a, 2026-10-20): the marketplace serves `./plugin`, and a
   real install from `main` ships only `plugin/` (C1). CI fails on any reference to `app/` or `services/` under
   `plugin/` (C2). Adding the marketplace clones the whole repository into the user's plugin config, but nothing
@@ -83,7 +99,8 @@ person in one terminal can push a loop forward.
   time, and stops at a budget, though only after the response that crosses it. (Corrected 2026-10-20: this was
   the loop's riskiest assumption.)
 - **Missing:** `LOOP.md` §3 rows for staging and production, with a `/version` URL for each service (per D8, D9).
-  `status-service` adds them, and the owner merges that change.
+  `environments` adds them, and the owner merges that change (per D31). (Corrected 2026-10-20: this said
+  `status-service` adds them.)
 
 ## Shared decisions
 
@@ -112,6 +129,19 @@ person in one terminal can push a loop forward.
 | D21 | A session's budget is a target it may pass by one model response. The SDK stops a session at the first response that crosses its budget, and the runner reports its estimated spend, overshoot included. | Juan, 2026-10-20 | Closes Q21 |
 | D22 | A sponsor may run at most 3 sessions at once. The cap is set in the runner's config, and a dispatch past it is refused, naming the running sessions. | Juan, 2026-10-20 | Closes Q22 |
 | D23 | The runner publishes each session's spend while it runs (approximate, from per-step usage, at least every 10 seconds) and at the end (the SDK's estimate). Before a start, it estimates a skill on its model as the median of that pairing's last 10 sessions, and a pairing with none has no estimate. Every figure is labelled as an estimate. | Juan, 2026-10-20 | Closes Q23 |
+| D24 | The repository becomes public so that `main` can be protected: changes reach it only through pull requests, with `check` required now and `trailers` once `session-runner` adds it, for admins too. The owner makes it public and sets the protection. This was chosen over GitHub Pro (about $4 a month, a third-party 2026 figure) and over a push proxy in the runner. | Juan, 2026-10-20 | Closes Q24 |
+| D25 | It is published as it is. PR #1's body and one old diff (44893df) keep the mentions of the owner's private projects they have, and history is not rewritten, since every evidence line cites a commit on `main`. New text keeps the owner's private projects out. | Juan, 2026-10-20 | Closes Q25 |
+| D26 | Each service keeps its own operational store: the runner its sessions and spend, `notifications` its devices and settings. The thread store keeps only what people write. No store holds a loop's state, and G4's wipe covers every store. | Juan, 2026-10-20 | Closes Q26; refines D1, whose thread store stays the only store of what people write |
+| D27 | Each service has its own GitHub App, with only the permissions it needs. The runner's app pushes branches and opens pull requests. The status service's and threads' apps only read, and each receives its own webhooks. Each app's key and webhook secret live in that environment's Secret Manager. | Juan, 2026-10-20 | Closes Q27 |
+| D28 | The app's sign-in asks GitHub for no repository access, so its token proves who the person is and nothing more. Each service identifies a caller with `GET /user` on the caller's token, and checks collaborator access with its own app (per D27). Every repository read goes through a service. Calls between services use Cloud Run's service identity. | Juan, 2026-10-20 | Closes Q28 |
+| D29 | Each service publishes its API as an OpenAPI file in its own folder (`services/<name>/openapi.yaml`), checked by one of its claims. Each app concern generates the clients it needs inside its own `features/` folder. `app-shell` provides only the signed-in fetch and the status client. | Juan, 2026-10-20 | Closes Q29 |
+| D30 | The services are Python 3.12, each with its own dependencies and its tests in `services/<name>/tests/`. The app and each service run their tests in their own workflow, `.github/workflows/<name>.yml`, which is in that concern's `touches`. The root `check` stays standard-library only. | Juan, 2026-10-20 | Closes Q30 |
+| D31 | A new concern, `environments`, owns the GCP projects, the deploy command and the `LOOP.md` §3 and §4 rows. The services do not need it: they build against D32 now and stay merged until staging exists. `status-service` no longer creates the projects, and no service edits `LOOP.md`. | Juan, 2026-10-20 | Closes Q31 |
+| D32 | Every service follows one convention. It runs in `us-east1`. It builds from `services/<name>/Dockerfile` with the repository root as context. It listens on `$PORT` and serves an unauthenticated `GET /version` answering `{"commit": "<sha>"}`. It reads config from environment variables and secrets from Secret Manager. The owner deploys it from a commit on `main` with one command. | Juan, 2026-10-20 | Closes Q32 |
+| D33 | Every open question records, in the file that raises it, 2 to 4 options with each one's main consequence, and a recommendation. A new concern, `question-options`, defines the format and a reader for it. The status schema carries the options, and a question written before the format shows only the question, what it blocks and its default. | Juan, 2026-10-20 | Closes Q33 |
+| D34 | The status schema carries all seven kinds of queue item that `/loop-status` step 6 produces: question, review, ship, record, a proof that needs something only the person has, a contradiction that needs a call, and a refused loop-document PR. The app has cards for the first four and shows the other three read-only, with the command to run. | Juan, 2026-10-20 | Closes Q34 |
+| D35 | Push and the digest are a new concern, `notifications`, with its own service and store (per D26). It takes over push registration from `app-shell` (C2) and sending from `app-inbox` (C3). | Juan, 2026-10-20 | Closes Q35 |
+| D36 | A person marks a message "record this?". No model reads messages to classify them. | Juan, 2026-10-20 | Closes Q36 |
 
 ## Questions
 
@@ -140,6 +170,19 @@ person in one terminal can push a loop forward.
 | ~~Q21~~ | ~~What may a sponsor rely on when a session reaches its budget? (raised by `session-runner` Q1)~~ → D21 | | |
 | ~~Q22~~ | ~~How many sessions may one sponsor run at once? (left to the runner by `app-agents`)~~ → D22 | | |
 | ~~Q23~~ | ~~What spend does the runner publish, and where do estimates come from?~~ → D23 | | |
+| ~~Q24~~ | ~~How is `main` protected, when this plan cannot protect a private repository's branches? (raised by this design's read of GitHub, 2026-10-20)~~ → D24 | | |
+| ~~Q25~~ | ~~What happens, before publishing, to the existing mentions of the owner's private projects?~~ → D25 | | |
+| ~~Q26~~ | ~~Where do the runner's sessions and spend history live, when D1 makes threads the only store?~~ → D26 | | |
+| ~~Q27~~ | ~~How many GitHub Apps, when each has one webhook URL?~~ → D27 | | |
+| ~~Q28~~ | ~~How do services know who is calling, and what may the app's sign-in token do?~~ → D28 | | |
+| ~~Q29~~ | ~~Where are the runner's and the threads' APIs defined?~~ → D29 | | |
+| ~~Q30~~ | ~~What are the services built with, and where do their tests and the app's run?~~ → D30 | | |
+| ~~Q31~~ | ~~Who owns the GCP projects, the deploy command and `LOOP.md` §3?~~ → D31 | | |
+| ~~Q32~~ | ~~Which convention do the services build and deploy by?~~ → D32 | | |
+| ~~Q33~~ | ~~Where do a question card's options and recommendation come from?~~ → D33 | | |
+| ~~Q34~~ | ~~Which kinds of queue item does the status schema carry?~~ → D34 | | |
+| ~~Q35~~ | ~~Who keeps devices and sends push and the digest?~~ → D35 | | |
+| ~~Q36~~ | ~~Who decides that a thread message looks like a decision?~~ → D36 | | |
 
 ## Evidence
 

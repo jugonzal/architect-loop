@@ -1,6 +1,6 @@
 ---
-needs: [one-repository, status-derivation, status-api]
-touches: [plugin/skills/loop-status/scripts/addressing.py, plugin/skills/loop-status/SKILL.md, plugin/skills/loop-plan/templates/loop.md, plugin/skills/loop-init/templates/LOOP.md, tests/test_addressing.py]
+needs: [one-repository, status-derivation, status-api, environments, question-options]
+touches: [plugin/skills/loop-status/scripts/addressing.py, plugin/skills/loop-status/SKILL.md, plugin/skills/loop-plan/templates/loop.md, plugin/skills/loop-init/templates/LOOP.md, tests/test_addressing.py, LOOP.md]
 effects: [gate-holder names added to LOOP.md §2 (a change to the contract; the owner merges it), a plugin release so that terminals pick the change up (the owner releases, per D17)]
 ships-to: main
 ---
@@ -20,6 +20,9 @@ ships-to: main
 
 - No loop README has `owner:` or `members:`, and `LOOP.md` §2 names no gate holders (template read 2026-10-20).
 - Terminals see the change after the next plugin release (per D17).
+- Corrected 2026-10-20: `touches` lacked `LOOP.md`, though `effects` adds gate holders to its §2.
+  `environments` also edits `LOOP.md`, and `question-options` edits `plugin/skills/loop-plan/templates/loop.md`,
+  so both are now in `needs`, which keeps any two of them from being built at once.
 
 ### Approach
 

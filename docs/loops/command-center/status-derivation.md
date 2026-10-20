@@ -1,5 +1,5 @@
 ---
-needs: [one-repository, status-api]
+needs: [one-repository, status-api, question-options]
 touches: [plugin/skills/loop-status/scripts/loop_status.py, plugin/skills/loop-status/SKILL.md, tests/test_loop_status.py, tests/fixtures/loop_status/]
 effects: []
 ships-to: main
@@ -39,6 +39,10 @@ both, and prints the board in the skill's existing text format or, with `--json`
 steps 1 to 6 say to run the script and keep the table as its specification, and the skill's note stays: if two
 runs disagree, fix the table, then the script. Addressing (who an item waits on) is not part of this concern; it
 comes with `addressed-to-people`.
+
+The queue carries all seven kinds of item that step 6 lists (per D34). A question item takes its options and
+recommendation from the reader that `question-options` adds beside this script, so the format has one parser
+(per D33).
 
 Before the script implements the table, the table gains D19's rule: a pull request merged in another repository
 counts as merged when its merge commit is on that repository's main. C1's fixtures get a row for it (per D19).
