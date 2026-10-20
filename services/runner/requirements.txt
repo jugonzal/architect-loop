@@ -1,0 +1,4 @@
+# The runner's runtime dependencies, pinned (command-center/D30).
+claude-agent-sdk==0.2.168
+PyJWT[crypto]==2.15.1
+gunicorn==26.2.0

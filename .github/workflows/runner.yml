@@ -1,0 +1,19 @@
+# The runner's own tests, with its own dependencies (command-center/D30). It runs on every push and pull request,
+# so CI on main's head always says whether the runner's API still matches services/runner/openapi.yaml (C1).
+name: runner
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  runner:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m unittest discover -s tests -t . -v
