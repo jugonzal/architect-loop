@@ -38,6 +38,12 @@ ships-to: main
 - Verified 2026-10-20 (Evidence below): C1 and C2 hold on main @4e7bf9a, and C3 is contradicted. The 0.2.0
   `loop-status` table has no rule for a pull request merged in another repository (D19 adds one), and the same
   run returned different boards on the same facts. The moved documents matched `jugonzal/loops` byte for byte.
+- Correction to C3's evidence line, 2026-10-20 (`needs` in each concern's front matter on main @355dcb7): the line
+  says the table leaves 3 cases open, but only the merge in another repository is missing from it. The other two
+  rules are written clearly ("a concern in `needs` is not done", "a question that blocks a claim is
+  unanswered"). app-shell, status-derivation and status-service also need `status-api`, so they are blocked
+  under any reading. The report that showed them ready misread their `needs`; it was not reading the table
+  differently. The verdict stands.
 - Verified 2026-10-20 (a real `claude plugin marketplace add`, CLI 2.1.293): adding the marketplace clones the
   whole repository into the user's plugin config (808 KB). Nothing outside `plugin/` loads from it. With
   `--sparse .claude-plugin plugin`, the clone is partial and never downloads other files (484 KB). Accepted for
