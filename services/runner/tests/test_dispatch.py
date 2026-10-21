@@ -1,5 +1,5 @@
-"""Who may dispatch, what is refused, and that each refusal names what exists: runner-dispatch C2 (session-runner
-C6, D6, D8) and command-center/D22, D28.
+"""Who may dispatch, on what, what is refused, and that each refusal names what exists: runner-dispatch C2
+(session-runner C6, D6, D8), C3 (a concern, a loop or an environment) and command-center/D22, D28.
 
 Every call goes through the WSGI app and is checked against openapi.yaml as well.
 """
@@ -8,8 +8,9 @@ import threading
 import unittest
 
 from runner.api import Api
+from runner.config import SCOPES, SKILLS
 from tests.contract import ContractClient
-from tests.fakes import CONCERN, OTHER, PROJECT, dispatch_body, make_runner
+from tests.fakes import CONCERN, ENVIRONMENT, LOOP, OTHER, PROJECT, dispatch_body, make_runner, scoped_body
 
 THIRD = "command-center/app-agents"
 FOURTH = "command-center/notifications"
@@ -27,6 +28,14 @@ class Base(unittest.TestCase):
 
     def started(self, token="tok-juan", **body):
         response = self.dispatch(token, **body)
+        self.assertEqual(response.status, 201, response)
+        return response.json
+
+    def scoped(self, scope, skill, token="tok-juan", **extra):
+        return self.client.call("POST", "/sessions", scoped_body(scope, skill, **extra), token=token)
+
+    def started_on(self, scope, skill, token="tok-juan", **extra):
+        response = self.scoped(scope, skill, token, **extra)
         self.assertEqual(response.status, 201, response)
         return response.json
 
@@ -91,7 +100,8 @@ class ValidationTest(Base):
 
 class SkillModelOverrideTest(Base):
     config = {"skill_models": {"loop-status": "claude-opus-5-5", "loop-design": "claude-opus-5-5",
-                               "loop-build": "claude-sonnet-5-5", "loop-prove": "claude-opus-5-5"}}
+                               "loop-build": "claude-sonnet-5-5", "loop-prove": "claude-opus-5-5",
+                               "loop-ship": "claude-opus-5-5"}}
 
     def test_changing_the_map_is_a_config_change(self):
         self.assertEqual(self.started(skill="loop-build")["model"], "claude-sonnet-5-5")
@@ -265,6 +275,86 @@ class BudgetCeilingTest(Base):
         for skill in ("loop-design", "loop-build", "loop-prove", "loop-status"):
             with self.subTest(skill=skill):
                 self.assertEqual(self.dispatch(skill=skill, budget_usd=50).json["refused"], "budget-ceiling")
+
+
+class ScopeTest(Base):
+    """runner-dispatch C3: a dispatch names exactly one of a concern, a loop or an environment, and one on a loop or
+    an environment holds no concern and works from main."""
+
+    def test_loop_ship_runs_on_an_environment_from_main(self):
+        session = self.started_on("environment", "loop-ship", arguments="--verify")
+        self.assertEqual((session["concern"], session["loop"], session["environment"], session["branch"]),
+                         (None, None, ENVIRONMENT, "main"))
+        self.assertEqual((session["model"], session["arguments"]), ("claude-opus-5-5", "--verify"))  # D5
+        self.assertEqual(self.launcher.launched, [session["id"]])
+
+    def test_loop_status_and_loop_design_run_on_a_loop_from_main(self):
+        status = self.started_on("loop", "loop-status")
+        design = self.started_on("loop", "loop-design")
+        self.assertEqual((status["concern"], status["loop"], status["environment"], status["branch"]),
+                         (None, LOOP, None, "main"))
+        self.assertEqual((status["model"], design["model"]), ("claude-sonnet-5-5", "claude-opus-5-5"))
+
+    def test_each_skill_runs_on_what_c3_lists_and_nothing_else(self):
+        for scope in SCOPES:
+            for skill in SKILLS:
+                with self.subTest(scope=scope, skill=skill):
+                    self.setUp()
+                    response = self.scoped(scope, skill)
+                    if skill in SCOPES[scope]:
+                        self.assertEqual(response.status, 201, response)
+                    else:
+                        self.assertEqual((response.status, response.json["error"]), (400, "invalid-request"))
+                        self.assertIn(skill, response.json["message"])
+                        self.assertEqual(self.store.list(state="all"), [])
+
+    def test_a_dispatch_names_exactly_one_target(self):
+        for body in (dispatch_body(concern=None), dispatch_body(loop=LOOP),
+                     dispatch_body(concern=None, skill="loop-status", loop=LOOP, environment=ENVIRONMENT)):
+            with self.subTest(body=body):
+                response = self.client.call("POST", "/sessions", body, token="tok-juan")
+                self.assertEqual((response.status, response.json["error"]), (400, "invalid-request"))
+                self.assertIn("exactly one", response.json["message"])
+
+    def test_an_unknown_loop_is_refused_naming_it(self):
+        response = self.client.call("POST", "/sessions",
+                                    dispatch_body(concern=None, skill="loop-status", loop="nowhere"), token="tok-juan")
+        self.assertEqual((response.status, response.json["error"]), (422, "unknown-loop"))
+        self.assertIn("docs/loops/nowhere/README.md", response.json["message"])
+
+    def test_an_unknown_environment_is_refused_naming_the_ones_loop_md_lists(self):
+        response = self.client.call("POST", "/sessions", dispatch_body(concern=None, skill="loop-ship",
+                                                                       environment="staging/runnr"), token="tok-juan")
+        self.assertEqual((response.status, response.json["error"]), (422, "unknown-environment"))
+        self.assertIn("staging/runnr", response.json["message"])
+        self.assertIn("staging/runner", response.json["message"])
+        self.assertEqual(self.launcher.launched, [])
+
+    def test_a_loop_or_environment_dispatch_holds_no_concern(self):
+        self.github.open_pr(17, CONCERN, body=f"Concern: {CONCERN}\n")
+        self.started_on("loop", "loop-design", "tok-juan")
+        self.started_on("loop", "loop-design", "tok-ana")
+        self.started_on("environment", "loop-ship", "tok-juan")
+        self.started_on("environment", "loop-ship", "tok-ana")
+        self.assertNotIn(("open_pull_requests",), self.github.calls)  # nothing they could defer to
+        self.github.pulls = []
+        self.assertEqual(self.started("tok-juan", skill="loop-build")["concern"], CONCERN)
+
+    def test_the_ceiling_holds_for_a_loop_or_an_environment_too(self):
+        for scope, skill in (("loop", "loop-status"), ("loop", "loop-design"), ("environment", "loop-ship")):
+            with self.subTest(scope=scope, skill=skill):
+                self.assertEqual(self.scoped(scope, skill, budget_usd=11).json["refused"], "budget-ceiling")
+
+
+class ScopedCapTest(Base):
+    config = {"cap_per_sponsor": 2}
+
+    def test_a_loop_or_environment_session_counts_toward_the_sponsor_cap(self):
+        running = [self.started_on("loop", "loop-status")["id"], self.started_on("environment", "loop-ship")["id"]]
+        response = self.dispatch(skill="loop-prove")
+        self.assertEqual((response.status, response.json["refused"], response.json["cap"]), (409, "sponsor-cap", 2))
+        self.assertEqual(sorted(s["id"] for s in response.json["sessions"]), sorted(running))
+        self.assertEqual(self.scoped("loop", "loop-design").json["refused"], "sponsor-cap")
 
 
 class LoweredCeilingTest(Base):

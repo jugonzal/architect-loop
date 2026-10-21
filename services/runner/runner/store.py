@@ -28,8 +28,9 @@ class Store(Protocol):
         First every active session silent for longer than `lost_after_s` ends as `lost` (as `expire_lost`). Then:
         if `session.holds` (a /loop-build or /loop-design, session-runner D6) and an active session that holds the
         same project and concern exists, refuse `running-session`, naming those holding sessions only. Then, if the
-        sponsor already has `cap` active sessions, whatever their skill, refuse `sponsor-cap` naming them all
-        (command-center/D22). A session that does not hold its concern is never refused for the concern."""
+        sponsor already has `cap` active sessions, whatever their skill or what they run on, refuse `sponsor-cap`
+        naming them all (command-center/D22). A session that does not hold a concern, a /loop-prove or /loop-status
+        on one or any session on a loop or an environment, is never refused for a concern (runner-dispatch C2, C3)."""
         ...
 
     def get(self, session_id: str) -> Session | None: ...
@@ -38,17 +39,24 @@ class Store(Protocol):
     def mark_running(self, session_id: str, now: str) -> Session | None: ...
     def publish(self, session_id: str, spend: dict | None, now: str) -> bool: ...
     def request_stop(self, session_id: str) -> Session | None: ...
-    def finish(self, session_id: str, outcome: str, spend: dict | None, pull_requests: list, now: str) -> Session: ...
+    def finish(self, session_id: str, outcome: str, spend: dict | None, pull_requests: list, now: str,
+               final_message: str | None = None) -> Session:
+        """End the session with its outcome, its final spend (None keeps the last published), the pull requests it
+        opened and its final message (runner-dispatch C3), and measure its pairing when the spend is the SDK's."""
+        ...
+
     def measurements(self, skill: str, model: str, limit: int = 10) -> list: ...
     def expire_lost(self, now: str, lost_after_s: float) -> list: ...
 
 
-SCHEMA = """
+SESSIONS = """
 CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     project TEXT NOT NULL,
     skill TEXT NOT NULL,
-    concern TEXT NOT NULL,
+    concern TEXT,
+    loop TEXT,
+    environment TEXT,
     arguments TEXT NOT NULL,
     model TEXT NOT NULL,
     sponsor TEXT NOT NULL,
@@ -64,13 +72,16 @@ CREATE TABLE IF NOT EXISTS sessions (
     spend TEXT,
     pull_requests TEXT NOT NULL DEFAULT '[]',
     stop_requested INTEGER NOT NULL DEFAULT 0,
-    execution TEXT
+    execution TEXT,
+    final_message TEXT
 );
+"""
+
+SCHEMA = SESSIONS + """
 -- A second guarantee under the claim's transaction: one active session holding each concern (session-runner D6).
--- The previous runner's index allowed one active session of any skill; a file it made gets this one instead.
-DROP INDEX IF EXISTS one_active_session_per_concern;
 CREATE UNIQUE INDEX IF NOT EXISTS one_holding_session_per_concern
-    ON sessions (project, concern) WHERE skill IN {holding} AND state IN ('starting', 'running', 'stopping');
+    ON sessions (project, concern)
+    WHERE concern IS NOT NULL AND skill IN {holding} AND state IN ('starting', 'running', 'stopping');
 CREATE INDEX IF NOT EXISTS sessions_by_sponsor ON sessions (sponsor, state);
 CREATE TABLE IF NOT EXISTS measurements (
     source TEXT PRIMARY KEY,
@@ -85,9 +96,9 @@ CREATE TABLE IF NOT EXISTS measurements (
 HOLDING_SQL = "(" + ", ".join(f"'{skill}'" for skill in HOLDING_SKILLS) + ")"
 SCHEMA = SCHEMA.replace("{holding}", HOLDING_SQL)
 
-COLUMNS = ("id", "project", "skill", "concern", "arguments", "model", "sponsor", "budget_usd", "plugin_release",
-           "branch", "created_at", "state", "outcome", "started_at", "ended_at", "heartbeat_at", "spend",
-           "pull_requests", "stop_requested", "execution")
+COLUMNS = ("id", "project", "skill", "concern", "loop", "environment", "arguments", "model", "sponsor", "budget_usd",
+           "plugin_release", "branch", "created_at", "state", "outcome", "started_at", "ended_at", "heartbeat_at",
+           "spend", "pull_requests", "stop_requested", "execution", "final_message")
 ACTIVE_SQL = "('starting', 'running', 'stopping')"
 
 
@@ -106,11 +117,27 @@ class SqliteStore:
             os.makedirs(os.path.dirname(path), exist_ok=True)
         with self._connect() as db:
             db.execute("PRAGMA journal_mode=WAL")
+        with self._transaction() as db:
+            self._migrate(db)
+        with self._connect() as db:
             db.executescript(SCHEMA)
             for seed in seeds:
                 db.execute("INSERT OR IGNORE INTO measurements VALUES (?, ?, ?, ?, ?, ?)",
                            (f"seed:{seed['skill']}:{seed['model']}", seed["skill"], seed["model"], seed["usd"],
                             seed["wall_clock_s"], ""))
+
+    @staticmethod
+    def _migrate(db):
+        """A file the previous runner made has no loop, environment or final_message, and its concern cannot be null.
+        SQLite cannot drop a NOT NULL, so the table is rebuilt with every row kept; its old indexes go with it."""
+        columns = [row[1] for row in db.execute("PRAGMA table_info(sessions)")]
+        if not columns or "final_message" in columns:
+            return
+        db.execute("ALTER TABLE sessions RENAME TO sessions_before")
+        db.execute(SESSIONS)
+        kept = ", ".join(c for c in COLUMNS if c in columns)
+        db.execute(f"INSERT INTO sessions ({kept}) SELECT {kept} FROM sessions_before")
+        db.execute("DROP TABLE sessions_before")
 
     @contextlib.contextmanager
     def _connect(self):
@@ -223,11 +250,12 @@ class SqliteStore:
             db.execute("UPDATE sessions SET stop_requested = 1, state = 'stopping' WHERE id = ?", (session_id,))
             return self._select(db, "id = ?", (session_id,))[0]
 
-    def finish(self, session_id, outcome, spend, pull_requests, now):
+    def finish(self, session_id, outcome, spend, pull_requests, now, final_message=None):
         with self._transaction() as db:
             db.execute("UPDATE sessions SET state = 'ended', outcome = ?, ended_at = ?, "
-                       "spend = COALESCE(?, spend), pull_requests = ? WHERE id = ?",
-                       (outcome, now, json.dumps(spend) if spend else None, json.dumps(pull_requests), session_id))
+                       "spend = COALESCE(?, spend), pull_requests = ?, final_message = ? WHERE id = ?",
+                       (outcome, now, json.dumps(spend) if spend else None, json.dumps(pull_requests), final_message,
+                        session_id))
             session = self._select(db, "id = ?", (session_id,))[0]
             if spend and spend.get("basis") == "sdk result":
                 db.execute("INSERT OR REPLACE INTO measurements VALUES (?, ?, ?, ?, ?, ?)",

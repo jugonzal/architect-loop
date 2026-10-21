@@ -12,19 +12,21 @@ import subprocess
 import unittest
 
 from runner import trailers
-from runner.config import SKILLS
+from runner.config import SCOPES
 from runner.models import Session
 from runner.workspace import Workspace, WorkspaceError, trailers_for
 from tests.gitrepo import BOT, SLUG, Repo, clean_env, git
-from tests.fakes import CONCERN, PROJECT, scratch
+from tests.fakes import CONCERN, PROJECT, SCOPED, scratch
+
+PAIRS = [(scope, skill) for scope, skills in SCOPES.items() for skill in skills]
 
 PLUGIN_JSON = '{"name": "architect-loop", "version": "%s"}\n'
 
 
-def session(concern=CONCERN, release="v0.3.0", sponsor="juan", sid="a" * 32, skill="loop-build"):
-    return Session(id=sid, project=PROJECT, skill=skill, concern=concern, arguments="", model="m",
-                   sponsor=sponsor, budget_usd=1.0, plugin_release=release, branch=concern,
-                   created_at="2026-10-20T12:00:00Z")
+def session(concern=CONCERN, release="v0.3.0", sponsor="juan", sid="a" * 32, skill="loop-build", scope=None):
+    on = SCOPED[scope] if scope else {"concern": concern, "branch": concern}
+    return Session(id=sid, project=PROJECT, skill=skill, arguments="", model="m", sponsor=sponsor, budget_usd=1.0,
+                   plugin_release=release, created_at="2026-10-20T12:00:00Z", **on)
 
 
 class Origin:
@@ -69,6 +71,17 @@ class WorkspaceTest(unittest.TestCase):
         prepared = self.prepare()
         self.assertEqual(git(prepared.clone, "rev-parse", "HEAD"), sha)
         self.assertEqual(git(prepared.clone, "rev-parse", "--abbrev-ref", "@{upstream}"), f"origin/{CONCERN}")
+
+    def test_a_loop_or_environment_session_works_on_main_and_makes_no_branch(self):
+        """runner-dispatch C3: it clones main and pushes no branch of its own unless its skill opens a PR."""
+        for n, scope in enumerate(("loop", "environment"), 1):
+            with self.subTest(scope=scope):
+                prepared = self.prepare(session(scope=scope, skill="loop-status" if scope == "loop" else "loop-ship",
+                                                sid=f"{n:032x}"))
+                self.assertEqual(git(prepared.clone, "branch", "--show-current"), "main")
+                self.assertEqual(git(prepared.clone, "rev-parse", "HEAD"), git(self.origin.path, "rev-parse", "main"))
+                self.assertEqual(git(prepared.clone, "branch", "--format=%(refname:short)"), "main")
+                self.assertEqual(self.workspace.pushed_branches(prepared.clone), [])
 
     def test_commits_are_the_bots(self):
         prepared = self.prepare()
@@ -155,8 +168,8 @@ class TrailersPerSkillTest(unittest.TestCase):
         self.origin = Origin(self)
         self.workspace = Workspace(self.origin.path, scratch(self), BOT, env=clean_env())
 
-    def prepared(self, skill, n):
-        s = session(skill=skill, sponsor="ana", sid=f"{n:032x}")
+    def prepared(self, skill, n, scope="concern"):
+        s = session(skill=skill, sponsor="ana", sid=f"{n:032x}", scope=scope)
         prepared = self.workspace.prepare(s)
         self.addCleanup(self.workspace.cleanup, s.id)
         return prepared
@@ -173,17 +186,17 @@ class TrailersPerSkillTest(unittest.TestCase):
         return trailers.trailers(clone, message)
 
     def test_only_a_loop_build_sessions_trailers_name_the_concern(self):
-        for skill in SKILLS:
-            with self.subTest(skill=skill):
+        for scope, skill in PAIRS:
+            with self.subTest(scope=scope, skill=skill):
                 expected = [("Sponsored-by", "juan")]
                 if skill == "loop-build":
                     expected = [("Concern", CONCERN)] + expected
-                self.assertEqual(trailers_for(session(skill=skill)), expected)
+                self.assertEqual(trailers_for(session(skill=skill, scope=scope)), expected)
 
     def test_each_skills_commits_carry_the_sponsor_and_only_a_builds_the_concern(self):
-        for n, skill in enumerate(SKILLS, 1):
-            with self.subTest(skill=skill):
-                clone = self.prepared(skill, n).clone
+        for n, (scope, skill) in enumerate(PAIRS, 1):
+            with self.subTest(scope=scope, skill=skill):
+                clone = self.prepared(skill, n, scope).clone
                 base = git(clone, "rev-parse", "HEAD")
                 found = self.parsed(clone, self.commit(clone, "Record the work\n\nBecause."))
                 self.assertIn(("Sponsored-by", "ana"), found)
@@ -191,9 +204,9 @@ class TrailersPerSkillTest(unittest.TestCase):
                 self.assertTrue(trailers.check(clone, base, "HEAD", SLUG).ok)
 
     def test_a_no_verify_commit_fails_the_trailers_check_whatever_the_skill(self):
-        for n, skill in enumerate(SKILLS, 1):
-            with self.subTest(skill=skill):
-                clone = self.prepared(skill, n).clone
+        for n, (scope, skill) in enumerate(PAIRS, 1):
+            with self.subTest(scope=scope, skill=skill):
+                clone = self.prepared(skill, n, scope).clone
                 base = git(clone, "rev-parse", "HEAD")
                 self.commit(clone, "Record the work without a sponsor", "--no-verify")
                 result = trailers.check(clone, base, "HEAD", SLUG)

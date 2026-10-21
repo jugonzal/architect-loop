@@ -14,6 +14,15 @@ from runner.store import SqliteStore
 PROJECT = "jugonzal/architect-loop"
 CONCERN = "command-center/session-runner"
 OTHER = "command-center/threads"
+LOOP = "command-center"
+ENVIRONMENT = "staging/runner"
+
+# What a session of each scope runs on, and the branch its clone starts on (runner-dispatch C3).
+SCOPED = {
+    "concern": {"concern": CONCERN, "branch": CONCERN},
+    "loop": {"loop": LOOP, "branch": "main"},
+    "environment": {"environment": ENVIRONMENT, "branch": "main"},
+}
 
 TOKENS = {"tok-juan": "juan", "tok-ana": "ana", "tok-out": "outsider"}
 
@@ -27,6 +36,8 @@ class FakeGitHub:
         self.concerns = {CONCERN, OTHER, "command-center/app-agents", "command-center/notifications",
                          "command-center/environments"}
         self.releases = {"v0.3.0"}
+        self.loops = {LOOP}
+        self.environment_names = ["main", "staging/runner", "production/runner"]
         self.pulls = []
         self.calls = []
         self.down = False
@@ -52,6 +63,14 @@ class FakeGitHub:
     def release_exists(self, tag):
         self._call("release_exists", tag)
         return tag in self.releases
+
+    def loop_exists(self, loop):
+        self._call("loop_exists", loop)
+        return loop in self.loops
+
+    def environments(self):
+        self._call("environments")
+        return list(self.environment_names)
 
     def open_pull_requests(self):
         self._call("open_pull_requests")
@@ -126,5 +145,13 @@ def make_runner(testcase, **config):
 
 
 def dispatch_body(concern=CONCERN, skill="loop-build", **extra):
-    return {"project": PROJECT, "skill": skill, "concern": concern, "arguments": "", "budget_usd": 2.0,
+    """A dispatch on a concern, or on whatever `extra` names instead when `concern` is None; a None is left out."""
+    body = {"project": PROJECT, "skill": skill, "concern": concern, "arguments": "", "budget_usd": 2.0,
             "plugin_release": "v0.3.0", **extra}
+    return {k: v for k, v in body.items() if v is not None}
+
+
+def scoped_body(scope, skill, **extra):
+    """A dispatch of `skill` on the test concern, loop or environment."""
+    target = {k: v for k, v in SCOPED[scope].items() if k != "branch"}
+    return dispatch_body(**{"concern": None, **target}, skill=skill, **extra)

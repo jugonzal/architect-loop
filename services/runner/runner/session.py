@@ -10,7 +10,7 @@ import logging
 import re
 import time
 
-from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ResultMessage
+from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ResultMessage, TextBlock
 
 from .config import ALLOWED_TOOLS
 from .github import JOB_PERMISSIONS
@@ -42,8 +42,31 @@ def build_options(session, prepared, env):
 
 
 def prompt_for(session, prepared):
-    return " ".join(part for part in (f"/{prepared.plugin_name}:{session.skill}", session.concern,
+    return " ".join(part for part in (f"/{prepared.plugin_name}:{session.skill}", session.target,
                                       session.arguments.strip()) if part)
+
+
+class FinalMessage:
+    """The session's last assistant message (runner-dispatch C3; app-inbox D1): the text of the last model response
+    of the session itself, not of a subagent, that said anything. One response can arrive as several messages that
+    share its id, so their text is kept together."""
+
+    def __init__(self):
+        self._id, self._parts = None, []
+
+    def add(self, message):
+        if message.parent_tool_use_id is not None:
+            return
+        texts = [block.text for block in message.content if isinstance(block, TextBlock) and block.text.strip()]
+        if not texts:
+            return
+        if message.message_id is None or message.message_id != self._id:
+            self._id, self._parts = message.message_id, []
+        self._parts += texts
+
+    @property
+    def text(self):
+        return "\n\n".join(self._parts) if self._parts else None
 
 
 def with_trailers(body, concern, sponsor):
@@ -79,7 +102,7 @@ class SessionJob:
             return self.store.finish(session_id, "error", None, [], iso(self.now()))
         session = self.store.mark_running(session_id, iso(self.now()))
         self._id, self._client, self._interrupted = session_id, None, None
-        self._done = asyncio.Event()
+        self._done, self._said = asyncio.Event(), FinalMessage()
         meter = Meter(self.config.prices[session.model], session.budget_usd, self.monotonic)
         publisher = asyncio.create_task(self._publish_every(meter))
         if session.stop_requested:
@@ -108,7 +131,8 @@ class SessionJob:
         else:
             final = meter.final(now)
         pulls = await asyncio.to_thread(self._sign_pull_requests, session, prepared) if prepared else []
-        return self.store.finish(session_id, outcome, final, pulls, iso(self.now()))
+        said = self._said.text or (result.result if result is not None else None)
+        return self.store.finish(session_id, outcome, final, pulls, iso(self.now()), final_message=said)
 
     async def _converse(self, options, prompt, meter):
         result = None
@@ -120,6 +144,7 @@ class SessionJob:
             async for message in client.receive_response():
                 if isinstance(message, AssistantMessage):
                     meter.add(message.message_id, message.usage)
+                    self._said.add(message)
                     if meter.crossed:
                         # D21: stop at the first response that crosses the budget, even if the SDK has not.
                         await self._interrupt("budget")

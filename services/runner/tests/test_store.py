@@ -10,7 +10,7 @@ import unittest
 from runner.config import DEFAULT_SEEDS
 from runner.models import Session
 from runner.store import SqliteStore
-from tests.fakes import CONCERN, OTHER, PROJECT, scratch
+from tests.fakes import CONCERN, ENVIRONMENT, LOOP, OTHER, PROJECT, SCOPED, scratch
 
 NOW = "2026-10-20T12:00:00Z"
 
@@ -36,6 +36,12 @@ CREATE TABLE measurements (
 def session(n, concern=CONCERN, sponsor="juan", skill="loop-build", model="claude-opus-5-5", created_at=NOW):
     return Session(id=f"{n:032x}", project=PROJECT, skill=skill, concern=concern, arguments="", model=model,
                    sponsor=sponsor, budget_usd=1.0, plugin_release="v0.3.0", branch=concern, created_at=created_at)
+
+
+def scoped(n, scope, skill, sponsor="juan"):
+    """A session on the test concern, loop or environment (runner-dispatch C3)."""
+    return Session(id=f"{n:032x}", project=PROJECT, skill=skill, arguments="", model="claude-opus-5-5",
+                   sponsor=sponsor, budget_usd=1.0, plugin_release="v0.3.0", created_at=NOW, **SCOPED[scope])
 
 
 def final(usd, wall=60.0, basis="sdk result"):
@@ -101,6 +107,37 @@ class StoreTest(unittest.TestCase):
             self.assertIsNone(self.claim(session(n, skill=skill)))
         refusal = self.claim(session(4, concern=OTHER, skill="loop-prove"))
         self.assertEqual((refusal.refused, refusal.cap, len(refusal.sessions)), ("sponsor-cap", 3, 3))
+
+    def test_a_loop_or_environment_session_holds_nothing_and_counts_toward_the_cap(self):
+        self.assertIsNone(self.claim(scoped(1, "loop", "loop-design")))
+        self.assertIsNone(self.claim(scoped(2, "loop", "loop-design", sponsor="ana")))
+        self.assertIsNone(self.claim(scoped(3, "environment", "loop-ship")))
+        self.assertIsNone(self.claim(scoped(4, "environment", "loop-ship", sponsor="ana")))
+        self.assertIsNone(self.claim(session(5, skill="loop-build")))
+        refusal = self.claim(session(6, concern=OTHER, skill="loop-prove"))
+        self.assertEqual((refusal.refused, len(refusal.sessions)), ("sponsor-cap", 3))
+
+    def test_a_session_reads_back_with_what_it_runs_on(self):
+        for n, scope, skill in ((1, "loop", "loop-status"), (2, "environment", "loop-ship")):
+            with self.subTest(scope=scope):
+                self.claim(scoped(n, scope, skill))
+                found = self.store.get(scoped(n, scope, skill).id)
+                self.assertEqual(found, scoped(n, scope, skill))
+                self.assertEqual((found.concern, found.loop, found.environment, found.branch),
+                                 (None, LOOP if scope == "loop" else None,
+                                  ENVIRONMENT if scope == "environment" else None, "main"))
+                self.assertFalse(found.holds)
+
+    def test_the_final_message_is_kept_with_how_it_ended(self):
+        self.claim(scoped(1, "environment", "loop-ship"))
+        ended = self.store.finish(scoped(1, "environment", "loop-ship").id, "completed", final(0.4), [], NOW,
+                                  final_message="## Ship brief\n\nThree concerns go out.")
+        self.assertEqual(ended.final_message, "## Ship brief\n\nThree concerns go out.")
+        self.assertEqual(self.store.get(ended.id).public()["final_message"], "## Ship brief\n\nThree concerns go out.")
+
+    def test_a_session_that_ends_without_one_has_no_final_message(self):
+        self.claim(session(1))
+        self.assertIsNone(self.store.finish(session(1).id, "error", None, [], NOW).final_message)
 
     def test_ten_proves_at_once_on_one_concern_are_all_stored(self):
         results = self.race([session(n, sponsor=f"p{n}", skill="loop-prove") for n in range(1, 11)])
@@ -225,6 +262,11 @@ class StoreTest(unittest.TestCase):
         self.assertIsNone(store.claim(session(2, sponsor="ana", skill="loop-prove"), 3, NOW, 3600))
         self.assertEqual(store.claim(session(3, sponsor="ana", skill="loop-design"), 3, NOW, 3600).refused,
                          "running-session")
+        old = store.get("b" * 32)  # its row is kept, and now says it runs on no loop or environment
+        self.assertEqual((old.concern, old.loop, old.environment, old.final_message), (CONCERN, None, None, None))
+        self.assertIsNone(store.claim(scoped(4, "loop", "loop-status", sponsor="bea"), 3, NOW, 3600))
+        SqliteStore(path)  # opening it again changes nothing
+        self.assertEqual(len(store.list()), 3)
 
     def test_list_filters(self):
         self.claim(session(1))

@@ -3,7 +3,9 @@
 No request leaves the process. The app key is generated here for the test and thrown away.
 """
 
+import base64
 import json
+import os
 import time
 import unittest
 
@@ -11,11 +13,14 @@ import jwt
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from runner.github import JOB_PERMISSIONS, SERVICE_PERMISSIONS, AppAuth, GitHubError, RestGitHub, concern_pull_requests
+from runner.dispatch import ENVIRONMENT
+from runner.github import (JOB_PERMISSIONS, SERVICE_PERMISSIONS, AppAuth, GitHubError, RestGitHub,
+                           concern_pull_requests, environments_in)
 
 KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 PEM = KEY.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
                         serialization.NoEncryption()).decode()
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 NOW = 1_792_500_000  # 2026-10-20
 EXPIRES = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(NOW + 3600))  # GitHub's tokens last an hour
 
@@ -127,6 +132,31 @@ class GitHubTest(unittest.TestCase):
         self.assertFalse(self.github.release_exists("v9.9.9"))
         self.assertTrue(self.transport.requests[-1]["url"].endswith("/git/ref/tags/v9.9.9"))
 
+    def test_a_loop_exists_when_its_readme_is_on_main(self):
+        self.token_answer()
+        self.transport.answer(200, {"type": "file"})
+        self.assertTrue(self.github.loop_exists("command-center"))
+        self.assertTrue(self.transport.requests[-1]["url"].endswith(
+            "/contents/docs/loops/command-center/README.md?ref=main"))
+
+    def test_the_environments_are_the_rows_of_loop_md_section_3_on_main(self):
+        with open(os.path.join(ROOT, "LOOP.md"), "rb") as f:
+            content = base64.encodebytes(f.read()).decode()  # GitHub wraps its base64 in lines, as this does
+        self.token_answer()
+        self.transport.answer(200, {"type": "file", "encoding": "base64", "content": content})
+        names = self.github.environments()
+        self.assertTrue(self.transport.requests[-1]["url"].endswith("/contents/LOOP.md?ref=main"))
+        self.assertEqual(self.transport.requests[-1]["headers"]["Authorization"], "Bearer ghs_installation")
+        self.assertIn("main", names)
+        self.assertIn("staging/runner", names)
+        self.assertIn("production/runner", names)
+        self.assertTrue(all(ENVIRONMENT.match(name) for name in names), names)
+
+    def test_without_loop_md_there_are_no_environments(self):
+        self.token_answer()
+        self.transport.answer(404, {"message": "Not Found"})
+        self.assertEqual(self.github.environments(), [])
+
     def test_editing_a_body_patches_the_pull_request_with_the_jobs_token(self):
         self.token_answer("ghs_job")
         self.transport.answer(200, {"number": 7})
@@ -134,6 +164,28 @@ class GitHubTest(unittest.TestCase):
         mint, patch = self.transport.requests
         self.assertEqual(mint["body"]["permissions"], JOB_PERMISSIONS)
         self.assertEqual((patch["method"], patch["body"]), ("PATCH", {"body": "text"}))
+
+
+class EnvironmentsInTest(unittest.TestCase):
+    """The environments a `/loop-ship` dispatch may name: the first column of LOOP.md §3, and no other table's."""
+
+    def test_only_the_environments_table_counts(self):
+        text = "\n".join([
+            "# LOOP.md", "", "## 2. Gates", "", "| Action | Scope |", "| --- | --- |", "| Merge | docs |", "",
+            "## 3. Environments", "", "| Environment | Where | Verify with |", "| --- | --- | --- |",
+            "| main | the main branch | `gh run list` |", "| `staging` | Cloud Run | `served.sh` |",
+            "| **production** | Cloud Run | `served.sh` |", "", "Lowest first.", "", "### 3.1 Notes", "",
+            "| Name | What |", "| --- | --- |", "| ignored | not an environment |", "",
+            "## 4. Commands", "", "| Purpose | Command |", "| --- | --- |", "| Unit tests | `make test` |",
+        ])
+        self.assertEqual(environments_in(text), ["main", "staging", "production"])
+
+    def test_a_heading_without_a_number_counts_too(self):
+        self.assertEqual(environments_in("## Environments\n\n| Environment |\n|---|\n| staging/runner |\n"),
+                         ["staging/runner"])
+
+    def test_no_section_means_no_environments(self):
+        self.assertEqual(environments_in("# Nothing here\n\n| a | b |\n| - | - |\n| c | d |\n"), [])
 
 
 class ConcernPullRequestsTest(unittest.TestCase):

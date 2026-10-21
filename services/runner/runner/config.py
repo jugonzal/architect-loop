@@ -9,7 +9,16 @@ import math
 import os
 from dataclasses import dataclass, field
 
-SKILLS = ("loop-design", "loop-build", "loop-prove", "loop-status")
+SKILLS = ("loop-design", "loop-build", "loop-prove", "loop-status", "loop-ship")
+
+# runner-dispatch C3: a dispatch names exactly one of a concern, a loop or an environment, and each skill runs only on
+# what it is listed for here: `/loop-ship <environment>`, `/loop-status <loop>` and `/loop-design <loop>` beside the
+# four concern skills.
+SCOPES = {
+    "concern": ("loop-design", "loop-build", "loop-prove", "loop-status"),
+    "loop": ("loop-design", "loop-status"),
+    "environment": ("loop-ship",),
+}
 
 # session-runner D6: only these hold the concern they run on. While one of them runs on a concern, or the concern has
 # an open pull request, another dispatch of either is refused; every other skill runs beside them and holds nothing.
@@ -25,6 +34,7 @@ DEFAULT_SKILL_MODELS = {
     "loop-design": "claude-opus-5-5",
     "loop-build": "claude-opus-5-5",
     "loop-prove": "claude-opus-5-5",
+    "loop-ship": "claude-opus-5-5",
 }
 
 # List prices in dollars per million tokens, used only for the running estimate while a session runs (D23); the

@@ -9,29 +9,32 @@ import os
 import time
 import unittest
 
-from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, ToolUseBlock
 
-from runner.config import ALLOWED_TOOLS, SKILLS, Config
+from runner.api import Api
+from runner.config import ALLOWED_TOOLS, SCOPES, Config
 from runner.dispatch import Dispatcher
 from runner.models import Session
 from runner.session import SessionJob, claude_client, with_trailers
 from runner.store import SqliteStore
 from runner.workspace import Prepared
 from tests import RealSessionRefused
-from tests.fakes import CONCERN, PROJECT, FakeGitHub, scratch
+from tests.contract import ContractClient
+from tests.fakes import CONCERN, ENVIRONMENT, LOOP, PROJECT, SCOPED, FakeGitHub, FakeLauncher, scratch
 
 PRICE_PER_INPUT = 4.00 / 1_000_000  # Opus 5.5 list price
 
 
-def assistant(n, input_tokens=1500, output_tokens=10):
-    return AssistantMessage(content=[TextBlock(text=f"step {n}")], model="claude-opus-5-5",
+def assistant(n, input_tokens=1500, output_tokens=10, text=None, content=None, message_id=None, parent=None):
+    return AssistantMessage(content=content if content is not None else [TextBlock(text=text or f"step {n}")],
+                            model="claude-opus-5-5",
                             usage={"input_tokens": input_tokens, "output_tokens": output_tokens},
-                            message_id=f"msg_{n}")
+                            message_id=message_id or f"msg_{n}", parent_tool_use_id=parent)
 
 
-def result(subtype="success", cost=0.05, usage=None):
+def result(subtype="success", cost=0.05, usage=None, text=None):
     return ResultMessage(subtype=subtype, duration_ms=10, duration_api_ms=5, is_error=subtype != "success",
-                         num_turns=1, session_id="sdk-session", total_cost_usd=cost,
+                         num_turns=1, session_id="sdk-session", total_cost_usd=cost, result=text,
                          usage=usage or {"input_tokens": 3000, "output_tokens": 400, "cache_creation_input_tokens": 0,
                                          "cache_read_input_tokens": 0})
 
@@ -115,10 +118,10 @@ class JobTest(unittest.TestCase):
         self.workspace = FakeWorkspace(os.path.join(root, "work"))
         self.clients = []
 
-    def claimed(self, budget=1.0, skill="loop-build", arguments="", sponsor="juan"):
-        session = Session(id="c" * 32, project=PROJECT, skill=skill, concern=CONCERN, arguments=arguments,
+    def claimed(self, budget=1.0, skill="loop-build", arguments="", sponsor="juan", scope="concern"):
+        session = Session(id="c" * 32, project=PROJECT, skill=skill, arguments=arguments,
                           model=self.config.skill_models[skill], sponsor=sponsor, budget_usd=budget,
-                          plugin_release="v0.3.0", branch=CONCERN, created_at="2026-10-20T12:00:00Z")
+                          plugin_release="v0.3.0", created_at="2026-10-20T12:00:00Z", **SCOPED[scope])
         self.assertIsNone(self.store.claim(session, 3, session.created_at, 300))
         return session
 
@@ -285,6 +288,17 @@ class OptionsTest(JobTest):
         self.run_job(session, [(0, result())])
         self.assertEqual(self.clients[0].prompts, [f"/architect-loop:loop-build {CONCERN} --ready"])
 
+    def test_a_loop_or_environment_session_runs_its_skill_on_that_name(self):
+        """runner-dispatch C3: `/loop-status <loop>`, `/loop-design <loop>`, `/loop-ship <environment>`."""
+        for scope, skill, arguments, prompt in (
+                ("loop", "loop-status", "--json", f"/architect-loop:loop-status {LOOP} --json"),
+                ("loop", "loop-design", "", f"/architect-loop:loop-design {LOOP}"),
+                ("environment", "loop-ship", "", f"/architect-loop:loop-ship {ENVIRONMENT}")):
+            with self.subTest(scope=scope, skill=skill):
+                self.setUp()
+                self.run_job(self.claimed(skill=skill, scope=scope, arguments=arguments), [(0, result())])
+                self.assertEqual(self.clients[0].prompts, [prompt])
+
     def test_the_real_sdk_client_is_out_of_reach_of_the_tests(self):
         with self.assertRaises(RealSessionRefused):
             claude_client(None)
@@ -318,15 +332,76 @@ class PullRequestTrailerTest(JobTest):
         self.assertEqual(self.github.bodies[23], "## What this records\n\nText.\n\nSponsored-by: ana")
 
     def test_only_a_build_sessions_pull_requests_get_the_concern_whatever_the_skill(self):
-        for n, skill in enumerate(SKILLS, 1):
-            with self.subTest(skill=skill):
+        pairs = [(scope, skill) for scope, skills in SCOPES.items() for skill in skills]
+        for n, (scope, skill) in enumerate(pairs, 1):
+            with self.subTest(scope=scope, skill=skill):
                 self.setUp()
                 self.workspace.pushed = [f"docs/x-{n}"]
                 self.github.open_pr(30 + n, f"docs/x-{n}", body="Text")
-                self.run_job(self.claimed(skill=skill, sponsor="ana"), [(0, result())])
+                self.run_job(self.claimed(skill=skill, sponsor="ana", scope=scope), [(0, result())])
                 lines = self.github.bodies[30 + n].splitlines()
                 self.assertIn("Sponsored-by: ana", lines)
-                self.assertEqual(f"Concern: {CONCERN}" in lines, skill == "loop-build")
+                self.assertEqual([line for line in lines if line.startswith("Concern:")],
+                                 [f"Concern: {CONCERN}"] if skill == "loop-build" else [])
+
+
+class FinalMessageTest(JobTest):
+    """runner-dispatch C3 (app-inbox D1): the job keeps the session's last assistant message with how it ended, and
+    the session resource serves it, so a dispatched `/loop-ship`'s brief can be read back from the runner."""
+
+    BRIEF = "## Ship brief: staging/runner\n\nTwo concerns go out. Run `sh scripts/gcp/deploy.sh runner staging <sha>`."
+
+    def test_the_last_assistant_message_is_kept_and_served_with_the_session(self):
+        session = self.claimed(skill="loop-ship", scope="environment")
+        ended = self.run_job(session, [(0.01, assistant(1, text="Reading the board.")),
+                                       (0.01, assistant(2, text=self.BRIEF)), (0.01, result())])
+        self.assertEqual(ended.final_message, self.BRIEF)
+        client = ContractClient(self, Api(Dispatcher(self.config, self.store, self.github, FakeLauncher())))
+        self.assertEqual(client.call("GET", f"/sessions/{session.id}", token="tok-juan").json["final_message"],
+                         self.BRIEF)
+        listed = client.call("GET", "/sessions", token="tok-juan", query={"state": "all"}).json["sessions"]
+        self.assertEqual([s["final_message"] for s in listed], [self.BRIEF])
+
+    def test_one_response_that_arrives_as_several_messages_is_kept_whole(self):
+        ended = self.run_job(self.claimed(), [
+            (0.01, assistant(1, text="Earlier.")),
+            (0.01, assistant(2, text="First part.", message_id="msg_last")),
+            (0.01, assistant(3, text="Second part.", message_id="msg_last")),
+            (0.01, result())])
+        self.assertEqual(ended.final_message, "First part.\n\nSecond part.")
+
+    def test_a_last_response_with_only_a_tool_call_keeps_the_text_before_it(self):
+        tool = [ToolUseBlock(id="t1", name="Bash", input={"command": "git status"})]
+        ended = self.run_job(self.claimed(), [(0.01, assistant(1, text="Said last.")),
+                                              (0.01, assistant(2, content=tool)), (0.01, result())])
+        self.assertEqual(ended.final_message, "Said last.")
+
+    def test_a_subagents_message_is_not_the_sessions(self):
+        ended = self.run_job(self.claimed(), [(0.01, assistant(1, text="The session's.")),
+                                              (0.01, assistant(2, text="A subagent's.", parent="toolu_1")),
+                                              (0.01, result())])
+        self.assertEqual(ended.final_message, "The session's.")
+
+    def test_without_any_text_the_results_text_is_the_final_message(self):
+        ended = self.run_job(self.claimed(), [(0.01, result(text="Done."))])
+        self.assertEqual(ended.final_message, "Done.")
+
+    def test_a_session_stopped_at_its_budget_keeps_what_it_said_last(self):
+        session = self.claimed(budget=0.01)  # the second response crosses
+        script = [(0.01, assistant(n, text=f"said {n}")) for n in range(1, 6)] + [(0.01, result())]
+        ended = self.run_job(session, script)
+        self.assertEqual((ended.outcome, ended.final_message), ("budget", "said 2"))
+
+    def test_a_crash_keeps_what_it_said_last(self):
+        with self.assertLogs("runner.session", "ERROR"):
+            ended = self.run_job(self.claimed(), [(0.01, assistant(1, text="said 1")), (0.01, assistant(2))],
+                                 crash_after=1)
+        self.assertEqual((ended.outcome, ended.final_message), ("error", "said 1"))
+
+    def test_a_session_stopped_before_the_model_started_has_none(self):
+        session = self.claimed()
+        self.store.request_stop(session.id)
+        self.assertIsNone(self.run_job(session, [(0, result(text="never"))]).final_message)
 
 
 class WithTrailersTest(unittest.TestCase):

@@ -1,5 +1,6 @@
-"""A session's workspace: a fresh clone of the project on `<loop>/<concern>`, with the runner's commit-msg hook,
-and the plugin release named in the dispatch beside it, read-only (session-runner Approach, D4; D17)."""
+"""A session's workspace: a fresh clone of the project on `<loop>/<concern>`, or on main for a session on a loop or
+an environment (runner-dispatch C3), with the runner's commit-msg hook, and the plugin release named in the
+dispatch beside it, read-only (session-runner Approach, D4; D17)."""
 
 import io
 import json
@@ -74,6 +75,9 @@ class Workspace:
         return Prepared(root, clone, plugin_dir, plugin_name)
 
     def _branch(self, clone, branch):
+        if branch == self.main_branch:  # a session on a loop or an environment makes no branch of its own
+            self._git(clone, "switch", "--quiet", branch)
+            return
         remote = f"refs/remotes/origin/{branch}"
         exists = subprocess.run(["git", "rev-parse", "--verify", "--quiet", remote], cwd=clone, env=self.env,
                                 capture_output=True).returncode == 0
