@@ -11,9 +11,12 @@ import subprocess
 import tarfile
 from dataclasses import dataclass
 
+from .config import CONCERN_TRAILER_SKILLS
+
 HOOK = """#!/bin/sh
 # Installed by the architect-loop runner in this session's clone (session-runner D4): every commit names its
-# concern and its sponsor. `git commit --no-verify` skips this hook; the trailers check fails such a commit.
+# sponsor, and a /loop-build session's commits name their concern too (command-center/D45).
+# `git commit --no-verify` skips this hook; the trailers check fails such a commit.
 exec git interpret-trailers --in-place --if-exists doNothing {trailers} "$1"
 """
 
@@ -31,8 +34,10 @@ class Prepared:
 
 
 def trailers_for(session):
-    """The trailers a session's commits and pull requests carry (C1)."""
-    return [("Concern", session.concern), ("Sponsored-by", session.sponsor)]
+    """The trailers a session's commits and pull requests carry (runner-dispatch C1, command-center/D45):
+    `Sponsored-by:` always, and `Concern:` before it only in a /loop-build session."""
+    concern = [("Concern", session.concern)] if session.skill in CONCERN_TRAILER_SKILLS else []
+    return concern + [("Sponsored-by", session.sponsor)]
 
 
 class Workspace:

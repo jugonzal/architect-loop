@@ -9,6 +9,10 @@ from dataclasses import dataclass, field
 
 SKILLS = ("loop-design", "loop-build", "loop-prove", "loop-status")
 
+# command-center/D45: only a /loop-build session's commits and pull requests carry `Concern:`. Every session's carry
+# `Sponsored-by:`, whatever its skill.
+CONCERN_TRAILER_SKILLS = ("loop-build",)
+
 # session-runner D5: /loop-status on Sonnet 5.5, every other skill on Opus 5.5.
 DEFAULT_SKILL_MODELS = {
     "loop-status": "claude-sonnet-5-5",

@@ -1,6 +1,7 @@
 """A session's job with a fake Agent SDK: C4 (spend published at least every 10 s, the stop at the first response
 that crosses the budget, the final estimate with its overshoot), the stop a sponsor asks for, the options the
-SDK runs with (D3, D5, D17, D21), and the trailers on the pull requests a session opens (C1).
+SDK runs with (D3, D5, D17, D21), and the trailers on the pull requests a session opens (session-runner C5,
+runner-dispatch C1).
 """
 
 import asyncio
@@ -10,7 +11,7 @@ import unittest
 
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
-from runner.config import ALLOWED_TOOLS, Config
+from runner.config import ALLOWED_TOOLS, SKILLS, Config
 from runner.dispatch import Dispatcher
 from runner.models import Session
 from runner.session import SessionJob, claude_client, with_trailers
@@ -310,6 +311,23 @@ class PullRequestTrailerTest(JobTest):
         self.run_job(self.claimed(), [(0, result())])
         self.assertNotIn(21, self.github.bodies)
 
+    def test_a_design_sessions_pull_request_gets_its_sponsor_and_no_concern(self):
+        self.workspace.pushed = ["docs/command-center-runner"]
+        self.github.open_pr(23, "docs/command-center-runner", body="## What this records\n\nText.")
+        self.run_job(self.claimed(skill="loop-design", sponsor="ana"), [(0, result())])
+        self.assertEqual(self.github.bodies[23], "## What this records\n\nText.\n\nSponsored-by: ana")
+
+    def test_only_a_build_sessions_pull_requests_get_the_concern_whatever_the_skill(self):
+        for n, skill in enumerate(SKILLS, 1):
+            with self.subTest(skill=skill):
+                self.setUp()
+                self.workspace.pushed = [f"docs/x-{n}"]
+                self.github.open_pr(30 + n, f"docs/x-{n}", body="Text")
+                self.run_job(self.claimed(skill=skill, sponsor="ana"), [(0, result())])
+                lines = self.github.bodies[30 + n].splitlines()
+                self.assertIn("Sponsored-by: ana", lines)
+                self.assertEqual(f"Concern: {CONCERN}" in lines, skill == "loop-build")
+
 
 class WithTrailersTest(unittest.TestCase):
     def test_both_are_appended_when_neither_is_there(self):
@@ -324,6 +342,13 @@ class WithTrailersTest(unittest.TestCase):
 
     def test_an_empty_body_gets_both(self):
         self.assertEqual(with_trailers("", "loop/x", "ana"), "Concern: loop/x\nSponsored-by: ana")
+
+    def test_without_a_concern_only_the_sponsor_is_appended(self):
+        self.assertEqual(with_trailers("Text", None, "ana"), "Text\n\nSponsored-by: ana")
+        self.assertEqual(with_trailers("", None, "ana"), "Sponsored-by: ana")
+
+    def test_without_a_concern_a_body_with_its_sponsor_is_left_alone(self):
+        self.assertIsNone(with_trailers("Text\n\nSponsored-by: ana", None, "ana"))
 
 
 if __name__ == "__main__":

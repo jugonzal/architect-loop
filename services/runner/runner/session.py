@@ -1,5 +1,5 @@
 """One session's job: run a loop skill with the Agent SDK on the session's own clone, publish its spend while it
-runs, stop it at its budget or when its sponsor asks, and record how it ended (session-runner C1, C4; D2, D3).
+runs, stop it at its budget or when its sponsor asks, and record how it ended (session-runner C4, C5; D2, D3).
 
 The job runs once per session, as one execution of a Cloud Run job (D2). It shares the runner's store with the
 dispatching service, which is how its spend reaches the API and how a stop request reaches it.
@@ -47,18 +47,19 @@ def prompt_for(session, prepared):
 
 
 def with_trailers(body, concern, sponsor):
-    """A pull request body with the session's trailers, or None when it already has them (C1).
+    """A pull request body with the session's trailers, or None when it already has them (runner-dispatch C1).
 
-    Like the commit-msg hook, it keeps a `Concern:` the skill wrote and adds `Sponsored-by:` beside it."""
+    `concern` is None except in a /loop-build session (command-center/D45), so only that one adds `Concern:`. Like
+    the commit-msg hook, it keeps a `Concern:` the skill wrote and adds `Sponsored-by:` beside it."""
     lines = (body or "").splitlines()
     concern_at = [i for i, line in enumerate(lines) if re.match(r"(?i)^concern:\s*\S", line)]
     sponsored = any(re.match(r"(?i)^sponsored-by:\s*\S", line) for line in lines)
-    if sponsored and concern_at:
+    if sponsored and (concern_at or concern is None):
         return None
     if concern_at:
         lines.insert(concern_at[-1] + 1, f"Sponsored-by: {sponsor}")
         return "\n".join(lines)
-    added = [f"Concern: {concern}"] + ([] if sponsored else [f"Sponsored-by: {sponsor}"])
+    added = ([f"Concern: {concern}"] if concern else []) + ([] if sponsored else [f"Sponsored-by: {sponsor}"])
     return "\n".join(lines + ([""] if lines else []) + added)
 
 
@@ -169,7 +170,7 @@ class SessionJob:
             pulls = self.github.pull_requests_for_heads(heads)
             trailers = dict(trailers_for(session))
             for pull in pulls:
-                body = with_trailers(pull.get("body"), trailers["Concern"], trailers["Sponsored-by"])
+                body = with_trailers(pull.get("body"), trailers.get("Concern"), trailers["Sponsored-by"])
                 if body is not None:
                     self.github.set_pull_request_body(pull["number"], body)
             return [{"number": p["number"], "url": p["url"], "head": p["head"]} for p in pulls]
