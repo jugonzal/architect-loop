@@ -1,0 +1,41 @@
+name: threads
+# The threads service's own tests (command-center/D30), against a throwaway Postgres. The root `check` stays
+# standard library only and does not run these.
+on:
+  push:
+    branches: [main]
+    paths: ["services/threads/**", ".github/workflows/threads.yml"]
+  pull_request:
+    paths: ["services/threads/**", ".github/workflows/threads.yml"]
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: threads
+          POSTGRES_PASSWORD: threads
+          POSTGRES_DB: threads_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U threads -d threads_test"
+          --health-interval 2s --health-timeout 5s --health-retries 30
+    defaults:
+      run:
+        working-directory: services/threads
+    env:
+      THREADS_TEST_DATABASE_URL: postgresql://threads:threads@localhost:5432/threads_test
+      # A missing database fails the run instead of skipping the API tests.
+      THREADS_REQUIRE_DB: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/threads/requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - run: python -m unittest discover -s tests -v

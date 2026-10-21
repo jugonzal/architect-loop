@@ -1,0 +1,938 @@
+openapi: 3.1.0
+info:
+  title: Threads
+  version: 1.0.0
+  summary: One thread per loop, concern and agent session, readable only by the project's members.
+  description: |
+    The command center's thread store (command-center/D1, D6). Every loop, concern and session of a project has
+    exactly one thread, at a stable URL. A thread holds messages, never facts: nothing written here changes a
+    loop's derived state, and wiping the store loses conversation only (command-center/D26, G4).
+
+    **Callers.** There are two kinds, and both send `Authorization: Bearer <token>`.
+
+    - A person sends the GitHub token from the app's sign-in, which asks for no repository access. The service
+      identifies them with `GET /user` on that token, and lets them in only if they are a collaborator on the
+      project's repository, checked with the service's own read-only GitHub App (command-center/D27, D28).
+    - The runner sends a Google-signed ID token for its Cloud Run service identity, with this service's URL as the
+      audience (command-center/D28). It may read and post to session threads only, and it posts as that session,
+      labelled with the session's sponsor.
+
+    A token with the shape of a JWT (three dot-separated parts) is checked as a service identity and never sent to
+    GitHub. Any other token is checked with GitHub.
+
+    **Kinds.** Every message has a kind: `message`, `milestone` or `narration`, so a client can collapse a session
+    thread to its milestones. People post `message`s; a session may post any kind.
+
+    **"Record this?"** Any member may mark a message "record this?" (command-center/D36). A mark is a note to
+    people. No model reads messages to classify them, and only a skill's write to the repository records anything.
+
+    **Review comments** on a concern's pull request are mirrored into that concern's thread when GitHub delivers
+    them (command-center/D6). The pull request names its concern with a `Concern: <loop>/<concern>` line in its
+    body, as every concern's pull request does.
+  license:
+    name: MIT
+paths:
+  /version:
+    get:
+      operationId: getVersion
+      summary: The commit this deployment was built from (command-center/D32).
+      security: []
+      responses:
+        "200":
+          description: The commit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Version"
+
+  /projects/{owner}/{repo}/loops/{loop}/thread:
+    parameters:
+      - $ref: "#/components/parameters/owner"
+      - $ref: "#/components/parameters/repo"
+      - $ref: "#/components/parameters/loop"
+    get:
+      operationId: getLoopThread
+      summary: A loop's thread, with its members and watchers.
+      tags: [loop threads]
+      security:
+        - person: []
+      responses:
+        "200":
+          $ref: "#/components/responses/Thread"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /projects/{owner}/{repo}/loops/{loop}/thread/messages:
+    parameters:
+      - $ref: "#/components/parameters/owner"
+      - $ref: "#/components/parameters/repo"
+      - $ref: "#/components/parameters/loop"
+    get:
+      operationId: listLoopMessages
+      summary: A page of a loop thread's messages, oldest first.
+      tags: [loop threads]
+      security:
+        - person: []
+      parameters:
+        - $ref: "#/components/parameters/after"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/kind"
+      responses:
+        "200":
+          $ref: "#/components/responses/MessagePage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+    post:
+      operationId: postLoopMessage
+      summary: Post a message to a loop's thread, as the signed-in person.
+      tags: [loop threads]
+      security:
+        - person: []
+      requestBody:
+        $ref: "#/components/requestBodies/NewMessage"
+      responses:
+        "201":
+          $ref: "#/components/responses/Message"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /projects/{owner}/{repo}/loops/{loop}/thread/watchers/me:
+    parameters:
+      - $ref: "#/components/parameters/owner"
+      - $ref: "#/components/parameters/repo"
+      - $ref: "#/components/parameters/loop"
+    put:
+      operationId: watchLoopThread
+      summary: Watch a loop's thread. Watching twice is the same as once.
+      tags: [loop threads]
+      security:
+        - person: []
+      responses:
+        "200":
+          $ref: "#/components/responses/Thread"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+    delete:
+      operationId: unwatchLoopThread
+      summary: Stop watching a loop's thread.
+      tags: [loop threads]
+      security:
+        - person: []
+      responses:
+        "200":
+          $ref: "#/components/responses/Thread"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+  /projects/{owner}/{repo}/loops/{loop}/concerns/{concern}/thread:
+    parameters:
+      - $ref: "#/components/parameters/owner"
+      - $ref: "#/components/parameters/repo"
+      - $ref: "#/components/parameters/loop"
+      - $ref: "#/components/parameters/concern"
+    get:
+      operationId: getConcernThread
+      summary: A concern's thread, with its members and watchers.
+      tags: [concern threads]
+      security:
+        - person: []
+      responses:
+        "200":
+          $ref: "#/components/responses/Thread"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /projects/{owner}/{repo}/loops/{loop}/concerns/{concern}/thread/messages:
+    parameters:
+      - $ref: "#/components/parameters/owner"
+      - $ref: "#/components/parameters/repo"
+      - $ref: "#/components/parameters/loop"
+      - $ref: "#/components/parameters/concern"
+    get:
+      operationId: listConcernMessages
+      summary: A page of a concern thread's messages, oldest first, including mirrored review comments.
+      tags: [concern threads]
+      security:
+        - person: []
+      parameters:
+        - $ref: "#/components/parameters/after"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/kind"
+      responses:
+        "200":
+          $ref: "#/components/responses/MessagePage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+    post:
+      operationId: postConcernMessage
+      summary: Post a message to a concern's thread, as the signed-in person.
+      tags: [concern threads]
+      security:
+        - person: []
+      requestBody:
+        $ref: "#/components/requestBodies/NewMessage"
+      responses:
+        "201":
+          $ref: "#/components/responses/Message"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /projects/{owner}/{repo}/loops/{loop}/concerns/{concern}/thread/watchers/me:
+    parameters:
+      - $ref: "#/components/parameters/owner"
+      - $ref: "#/components/parameters/repo"
+      - $ref: "#/components/parameters/loop"
+      - $ref: "#/components/parameters/concern"
+    put:
+      operationId: watchConcernThread
+      summary: Watch a concern's thread. Watching twice is the same as once.
+      tags: [concern threads]
+      security:
+        - person: []
+      responses:
+        "200":
+          $ref: "#/components/responses/Thread"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+    delete:
+      operationId: unwatchConcernThread
+      summary: Stop watching a concern's thread.
+      tags: [concern threads]
+      security:
+        - person: []
+      responses:
+        "200":
+          $ref: "#/components/responses/Thread"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+  /projects/{owner}/{repo}/sessions/{session}/thread:
+    parameters:
+      - $ref: "#/components/parameters/owner"
+      - $ref: "#/components/parameters/repo"
+      - $ref: "#/components/parameters/session"
+    get:
+      operationId: getSessionThread
+      summary: A session's thread, with its sponsor, members and watchers.
+      tags: [session threads]
+      security:
+        - person: []
+        - runner: []
+      responses:
+        "200":
+          $ref: "#/components/responses/Thread"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /projects/{owner}/{repo}/sessions/{session}/thread/messages:
+    parameters:
+      - $ref: "#/components/parameters/owner"
+      - $ref: "#/components/parameters/repo"
+      - $ref: "#/components/parameters/session"
+    get:
+      operationId: listSessionMessages
+      summary: |
+        A page of a session thread's messages, oldest first. The runner reads the members' messages to a running
+        session with `after` set to the last `seq` it has seen.
+      tags: [session threads]
+      security:
+        - person: []
+        - runner: []
+      parameters:
+        - $ref: "#/components/parameters/after"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/kind"
+      responses:
+        "200":
+          $ref: "#/components/responses/MessagePage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+    post:
+      operationId: postSessionMessage
+      summary: |
+        Post to a session's thread. A person posts as themselves. The runner posts as the session, and must name
+        the session's sponsor in `sponsor`; the first runner post sets the thread's sponsor, and a later one that
+        names a different sponsor is refused with 409.
+      tags: [session threads]
+      security:
+        - person: []
+        - runner: []
+      requestBody:
+        $ref: "#/components/requestBodies/NewMessage"
+      responses:
+        "201":
+          $ref: "#/components/responses/Message"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /projects/{owner}/{repo}/sessions/{session}/thread/watchers/me:
+    parameters:
+      - $ref: "#/components/parameters/owner"
+      - $ref: "#/components/parameters/repo"
+      - $ref: "#/components/parameters/session"
+    put:
+      operationId: watchSessionThread
+      summary: Watch a session's thread. Watching twice is the same as once.
+      tags: [session threads]
+      security:
+        - person: []
+      responses:
+        "200":
+          $ref: "#/components/responses/Thread"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+    delete:
+      operationId: unwatchSessionThread
+      summary: Stop watching a session's thread.
+      tags: [session threads]
+      security:
+        - person: []
+      responses:
+        "200":
+          $ref: "#/components/responses/Thread"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+  /projects/{owner}/{repo}/messages/{message}:
+    parameters:
+      - $ref: "#/components/parameters/owner"
+      - $ref: "#/components/parameters/repo"
+      - $ref: "#/components/parameters/message"
+    get:
+      operationId: getMessage
+      summary: One message, wherever it was posted, with its "record this?" marks.
+      tags: [messages]
+      security:
+        - person: []
+      responses:
+        "200":
+          $ref: "#/components/responses/MessageOk"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /projects/{owner}/{repo}/messages/{message}/record-marks/me:
+    parameters:
+      - $ref: "#/components/parameters/owner"
+      - $ref: "#/components/parameters/repo"
+      - $ref: "#/components/parameters/message"
+    put:
+      operationId: markMessageForRecord
+      summary: |
+        Mark a message "record this?" as the signed-in person (command-center/D36). It changes nothing else: not
+        the message, not the thread, and not the repository. Marking twice is the same as once.
+      tags: [messages]
+      security:
+        - person: []
+      responses:
+        "200":
+          $ref: "#/components/responses/MessageOk"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+    delete:
+      operationId: unmarkMessageForRecord
+      summary: Remove the signed-in person's own "record this?" mark from a message.
+      tags: [messages]
+      security:
+        - person: []
+      responses:
+        "200":
+          $ref: "#/components/responses/MessageOk"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+  /webhooks/github:
+    post:
+      operationId: receiveGitHubWebhook
+      summary: |
+        GitHub's deliveries to the threads app (command-center/D27). The body must be signed with the app's webhook
+        secret in `X-Hub-Signature-256`. A submitted review with text, and a created review comment, on a pull
+        request whose body names `Concern: <loop>/<concern>` are mirrored into that concern's thread before this
+        answers. A redelivery mirrors nothing twice. Other events and actions are accepted and ignored.
+      tags: [webhooks]
+      security: []
+      parameters:
+        - name: X-GitHub-Event
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-GitHub-Delivery
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: X-Hub-Signature-256
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: "^sha256=[0-9a-f]{64}$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: The delivery was accepted. `mirrored` lists the messages it created, if any.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+components:
+  securitySchemes:
+    person:
+      type: http
+      scheme: bearer
+      description: |
+        The GitHub token from the app's sign-in. The caller is identified with `GET /user` on it and must be a
+        collaborator on the project's repository (command-center/D28).
+    runner:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        A Google-signed ID token for the runner's Cloud Run service identity, whose audience is this service's URL
+        and whose email is one of the service accounts this deployment trusts as the runner (command-center/D28).
+
+  parameters:
+    owner:
+      name: owner
+      in: path
+      required: true
+      description: The owner of the project's repository. A project is keyed by its repository (command-center/D18).
+      schema:
+        $ref: "#/components/schemas/Login"
+    repo:
+      name: repo
+      in: path
+      required: true
+      description: The name of the project's repository.
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9._-]{1,100}$"
+    loop:
+      name: loop
+      in: path
+      required: true
+      description: A loop's folder name under `docs/loops/`.
+      schema:
+        $ref: "#/components/schemas/Name"
+    concern:
+      name: concern
+      in: path
+      required: true
+      description: A concern's file name in its loop's folder, without `.md`.
+      schema:
+        $ref: "#/components/schemas/Name"
+    session:
+      name: session
+      in: path
+      required: true
+      description: The runner's id for the session.
+      schema:
+        $ref: "#/components/schemas/SessionId"
+    message:
+      name: message
+      in: path
+      required: true
+      description: A message's `id`.
+      schema:
+        type: integer
+        minimum: 1
+    after:
+      name: after
+      in: query
+      required: false
+      description: Return only messages whose `seq` is greater than this. Omit it to start at the beginning.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    limit:
+      name: limit
+      in: query
+      required: false
+      description: The most messages to return.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 100
+    kind:
+      name: kind
+      in: query
+      required: false
+      description: Return only messages of these kinds, for example `kind=milestone` to collapse a session thread.
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          $ref: "#/components/schemas/Kind"
+
+  requestBodies:
+    NewMessage:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/NewMessage"
+
+  responses:
+    Thread:
+      description: The thread.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Thread"
+    MessagePage:
+      description: A page of messages, oldest first.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/MessagePage"
+    Message:
+      description: The message as stored.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Message"
+    MessageOk:
+      description: The message.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Message"
+    BadRequest:
+      description: The request is malformed, or a name, a parameter or the body is not valid.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: No token, a token GitHub does not accept, a service identity this deployment does not trust, or a webhook whose signature does not match.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: The caller is not a member of the project, or is the runner asking for something only a person may do.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: The project is not served here, or the message does not exist in it.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: The runner named a sponsor other than the session's.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unavailable:
+      description: |
+        GitHub (or Google's keys) could not be reached to identify the caller or check their access, so nothing is
+        answered; or this deployment is not configured yet, and only `/version` answers.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Version:
+      type: object
+      required: [commit]
+      additionalProperties: false
+      properties:
+        commit:
+          type: string
+          description: The commit SHA this deployment was built from, or `unknown` when it was not given one.
+
+    Login:
+      type: string
+      description: A GitHub login.
+      pattern: "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$"
+    Name:
+      type: string
+      pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+    SessionId:
+      type: string
+      pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    Kind:
+      type: string
+      enum: [message, milestone, narration]
+      description: |
+        `message` is what people write, and what a session writes to them. `milestone` is a step of a session
+        (started, branch opened, tests run, PR opened, stopped at a gate, finished). `narration` is everything
+        else a session says; clients collapse it to the milestones by default.
+
+    Person:
+      type: object
+      required: [login]
+      additionalProperties: false
+      properties:
+        login:
+          $ref: "#/components/schemas/Login"
+    Watcher:
+      type: object
+      required: [login, since]
+      additionalProperties: false
+      properties:
+        login:
+          $ref: "#/components/schemas/Login"
+        since:
+          type: string
+          format: date-time
+
+    Thread:
+      type: object
+      required: [project, scope, url, loop, concern, session, sponsor, members, watchers, last_seq]
+      additionalProperties: false
+      properties:
+        project:
+          type: string
+          description: The project's key, its repository as `owner/repo`.
+          examples: [jugonzal/architect-loop]
+        scope:
+          type: string
+          enum: [loop, concern, session]
+        url:
+          type: string
+          description: The thread's stable path on this service.
+          examples: [/projects/jugonzal/architect-loop/loops/command-center/concerns/threads/thread]
+        loop:
+          description: The loop, for a loop or concern thread.
+          type: [string, "null"]
+        concern:
+          description: The concern, for a concern thread.
+          type: [string, "null"]
+        session:
+          description: The session, for a session thread.
+          type: [string, "null"]
+        sponsor:
+          description: For a session thread, the sponsor the runner named when it first posted; otherwise null.
+          type: [string, "null"]
+        members:
+          description: The project's members, who may read, post and watch. They are the repository's collaborators.
+          type: array
+          items:
+            $ref: "#/components/schemas/Person"
+        watchers:
+          description: The members watching this thread.
+          type: array
+          items:
+            $ref: "#/components/schemas/Watcher"
+        last_seq:
+          description: The `seq` of the thread's latest message, or 0 when it has none.
+          type: integer
+          minimum: 0
+
+    NewMessage:
+      type: object
+      required: [body]
+      additionalProperties: false
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 65536
+        kind:
+          description: Defaults to `message`. Only a session may post a `milestone` or `narration`.
+          default: message
+          allOf:
+            - $ref: "#/components/schemas/Kind"
+        sponsor:
+          description: Required from the runner and refused from a person. The login of the session's sponsor.
+          allOf:
+            - $ref: "#/components/schemas/Login"
+
+    PersonAuthor:
+      type: object
+      required: [type, login]
+      additionalProperties: false
+      properties:
+        type:
+          const: person
+        login:
+          $ref: "#/components/schemas/Login"
+    SessionAuthor:
+      type: object
+      required: [type, session, sponsor]
+      additionalProperties: false
+      properties:
+        type:
+          const: session
+        session:
+          $ref: "#/components/schemas/SessionId"
+        sponsor:
+          $ref: "#/components/schemas/Login"
+    GitHubAuthor:
+      type: object
+      required: [type, login, association]
+      additionalProperties: false
+      description: |
+        Someone who commented on GitHub, mirrored here. They need not be a member: anyone may comment on a pull
+        request in a public repository. `association` is GitHub's `author_association`, such as `OWNER`,
+        `COLLABORATOR` or `NONE`.
+      properties:
+        type:
+          const: github
+        login:
+          type: string
+        association:
+          type: [string, "null"]
+    Source:
+      type: object
+      required: [type, url, pull_request, path, review_state]
+      additionalProperties: false
+      description: Where a mirrored message came from.
+      properties:
+        type:
+          type: string
+          enum: [github_review, github_review_comment]
+        url:
+          type: string
+        pull_request:
+          type: integer
+        path:
+          description: For a review comment, the file it is on.
+          type: [string, "null"]
+        review_state:
+          description: For a review, GitHub's state for it, such as `approved` or `changes_requested`.
+          type: [string, "null"]
+    RecordMark:
+      type: object
+      required: [login, marked_at]
+      additionalProperties: false
+      properties:
+        login:
+          $ref: "#/components/schemas/Login"
+        marked_at:
+          type: string
+          format: date-time
+
+    Message:
+      type: object
+      required: [id, seq, thread, kind, author, body, created_at, record_marks, source]
+      additionalProperties: false
+      properties:
+        id:
+          description: The message's id, unique in its project. It addresses the message under `/messages/{message}`.
+          type: integer
+          minimum: 1
+        seq:
+          description: Its position in its thread, from 1. Each new message in a thread has a greater `seq` than every message already readable there.
+          type: integer
+          minimum: 1
+        thread:
+          description: The `url` of its thread.
+          type: string
+        kind:
+          $ref: "#/components/schemas/Kind"
+        author:
+          oneOf:
+            - $ref: "#/components/schemas/PersonAuthor"
+            - $ref: "#/components/schemas/SessionAuthor"
+            - $ref: "#/components/schemas/GitHubAuthor"
+        body:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        record_marks:
+          description: The members who marked it "record this?", oldest first.
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordMark"
+        source:
+          description: For a message mirrored from GitHub, where it came from; otherwise null.
+          oneOf:
+            - $ref: "#/components/schemas/Source"
+            - type: "null"
+
+    MessagePage:
+      type: object
+      required: [messages, next_after]
+      additionalProperties: false
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+        next_after:
+          description: Pass this as `after` for the next page, or null when this page reached the newest message.
+          type: [integer, "null"]
+
+    WebhookResult:
+      type: object
+      required: [mirrored]
+      additionalProperties: false
+      properties:
+        mirrored:
+          type: array
+          items:
+            type: integer
+          description: The ids of the messages this delivery created.
+
+    Error:
+      type: object
+      required: [error, message]
+      additionalProperties: false
+      properties:
+        error:
+          type: string
+          enum: [bad_request, unauthorized, forbidden, not_found, conflict, unavailable, internal]
+        message:
+          type: string
