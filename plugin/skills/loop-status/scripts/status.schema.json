@@ -88,9 +88,14 @@
       "description": "The combined result of the checks on a commit: none when no check ran, unknown when it could not be read.",
       "enum": ["success", "failure", "pending", "none", "unknown"]
     },
+    "claim_ref": {
+      "description": "A concern's claim, written <loop>/<concern>/C<n>.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*/C[0-9]+$"
+    },
     "queue_kind": {
-      "description": "What a queue item asks of a person: answer a question, review a pull request, ship to an environment, or approve a record.",
-      "enum": ["question", "review", "ship", "record"]
+      "description": "What a queue item asks of a person: one kind for each item loop-status queues in step 6 and offers in its Record step. A person acts on the first four: answer a question, review a pull request, ship to an environment, or approve a record. The last three are shown read-only, with the command to run: a proof that needs something only a person has, a contradiction that needs a call, and a loop-document pull request that check_loop_pr.sh refused.",
+      "enum": ["question", "review", "ship", "record", "proof", "contradiction", "refused_pr"]
     },
     "main": {
       "description": "The main branch: its head and the result of its checks.",
@@ -272,24 +277,38 @@
         {"properties": {"kind": {"const": "question"}, "detail": {"$ref": "#/$defs/question_detail"}}},
         {"properties": {"kind": {"const": "review"}, "detail": {"$ref": "#/$defs/review_detail"}}},
         {"properties": {"kind": {"const": "ship"}, "detail": {"$ref": "#/$defs/ship_detail"}}},
-        {"properties": {"kind": {"const": "record"}, "detail": {"$ref": "#/$defs/record_detail"}}}
+        {"properties": {"kind": {"const": "record"}, "detail": {"$ref": "#/$defs/record_detail"}}},
+        {"properties": {"kind": {"const": "proof"}, "detail": {"$ref": "#/$defs/proof_detail"}}},
+        {"properties": {"kind": {"const": "contradiction"}, "detail": {"$ref": "#/$defs/contradiction_detail"}}},
+        {"properties": {"kind": {"const": "refused_pr"}, "detail": {"$ref": "#/$defs/refused_pr_detail"}}}
       ]
     },
     "question_detail": {
-      "description": "An open question (Q#), or a contradiction that needs a call (then ref is the contradicted C#).",
+      "description": "An open question (Q#). Its options, its recommendation and its default are kept apart: the recommendation is the answer the file recommends, and the default is what happens if nobody answers. A question written before options were recorded has no options and no recommendation, and shows only the question, what it blocks and its default.",
       "type": "object",
-      "required": ["ref", "question", "options", "recommendation", "blocks"],
+      "required": ["ref", "question", "options", "recommendation", "default", "blocks"],
       "additionalProperties": false,
       "properties": {
-        "ref": {"description": "<loop>/Q3, <loop>/<concern>/Q1, or <loop>/<concern>/C2.", "$ref": "#/$defs/text"},
+        "ref": {"description": "<loop>/Q3 or <loop>/<concern>/Q1.", "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)?/Q[0-9]+$"},
         "question": {"$ref": "#/$defs/text"},
-        "options": {"description": "The options to choose from; none is pre-selected.", "type": "array", "items": {"$ref": "#/$defs/text"}},
-        "recommendation": {"description": "The recommended answer, or the default if unanswered; null if there is none.", "type": ["string", "null"], "minLength": 1},
+        "options": {"description": "The options the file records, in its order, each with its main consequence; none is pre-selected. Empty for a question written before options were recorded.", "type": "array", "items": {"$ref": "#/$defs/option"}, "uniqueItems": true},
+        "recommendation": {"description": "The text of the option the file recommends, exactly as that option has it, or null when it recommends none; always null when there are no options, and never the default. JSON Schema cannot tie it to an option, so whatever writes a document must, and this schema's tests check it for every fixture.", "type": ["string", "null"], "minLength": 1},
+        "default": {"description": "What happens if nobody answers: the Questions table's 'Default if unanswered', as written; null when that cell is empty.", "type": ["string", "null"], "minLength": 1},
         "blocks": {"description": "What it blocks, as written in the Questions table.", "type": "array", "items": {"$ref": "#/$defs/text"}}
       }
     },
+    "option": {
+      "description": "One answer to a question, with its main consequence.",
+      "type": "object",
+      "required": ["text", "consequence"],
+      "additionalProperties": false,
+      "properties": {
+        "text": {"description": "The option, as the file writes it.", "$ref": "#/$defs/text"},
+        "consequence": {"description": "What choosing it means, as the file writes it.", "$ref": "#/$defs/text"}
+      }
+    },
     "review_detail": {
-      "description": "A pull request ready for review, or a loop-document pull request that check_loop_pr.sh refused.",
+      "description": "A pull request ready for review.",
       "type": "object",
       "required": ["pr", "proof"],
       "additionalProperties": false,
@@ -316,6 +335,43 @@
       "properties": {
         "path": {"$ref": "#/$defs/text"},
         "text": {"description": "The proposed text, as Markdown.", "$ref": "#/$defs/text"}
+      }
+    },
+    "proof_detail": {
+      "description": "An UNPROVEN claim that needs something only a person has: a device, an account, a production read. Shown read-only, with the command to run once that is to hand.",
+      "type": "object",
+      "required": ["claim", "environment", "missing", "supplied_by", "command"],
+      "additionalProperties": false,
+      "properties": {
+        "claim": {"$ref": "#/$defs/claim_ref"},
+        "environment": {"description": "The environment the claim must be proven on.", "$ref": "#/$defs/text"},
+        "missing": {"description": "What the proof needs that no agent has, from its UNPROVEN evidence line.", "$ref": "#/$defs/text"},
+        "supplied_by": {"description": "Who can supply it, as the evidence line names them: a person, or a role such as the owner.", "$ref": "#/$defs/text"},
+        "command": {"description": "The command to run once it is to hand, such as /loop-prove <loop>/<concern> <env>.", "$ref": "#/$defs/text"}
+      }
+    },
+    "contradiction_detail": {
+      "description": "A claim whose latest verdict is CONTRADICTS, with no decision dated after it, so it needs a call: redesign, or roll back. Shown read-only, with the command to run.",
+      "type": "object",
+      "required": ["claim", "evidence", "contradicts", "escalates", "command"],
+      "additionalProperties": false,
+      "properties": {
+        "claim": {"$ref": "#/$defs/claim_ref"},
+        "evidence": {"description": "Its CONTRADICTS evidence line.", "$ref": "#/$defs/evidence", "properties": {"verdict": {"const": "CONTRADICTS"}}},
+        "contradicts": {"description": "What the evidence contradicts: the design text it disproves, or the shared decision (<loop>/D#) it says it contradicts.", "$ref": "#/$defs/text"},
+        "escalates": {"description": "True when the evidence line says it contradicts a shared decision, which escalates to the loop as a question.", "type": "boolean"},
+        "command": {"description": "The command to run, such as /loop-design <loop>/<concern>, or /loop-diagnose when the cause is unknown.", "$ref": "#/$defs/text"}
+      }
+    },
+    "refused_pr_detail": {
+      "description": "A loop-document pull request that loop-status's check_loop_pr.sh refused, so no agent may merge it under LOOP.md §2.1. Shown read-only, with the command to run.",
+      "type": "object",
+      "required": ["pr", "failures", "command"],
+      "additionalProperties": false,
+      "properties": {
+        "pr": {"$ref": "#/$defs/pr"},
+        "failures": {"description": "The lines the checker printed for why it refused, in its order.", "type": "array", "items": {"$ref": "#/$defs/text"}},
+        "command": {"description": "The command to run, such as the checker again: scripts/check_loop_pr.sh --pr <n>.", "$ref": "#/$defs/text"}
       }
     },
     "start": {
