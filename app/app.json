@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Architect Loop",
+    "slug": "architect-loop",
+    "scheme": "architectloop",
+    "version": "0.1.0",
+    "platforms": ["ios", "android"],
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#EEF0EC",
+    "ios": {
+      "supportsTablet": false,
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "android": {},
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "redirects": [{ "source": "/index", "destination": "/inbox" }]
+        }
+      ],
+      "expo-font",
+      "expo-secure-store"
+    ]
+  }
+}
