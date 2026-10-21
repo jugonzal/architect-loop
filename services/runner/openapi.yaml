@@ -1,0 +1,419 @@
+openapi: 3.1.0
+info:
+  title: architect-loop session runner
+  version: 0.1.0
+  summary: Start a loop skill on a concern as a session that names its sponsor and stops at a budget.
+  description: |
+    The runner starts one session per dispatch, each in its own Cloud Run job, on its own fresh clone of the
+    project, from the plugin release named in the dispatch (command-center/session-runner).
+
+    Every call except `GET /version` carries the caller's GitHub token. The runner reads only `GET /user` with
+    it, to learn who is calling, and checks that person is a collaborator on the project with its own GitHub App.
+    The sponsor of a session is always that person, never a field of the request (command-center/D28).
+
+    Every money, token and time figure the runner reports is an estimate, and says so in its `kind`
+    (command-center/D23). A session's budget is a target it may pass by one model response: the session stops
+    at the first response that crosses it, and its final estimate includes the overshoot (command-center/D21).
+  license:
+    name: MIT
+servers:
+  - url: /
+security:
+  - githubToken: []
+paths:
+  /version:
+    get:
+      operationId: getVersion
+      summary: The commit this runner was built from (command-center/D32).
+      security: []
+      responses:
+        "200":
+          description: The commit this deployment serves.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Version"}
+        "503":
+          description: The deployment was not told which commit it serves.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Problem"}
+  /sessions:
+    post:
+      operationId: dispatch
+      summary: Start a skill on a concern as a session sponsored by the caller.
+      description: |
+        Refused (409) when the concern already has an open pull request or a running session, or when the
+        caller already runs as many sessions as the per-sponsor cap in the runner's config (3 by default,
+        command-center/D22). Each refusal names the pull requests or sessions that exist. The concern is
+        claimed atomically, so of two dispatches at once at most one starts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DispatchRequest"}
+      responses:
+        "201":
+          description: The session was claimed and its job started.
+          headers:
+            Location:
+              description: The session's URL.
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Session"}
+        "400":
+          description: The request is not a valid dispatch.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Problem"}
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/NotACollaborator"
+        "409":
+          description: Refused. The body names what already exists.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Refusal"}
+        "422":
+          description: The project is not served by this runner, or the concern or the plugin release does not exist.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Problem"}
+        "502":
+          description: |
+            GitHub or Cloud Run failed. When it was Cloud Run, the session had been claimed, and it ended with
+            outcome `error`, so the concern is free again.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Problem"}
+    get:
+      operationId: listSessions
+      summary: Sessions with their spend, every sponsor's, newest first.
+      parameters:
+        - name: state
+          in: query
+          description: "`active` (the default) lists sessions that are starting, running or stopping; `all` adds ended ones."
+          schema: {type: string, enum: [active, all], default: active}
+        - name: sponsor
+          in: query
+          description: Only this sponsor's sessions (a GitHub login).
+          schema: {type: string}
+        - name: project
+          in: query
+          description: Only this project's sessions.
+          schema: {$ref: "#/components/schemas/Project"}
+      responses:
+        "200":
+          description: The sessions, and the per-sponsor cap they count against.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SessionList"}
+        "400":
+          description: A query parameter is not valid.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Problem"}
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/NotACollaborator"
+        "502":
+          $ref: "#/components/responses/Upstream"
+  /sessions/{id}:
+    get:
+      operationId: getSession
+      summary: One session, with its latest published spend.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: The session.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Session"}
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/NotACollaborator"
+        "404":
+          $ref: "#/components/responses/NoSuchSession"
+        "502":
+          $ref: "#/components/responses/Upstream"
+  /sessions/{id}/stop:
+    post:
+      operationId: stopSession
+      summary: Ask a running session to stop. Only its sponsor may.
+      description: |
+        The session sees the request the next time it publishes its spend, at most 10 seconds later, interrupts
+        its model, publishes its final estimate and ends with outcome `sponsor`. Its branch and pull request
+        stay for a person to close; the runner merges and deletes nothing.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "202":
+          description: The stop was requested. The session is `stopping`.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Session"}
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: The caller is not a collaborator, or not this session's sponsor.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Problem"}
+        "404":
+          $ref: "#/components/responses/NoSuchSession"
+        "409":
+          description: The session has already ended.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Problem"}
+        "502":
+          $ref: "#/components/responses/Upstream"
+  /estimates:
+    get:
+      operationId: estimate
+      summary: What a skill is likely to spend on its model, before a start.
+      description: |
+        The median of that skill and model's last 10 measured sessions (command-center/D23). A pairing with
+        no measured session has no estimate (`estimate` is null). The model is the one the runner's config maps
+        the skill to, unless `model` names another.
+      parameters:
+        - name: skill
+          in: query
+          required: true
+          schema: {$ref: "#/components/schemas/Skill"}
+        - name: model
+          in: query
+          schema: {type: string, minLength: 1}
+      responses:
+        "200":
+          description: The estimate, or null when the pairing has none.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EstimateAnswer"}
+        "400":
+          description: The skill is missing or unknown.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Problem"}
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/NotACollaborator"
+        "502":
+          $ref: "#/components/responses/Upstream"
+components:
+  securitySchemes:
+    githubToken:
+      type: http
+      scheme: bearer
+      description: The caller's GitHub token. It needs no repository access; the runner calls only `GET /user` with it.
+  parameters:
+    SessionId:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, pattern: "^[0-9a-f]{32}$"}
+  responses:
+    Unauthenticated:
+      description: No GitHub token, or GitHub did not accept it.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    NotACollaborator:
+      description: The caller is not a collaborator on the project.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    NoSuchSession:
+      description: No session has this id.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Problem"}
+    Upstream:
+      description: GitHub did not answer as expected, so the runner could not tell who is calling.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Problem"}
+  schemas:
+    Project:
+      description: The project's key, its repository as owner/name (command-center/D18).
+      type: string
+      pattern: "^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$"
+    Skill:
+      description: The loop skill to run, without its slash.
+      type: string
+      enum: [loop-design, loop-build, loop-prove, loop-status]
+    Concern:
+      description: The concern to run it on, as loop/concern.
+      type: string
+      pattern: "^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$"
+    Version:
+      type: object
+      additionalProperties: false
+      required: [commit]
+      properties:
+        commit: {type: string, pattern: "^[0-9a-f]{7,40}$"}
+    DispatchRequest:
+      type: object
+      additionalProperties: false
+      required: [project, skill, concern, budget_usd, plugin_release]
+      properties:
+        project: {$ref: "#/components/schemas/Project"}
+        skill: {$ref: "#/components/schemas/Skill"}
+        concern: {$ref: "#/components/schemas/Concern"}
+        arguments:
+          description: Passed to the skill after the concern, as a person would type them.
+          type: string
+          maxLength: 2000
+          default: ""
+        budget_usd:
+          description: The session's budget in dollars, a target it may pass by one model response (command-center/D21).
+          type: number
+          exclusiveMinimum: 0
+        plugin_release:
+          description: The tagged release of the skills the session runs, never the clone's own `plugin/` (command-center/D17).
+          type: string
+          pattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+    Session:
+      type: object
+      additionalProperties: false
+      required: [id, project, skill, concern, arguments, model, sponsor, budget_usd, plugin_release, branch, state,
+                 outcome, created_at, started_at, ended_at, spend, pull_requests]
+      properties:
+        id: {type: string, pattern: "^[0-9a-f]{32}$"}
+        project: {$ref: "#/components/schemas/Project"}
+        skill: {$ref: "#/components/schemas/Skill"}
+        concern: {$ref: "#/components/schemas/Concern"}
+        arguments: {type: string}
+        model: {type: string, description: The model from the runner's skill to model map (session-runner D5).}
+        sponsor: {type: string, description: "The GitHub login of the person who dispatched it, from GET /user."}
+        budget_usd: {type: number}
+        plugin_release: {type: string}
+        branch: {type: string, description: "The branch the session's clone starts on, loop/concern."}
+        state:
+          type: string
+          enum: [starting, running, stopping, ended]
+        outcome:
+          description: |
+            How it ended, null until it has. `completed`: the skill finished. `budget`: it stopped at the first
+            response that crossed its budget. `sponsor`: its sponsor stopped it. `error`: it failed, or its job
+            could not start. `lost`: its job stopped publishing and the runner gave up on it.
+          type: [string, "null"]
+          enum: [completed, budget, sponsor, error, lost, null]
+        created_at: {type: string, format: date-time}
+        started_at: {type: [string, "null"], format: date-time}
+        ended_at: {type: [string, "null"], format: date-time}
+        spend:
+          description: The latest published spend, null until the job publishes its first.
+          oneOf:
+            - {$ref: "#/components/schemas/Spend"}
+            - {type: "null"}
+        pull_requests:
+          description: Pull requests opened from branches the session pushed, found when it ends.
+          type: array
+          items: {$ref: "#/components/schemas/PullRequest"}
+    SessionList:
+      type: object
+      additionalProperties: false
+      required: [sessions, cap_per_sponsor]
+      properties:
+        sessions:
+          type: array
+          items: {$ref: "#/components/schemas/Session"}
+        cap_per_sponsor:
+          description: How many sessions one sponsor may run at once, from the runner's config (command-center/D22).
+          type: integer
+          minimum: 1
+    Spend:
+      description: |
+        What a session has spent so far, or in all. Always an estimate. While it runs (`basis: per-step usage`)
+        the runner sums each model response's usage at list price; input and cache tokens are exact, output
+        tokens are a placeholder until the end, so it runs low. At the end (`basis: sdk result`) it is the SDK's
+        own estimate, overshoot included.
+      type: object
+      additionalProperties: false
+      required: [kind, basis, usd, overshoot_usd, tokens, wall_clock_s, as_of]
+      properties:
+        kind: {const: estimate}
+        basis: {type: string, enum: [per-step usage, sdk result]}
+        usd: {type: number, minimum: 0}
+        overshoot_usd:
+          description: How far past its budget the session went, 0 when it did not. Null while it runs.
+          type: [number, "null"]
+          minimum: 0
+        tokens: {$ref: "#/components/schemas/Tokens"}
+        wall_clock_s: {type: number, minimum: 0}
+        as_of: {type: string, format: date-time}
+    Tokens:
+      type: object
+      additionalProperties: false
+      required: [input, output, cache_creation, cache_read]
+      properties:
+        input: {type: integer, minimum: 0}
+        output: {type: integer, minimum: 0}
+        cache_creation: {type: integer, minimum: 0}
+        cache_read: {type: integer, minimum: 0}
+    EstimateAnswer:
+      type: object
+      additionalProperties: false
+      required: [skill, model, estimate]
+      properties:
+        skill: {$ref: "#/components/schemas/Skill"}
+        model: {type: string}
+        estimate:
+          oneOf:
+            - {$ref: "#/components/schemas/Estimate"}
+            - {type: "null"}
+    Estimate:
+      description: The median of the pairing's last measured sessions, at most 10 (command-center/D23).
+      type: object
+      additionalProperties: false
+      required: [kind, usd, wall_clock_s, sessions]
+      properties:
+        kind: {const: estimate}
+        usd: {type: number, minimum: 0}
+        wall_clock_s: {type: number, minimum: 0}
+        sessions: {type: integer, minimum: 1, maximum: 10}
+    PullRequest:
+      type: object
+      additionalProperties: false
+      required: [number, url, head]
+      properties:
+        number: {type: integer}
+        url: {type: string}
+        head: {type: string}
+    Refusal:
+      type: object
+      additionalProperties: false
+      required: [refused, message, pull_requests, sessions]
+      properties:
+        refused:
+          type: string
+          enum: [open-pull-request, running-session, sponsor-cap]
+        message: {type: string, description: A sentence that names what already exists.}
+        pull_requests:
+          description: For `open-pull-request`, the concern's open pull requests.
+          type: array
+          items: {$ref: "#/components/schemas/PullRequest"}
+        sessions:
+          description: For `running-session`, the concern's running sessions; for `sponsor-cap`, the sponsor's.
+          type: array
+          items: {$ref: "#/components/schemas/Session"}
+        cap:
+          description: For `sponsor-cap`, the cap the sponsor reached.
+          type: integer
+    Problem:
+      type: object
+      additionalProperties: false
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          enum: [unauthenticated, not-a-collaborator, invalid-request, unknown-project, unknown-concern,
+                 unknown-release, no-such-session, not-the-sponsor, already-ended, launch-failed, upstream-failed,
+                 no-commit, not-found, method-not-allowed]
+        message: {type: string}
