@@ -72,9 +72,16 @@ PR for the owner, and mention `/loop-init` once.
    - One `docs/loops/<loop>/<concern>.md` per concern from [templates/concern.md](templates/concern.md), filled
      only as far as the contract: front matter (`needs`, `touches` as best known, `effects` you can already see,
      `ships-to`) and Done when. Leave Design empty for `/loop-design`.
+   - Every question you leave open, in the README or a concern, carries its options in the file that raises it.
+     Its row in the Questions table gives the question, what it blocks and the default if unanswered. Under the
+     table, a `**Q<n> options**` list gives 2 to 4 options, each written `- **<option>**: <its main consequence>`,
+     with `(recommended)` at the end of the one you recommend. The default is what happens if nobody answers, so
+     keep it apart from the recommendation. The templates' Questions comment shows an example.
 
    Drop the templates' guidance comments. Never add a status line: a new loop is in the backlog because nothing
-   has started, and `/loop-status` will say so.
+   has started, and `/loop-status` will say so. Read the questions back with
+   `python3 scripts/questions.py docs/loops/<loop>` from the loop-status skill: it prints each one as it reads it,
+   and exits 1 naming every line it cannot read.
 
 8. **Stop and hand over.** Report in a few lines: the loop, its concerns, its relations (and any that worried
    you), the open questions, and that it is in the backlog. The next command, when the owner wants to start it,

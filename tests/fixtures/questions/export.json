@@ -1,0 +1,97 @@
+{
+  "questions": [
+    {
+      "ref": "export/Q1",
+      "file": "export/README.md",
+      "line": 31,
+      "number": "Q1",
+      "question": "Where do exports run?",
+      "open": true,
+      "answer": null,
+      "blocks": ["`export-format`", "`export-worker` (C2)"],
+      "default": "In the web process, behind a 30-second timeout",
+      "options": [
+        {"text": "In the web process", "consequence": "nothing new to deploy, but an export of more than about 10,000 widgets times out."},
+        {"text": "In a queue worker", "consequence": "no timeout and retries for free, but it waits for `export-worker`."},
+        {"text": "On the owner's device", "consequence": "no server cost, but every client needs its own exporter."}
+      ],
+      "recommendation": "In a queue worker"
+    },
+    {
+      "ref": "export/Q2",
+      "file": "export/README.md",
+      "line": 32,
+      "number": "Q2",
+      "question": "CSV or JSON?",
+      "open": false,
+      "answer": "D1",
+      "blocks": [],
+      "default": null,
+      "options": [
+        {"text": "CSV", "consequence": "opens in any spreadsheet; nested fields are flattened."},
+        {"text": "JSON", "consequence": "keeps nested fields, but most owners need a converter to read it."}
+      ],
+      "recommendation": "CSV"
+    },
+    {
+      "ref": "export/Q3",
+      "file": "export/README.md",
+      "line": 33,
+      "number": "Q3",
+      "question": "Include deleted widgets?",
+      "open": false,
+      "answer": "D2",
+      "blocks": [],
+      "default": null,
+      "options": [],
+      "recommendation": null
+    },
+    {
+      "ref": "export/worker/Q1",
+      "file": "export/worker.md",
+      "line": 25,
+      "number": "Q1",
+      "question": "Which queue? Options: the database table (no new service); a hosted queue (needs an account).",
+      "open": true,
+      "answer": null,
+      "blocks": ["C1 (queue choice)", "C2"],
+      "default": "The database table",
+      "options": [],
+      "recommendation": null
+    },
+    {
+      "ref": "export/worker/Q2",
+      "file": "export/worker.md",
+      "line": 26,
+      "number": "Q2",
+      "question": "How long does a finished export stay downloadable?",
+      "open": true,
+      "answer": null,
+      "blocks": ["C2"],
+      "default": "7 days",
+      "options": [
+        {"text": "24 hours", "consequence": "the least storage, but an owner who exports on a Friday has lost it by Monday."},
+        {"text": "7 days", "consequence": "covers a weekend and a holiday, and storage grows by about a week of exports."},
+        {"text": "Until the owner deletes it", "consequence": "never lost, but storage grows without bound and needs its own clean-up job."}
+      ],
+      "recommendation": "7 days"
+    },
+    {
+      "ref": "export/worker/Q3",
+      "file": "export/worker.md",
+      "line": 27,
+      "number": "Q3",
+      "question": "Does a retried export keep its `id | attempt` key, answered as `Q3 → <option>`?",
+      "open": true,
+      "answer": null,
+      "blocks": [],
+      "default": null,
+      "options": [
+        {"text": "Yes", "consequence": "retries are idempotent, so a crash mid-export never writes a row twice."},
+        {"text": "No", "consequence": "simpler keys, but a retry can write a second copy."}
+      ],
+      "recommendation": "Yes"
+    }
+  ],
+  "problems": []
+}
