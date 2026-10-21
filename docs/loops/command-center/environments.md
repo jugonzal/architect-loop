@@ -2,7 +2,7 @@
 needs: [one-repository]
 touches: [LOOP.md, scripts/gcp/, docs/runbooks/deploy.md, scripts/check.sh, tests/test_layout.py]
 effects: [two GCP projects, staging and production, linked to the owner's billing account (spending; cloud IAM; the owner runs the scripts that create them), an Artifact Registry repository and a deploy identity in each (spending; cloud IAM), new LOOP.md §3 rows and §4 deploy and verify commands (a change to the contract; the owner merges it), every deploy (the owner runs it, per LOOP.md §2)]
-ships-to: production
+ships-to: main
 ---
 # Any service can be deployed from a commit on main to staging or production with one command
 
@@ -32,6 +32,13 @@ ships-to: production
   yet, because no service has one.
 - Assumed: no GCP project exists for this repository. Check with `gcloud projects list` on the owner's account
   before the first bootstrap.
+- Verified 2026-10-20 (main @a9fde89, PR #19): `scripts/gcp/` holds `bootstrap.sh`, `deploy.sh`, `served.sh`,
+  `common.sh`, `projects.txt` and `probe/`, and `docs/runbooks/deploy.md` is a draft, not yet run. `LOOP.md` §3 has
+  one row per service and environment, with every URL `TODO(owner)`, and §4 has the bootstrap, deploy and verify
+  commands. Both project IDs in `projects.txt` are `TODO(owner)` (per D3). `deploy.sh` sets `COMMIT_SHA` (per
+  command-center/D47) and changes nothing else in a service's config, so the runner's and threads' settings,
+  secrets and Cloud SQL instance have no home yet; `service-manifests` adds one (per command-center/D46). No
+  `gcloud` command has been run against the owner's account.
 - Verified 2026-10-20 (`gh repo view jugonzal/architect-loop`): the repository is public, so an unauthenticated
   `/version` shows only a commit anyone can already see (command-center/D24, D32). (Corrected 2026-10-20: this
   said the repository was private.)
@@ -55,6 +62,11 @@ Per command-center/D31 and D32, and D1 here:
   deployed fails to read and shows `unknown`, which is true. §4 gets the deploy and verify commands.
 - The services' hosts join the independence pattern in `scripts/check.sh`, with a planted-host test.
 
+Per command-center/D43 this concern ships to `main`: its work is scripts the owner runs from `main`. C1 and C2 are
+proven by running them from a commit on `main` against staging's and then production's project, and their
+evidence lines cite that commit as `main @<sha>`, with the projects named in the line. Per command-center/D46,
+`service-manifests` extends `deploy.sh` and `bootstrap.sh` to apply each service's manifest.
+
 Rollback: Cloud Run keeps earlier revisions, so redeploying the previous SHA with the same command restores it.
 A failed deploy leaves the previous revision serving, and `/version` shows the old commit. Deleting a project is
 the owner's, and gated.
@@ -65,12 +77,14 @@ the owner's, and gated.
 | --- | --- | --- | --- |
 | D1 | Idempotent `gcloud` scripts that the owner runs create the infrastructure, with each step in the runbook. No Terraform. | Juan, 2026-10-20 | Which tool creates the infrastructure |
 | D2 | Each project gets its own billing budget, which emails the owner at 50%, 90% and 100% of a monthly amount the owner names when running the bootstrap. | Juan, 2026-10-20 | Q1 |
+| D3 | The owner names each environment's GCP project ID in `scripts/gcp/projects.txt` before its first bootstrap, and both scripts refuse an environment until it is named. | Juan, 2026-10-20 | Q2; confirms PR #19 |
 
 ## Questions
 
 | # | Question | Blocks | Default if unanswered |
 | --- | --- | --- | --- |
 | ~~Q1~~ | ~~Does each project get a billing budget alert, and at what amount?~~ → D2 | | |
+| ~~Q2~~ | ~~Where are the project IDs recorded, when they exist only once the owner picks them? (raised by this concern's build)~~ → D3 | | |
 
 ## Evidence
 

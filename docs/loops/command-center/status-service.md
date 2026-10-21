@@ -1,8 +1,8 @@
 ---
-needs: [one-repository, status-derivation, status-api, queue-items]
+needs: [one-repository, status-derivation, status-api, queue-items, service-manifests]
 touches: [services/status/, .github/workflows/status-service.yml]
 effects: [Cloud Run services in the staging and production GCP projects (spending; cloud IAM), the status service's own GitHub App with read access to jugonzal/architect-loop and webhooks on it (identity and access; per D27), the app's private key and webhook secret in Secret Manager (secrets)]
-ships-to: production
+ships-to: production/status
 ---
 # Status for the project is fresh within a minute of a push, a pull request event or a deploy
 
@@ -23,17 +23,19 @@ ships-to: production
 ### Where we are
 
 - No services, no GCP project and no GitHub App exist yet (2026-10-20). The projects and the `LOOP.md` §3 rows
-  come from `environments` now, not from this concern (per D31).
+  come from `environments` now, not from this concern (per D31). (Corrected 2026-10-20, main @a9fde89: the runner
+  and threads services exist, `environments` added one §3 row per service, and no project exists yet.)
 
 ### Approach
 
 A Cloud Run service (per D8) that runs the status script from the same commit it is built from (per D13, D15), gathers facts itself (webhooks plus polling
 of the `/version` URLs, per D9), and calls `loop_status.py derive --facts` (per D15, C3 of `status-derivation`).
-It serves `GET /projects/{project}/status` with the `status-api` document, keyed by project (per D18). A caller
+It serves `GET /projects/{owner}/{repo}/status` with the `status-api` document, keyed by project (per D18, D48). A caller
 is identified with `GET /user` on the token from the app's sign-in, and must be a collaborator on the project's
 repository, checked with the service's own read-only app (per D27, D28). Python 3.12, tests in
 `services/status/tests/`, run by `.github/workflows/status-service.yml` (per D30). It follows the deploy
-convention of D32, including its own `/version`. Rollback: redeploy the previous Cloud Run revision; it
+convention of D32, including its own `/version`, reads its commit from `COMMIT_SHA` (per D47), and declares its
+deploy config in `services/status/service.json`, in the format `service-manifests` defines (per D46). Rollback: redeploy the previous Cloud Run revision; it
 writes no data.
 
 ## Decisions

@@ -54,7 +54,16 @@ person in one terminal can push a loop forward.
   the method docs, `LOOP.md`, the proposals, this loop, `scripts/`, `tests/` and CI (`check`). There is no `app/`
   or `services/` yet, and no environment beyond `main`. In `LOOP.md`, the staging and production rows of §3 and
   the smoke test and deploy commands of §4 are `TODO(owner)`. (Corrected 2026-10-20: this bullet described
-  `jugonzal/loops` before the move.)
+  `jugonzal/loops` before the move.) (Superseded by the next bullet, 2026-10-20: `services/` and the §3 rows
+  now exist.)
+- **Verified** (`git ls-tree` and `LOOP.md` on `main` @a9fde89, 2026-10-20): `services/runner/` (PR #20) and
+  `services/threads/` (PR #21) exist, with their workflows `runner.yml`, `threads.yml` and `trailers.yml`, and
+  `scripts/gcp/` holds the bootstrap, deploy and probe (PR #19). There is no `app/`. `LOOP.md` §3 has one row per
+  service and environment (`staging/runner`, `production/threads`, ...) and no row named `staging` or
+  `production`, so `ships-to: production` matched no row (D43 fixes it). Every row's URL, and both project IDs in
+  `scripts/gcp/projects.txt`, are `TODO(owner)` until the owner runs the bootstrap. The smoke test in §4 is still
+  `TODO(owner)`. Each service reads its commit from `COMMIT_SHA`, which `deploy.sh` sets (per D47), and
+  `deploy.sh` changes nothing else in a service's config (D46 changes that).
 - **Verified** (`plugin/skills/loop-status/SKILL.md`, steps 1 to 6): the derivation exists only as a table in
   prose. Its facts are git, `gh pr list`, served-commit commands and evidence lines. Its states are parked,
   contradicted, open, blocked, ready, building, merged, shipped, stale and done, plus unknown. Its queue is
@@ -79,7 +88,8 @@ person in one terminal can push a loop forward.
 - **Verified** (`gh api repos/jugonzal/architect-loop/rulesets/<id>`, 2026-10-20): `main` is protected by an
   active ruleset, "main", with no bypass actors. It blocks deletion and force pushes, requires a pull request
   (no approvals), and requires the `skills` check. `trailers` joins it once `session-runner` adds the workflow
-  (per D24). (Corrected 2026-10-20: this said `main` had no protection. While the repository was private, both
+  (per D24). (Checked again on main @a9fde89, 2026-10-20: `trailers.yml` exists since PR #20, and the ruleset
+  still requires only `skills`; making `trailers` required is the owner's, in `session-runner`'s effects.) (Corrected 2026-10-20: this said `main` had no protection. While the repository was private, both
   the branch protection and the rulesets APIs answered 403, "Upgrade to GitHub Pro or make this repository public
   to enable this feature", and that is why it went public.)
 - **Verified** (`git log --all -p`, `gh pr list` bodies, and every PR's issue and review comments, 2026-10-20):
@@ -101,9 +111,23 @@ person in one terminal can push a loop forward.
   container on its own fresh clone, from an installed plugin. It reports tokens, a client-side cost estimate and
   time, and stops at a budget, though only after the response that crosses it. (Corrected 2026-10-20: this was
   the loop's riskiest assumption.)
+- **Verified** (GitHub's docs, https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps,
+  read 2026-10-20): the web flow's token exchange requires the OAuth app's client secret, with or without PKCE.
+  The device flow needs no secret, and must be enabled in the app's settings (`app-shell` D1).
+- **Verified** (GitHub's docs, https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app,
+  read 2026-10-20): an installation token expires after 1 hour, and can be limited to chosen repositories and
+  permissions when it is minted (`session-runner` D7).
+- **Verified** (the runner on `main` @a9fde89, 2026-10-20): every session adds `Concern:` to its commits and PR
+  bodies whatever its skill (D45 changes that). A dispatch must name a concern and one of `loop-design`,
+  `loop-build`, `loop-prove` and `loop-status`, so `/loop-ship` and a loop's record step cannot be dispatched.
+  An open PR or a running session refuses every skill on its concern. Any positive budget is accepted. The only
+  store is SQLite, which the service and its jobs, in separate containers, cannot share (D44). The job holds the
+  app's private key. Nothing in the job posts to a thread. `runner-dispatch` and `runner-store` build the changes,
+  and `session-narration` the threads.
 - **Missing:** `LOOP.md` §3 rows for staging and production, with a `/version` URL for each service (per D8, D9).
   `environments` adds them, and the owner merges that change (per D31). (Corrected 2026-10-20: this said
-  `status-service` adds them.)
+  `status-service` adds them.) (Corrected 2026-10-20: PR #19 added the rows; only their URLs are missing, until
+  the owner runs the bootstrap.)
 
 ## Shared decisions
 
@@ -150,6 +174,13 @@ person in one terminal can push a loop forward.
 | D39 | The three missing queue kinds and D33's options move to a new concern, `queue-items`, which needs `status-api` and works in its three paths. `status-api` keeps what PR #11 delivered (its C3); its C1 is split. The concerns that read queue items need `queue-items`: `status-derivation`, `addressed-to-people`, `status-service`, `app-shell` and `app-inbox`. | Juan, 2026-10-20 | Closes Q40 |
 | D40 | The three read-only kinds each carry the command to run and their facts. A proof names the claim, the environment, what is missing and who can supply it. A contradiction names the claim, its CONTRADICTS line, what it contradicts and whether it escalates to the loop. A refused loop-document PR names the PR and the checker's failure lines. | Juan, 2026-10-20 | Closes Q41 |
 | D41 | A question item's options are each a text with its consequence. Its recommendation names one option or is null, and its default is the table's "Default if unanswered", kept apart. A question written before the format has no options and no recommendation. `question-options`' reader returns this shape. | Juan, 2026-10-20 | Closes Q42 |
+| D42 | A concern's `needs` lists the concerns its build relies on whose work is not on `main` yet, and any concern not on `main` yet whose `touches` it shares. Once a needed concern's work is on `main`, the consumer builds against it there, and its proofs on an environment wait until that environment serves the need. Needs that are already done may stay. On 2026-10-20 this drops `session-runner`, `threads`, `question-options` and `environments` from the needs of the concerns that had them. | Juan, 2026-10-20 | Closes Q43 |
+| D43 | A concern's `ships-to` names the `LOOP.md` §3 row that serves its work: `production/<service>` for a service, `production/app` for the app (a row that `app-shell` adds, with how a build reports its commit), and `main` for scripts and skills. A claim whose Prove names staging is proven on `staging/<service>` first and then on its production row, and only the production line counts toward done. `environments` ships to `main`: its work is scripts the owner runs from `main`, and its proofs cite the commit they ran from. | Juan, 2026-10-20 | Closes Q44 |
+| D44 | The runner's and `notifications`' operational stores are Firestore, each service in a database of its own in its environment's project (per D26). The thread store stays Cloud SQL Postgres (per D8). | Juan, 2026-10-20 | Closes Q45; refines D8 |
+| D45 | Only a `/loop-build` session's commits and PR carry `Concern:`. Every runner session's commits and PRs carry `Sponsored-by:`. This matches how design, proof and record commits are written from a terminal, so `/loop-status` never counts them as build work. | Juan, 2026-10-20 | Closes Q46; rewords `session-runner` C1 |
+| D46 | Each service's deploy config lives in a manifest in its own folder: its non-secret settings, the names of its secrets, its Cloud SQL instance, its runtime identity, its jobs and the APIs it needs. `deploy.sh` applies it on every deploy, so the config is reviewed in pull requests and rolls back with the code, and `bootstrap.sh` enables the APIs and creates what the manifests declare. `service-manifests` builds this for the runner and threads, and each later service adds its own manifest. | Juan, 2026-10-20 | Closes Q47 |
+| D47 | Every service reads the commit it runs from the environment variable `COMMIT_SHA`, which `deploy.sh` sets. | Juan, 2026-10-20 | Closes Q48; refines D32; confirms PRs #19, #20 and #21 |
+| D48 | Every service's API keys a project as `{owner}/{repo}` in its paths, as threads does (`/projects/{owner}/{repo}/...`). The status service serves `/projects/{owner}/{repo}/status`. | Juan, 2026-10-20 | Closes Q49; refines D18; confirms PR #21 |
 
 ## Questions
 
@@ -197,6 +228,13 @@ person in one terminal can push a loop forward.
 | ~~Q40~~ | ~~How does the schema catch up with D33 and D34, now that PR #11 merged with four kinds and plain options? (raised by `status-api`)~~ → D39 | | |
 | ~~Q41~~ | ~~What do the three read-only kinds of queue item carry?~~ → D40 | | |
 | ~~Q42~~ | ~~How does a question item carry its options, recommendation and default?~~ → D41 | | |
+| ~~Q43~~ | ~~When does a concern's `needs` count as met, when the services it needs ship to an environment that does not exist yet? (raised by the board after PRs #18 to #21 merged)~~ → D42 | | |
+| ~~Q44~~ | ~~What does `ships-to` name, now that `LOOP.md` §3 has one row per service and none named `production`? (raised by `environments`' build)~~ → D43 | | |
+| ~~Q45~~ | ~~Which database backs the runner's store, when its service and jobs cannot share SQLite? (raised by `session-runner`'s build)~~ → D44 | | |
+| ~~Q46~~ | ~~Which runner sessions add `Concern:` to their commits and PRs? (raised by `session-runner`'s build)~~ → D45 | | |
+| ~~Q47~~ | ~~Where does each service's deploy config live? (raised by `environments`' and `threads`' builds)~~ → D46 | | |
+| ~~Q48~~ | ~~Which environment variable carries a service's commit? (raised by `environments`' build)~~ → D47 | | |
+| ~~Q49~~ | ~~How does a service's API name a project in its paths? (raised by `threads`' build)~~ → D48 | | |
 
 ## Evidence
 

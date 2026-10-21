@@ -1,8 +1,8 @@
 ---
-needs: [one-repository, app-shell, threads, session-runner]
+needs: [one-repository, app-shell]
 touches: [app/src/app/threads/, app/src/features/threads/]
 effects: []
-ships-to: production
+ships-to: production/app
 ---
 # A project member can read and post in a concern's or a session's thread from the phone
 
@@ -21,7 +21,8 @@ ships-to: production
 
 Follow the Session thread artboard (per D4), without its objection block, which belongs to a later loop. The
 threads and runner clients are generated inside `app/src/features/threads/` from each service's `openapi.yaml`
-(per D29).
+(per D29). Both are on `main` since PRs #20 and #21, so this concern builds against them there, and its proofs
+on staging wait until staging serves them (per D42).
 
 ## Decisions
 

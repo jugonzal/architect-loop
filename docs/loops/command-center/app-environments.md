@@ -2,7 +2,7 @@
 needs: [one-repository, app-shell, status-api]
 touches: [app/src/app/(tabs)/environments/, app/src/features/environments/]
 effects: []
-ships-to: production
+ships-to: production/app
 ---
 # Anyone on the project can see what each environment serves, and what is merged but not shipped
 
