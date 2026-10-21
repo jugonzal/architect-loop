@@ -134,7 +134,8 @@ class FormatTest(unittest.TestCase):
 
     def test_an_escaped_pipe_and_an_arrow_stay_in_an_open_question(self):
         q3 = self.q["export/worker/Q3"]
-        self.assertEqual(q3["question"], "Does a retried export keep its `id | attempt` key, answered as `Q3 → <option>`?")
+        self.assertEqual(q3["question"],
+                         "Does a retried export keep its `id | attempt` key, answered as `Q3 → <option>`?")
         self.assertTrue(q3["open"])
         self.assertEqual((q3["blocks"], q3["default"]), ([], None))
 
@@ -292,7 +293,7 @@ class TemplateTest(unittest.TestCase):
         for name in ("loop-plan", "loop-design"):
             text = read(os.path.join(SKILLS, name, "SKILL.md"))
             for words in ("**Q<n> options**", "(recommended)", "scripts/questions.py"):
-                self.assertIn(words, text, "%s SKILL.md" % name)
+                self.assertTrue(words in text, "%s SKILL.md does not name %s" % (name, words))
 
 
 if __name__ == "__main__":

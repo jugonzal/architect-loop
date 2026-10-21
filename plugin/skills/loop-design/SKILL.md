@@ -85,8 +85,17 @@ and ask before reading it, leave the PR for the owner, and mention `/loop-init` 
 5. **Record each answer as it comes in.**
    - A shared decision goes in the README: `D# | the decision in the owner's terms | <owner>, YYYY-MM-DD | the Q#
      it closes, anything it supersedes`. A private one goes in the concern, the same way.
-   - Strike the answered question through with `→ D#`. Never renumber. A decision that reverses an earlier one
-     strikes it through with `superseded by D#, YYYY-MM-DD`.
+   - Strike the answered question through with `→ D#`, and keep its options list, so the reasoning stays beside
+     the decision. Never renumber. A decision that reverses an earlier one strikes it through with
+     `superseded by D#, YYYY-MM-DD`.
+   - A question that stays open (deferred, waiting on a spike, or not reached) is written in the file that raises
+     it, with what step 4 laid out. Its row in the Questions table gives the question, what it blocks and the
+     default if unanswered. Under the table, a `**Q<n> options**` list gives 2 to 4 options, each written
+     `- **<option>**: <its main consequence>`, with `(recommended)` at the end of the one you recommend. The
+     default is what happens if nobody answers, so keep it apart from the recommendation. A question written
+     before this format has no list; give it one whenever you leave it open. Read the files back with
+     `python3 scripts/questions.py docs/loops/<loop>` from the loop-status skill, which exits 1 naming every
+     line it cannot read.
    - "You pick" is recorded as `agent, delegated by <owner>, YYYY-MM-DD`, so the provenance is honest. A gated or
      irreversible choice (`LOOP.md` §2) is never delegated silently: ask even if the owner said "you pick" earlier.
    - Decisions made in passing ("let's just use Postgres") count. Offer to record them.

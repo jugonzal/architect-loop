@@ -38,6 +38,27 @@ check it), missing. Concerns add the detail for their own touches.>
 
 ## Questions
 
+<!-- One row per question: the question in one sentence, the concerns or goals it blocks, and what happens if
+     nobody answers. Under the table, each open question gets a **Q<n> options** list of 2 to 4 options, each a
+     bold text, a colon and its main consequence, with (recommended) at the end of the one you recommend. The
+     default is what happens if nobody answers, so it may differ from the recommendation. An answered question is
+     struck through with → D# and keeps its list. loop-status's scripts/questions.py reads this format. For
+     example:
+
+| # | Question | Blocks | Default if unanswered |
+| --- | --- | --- | --- |
+| Q1 | Where do exports run? | `export-worker`, G1 | In the web process, until G1's timing fails |
+| ~~Q2~~ | ~~One export format, or one per client?~~ → D1 | | |
+
+**Q1 options**
+- **In the web process**: nothing new to deploy, but G1's 10,000 widgets may not fit in its timeout.
+- **In a worker**: no timeout, but `export-worker` needs a queue first. (recommended)
+
+**Q2 options**
+- **One format**: one exporter to keep, and every client reads it. (recommended)
+- **One per client**: each client gets its best fit, at the cost of an exporter each.
+-->
+
 | # | Question | Blocks | Default if unanswered |
 | --- | --- | --- | --- |
 

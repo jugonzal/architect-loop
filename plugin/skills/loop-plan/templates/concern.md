@@ -52,6 +52,26 @@ ships-to: production
 
 ## Questions
 
+<!-- One row per question: the question in one sentence, the claims it blocks, and what happens if nobody answers.
+     Under the table, each open question gets a **Q<n> options** list of 2 to 4 options, each a bold text, a colon
+     and its main consequence, with (recommended) at the end of the one you recommend. The default is what
+     happens if nobody answers, so it may differ from the recommendation. An answered question is struck through
+     with → D# and keeps its list. loop-status's scripts/questions.py reads this format. For example:
+
+| # | Question | Blocks | Default if unanswered |
+| --- | --- | --- | --- |
+| Q1 | Where does the export run? | C2 | In the web process, behind a 30-second timeout |
+| ~~Q2~~ | ~~CSV or JSON?~~ → D1 | | |
+
+**Q1 options**
+- **In the web process**: nothing new to deploy, but a large export times out.
+- **In a queue worker**: no timeout, and retries come free, but it waits for the `queue` concern. (recommended)
+
+**Q2 options**
+- **CSV**: opens in any spreadsheet, but nested fields are flattened. (recommended)
+- **JSON**: keeps nested fields, but most readers need a converter.
+-->
+
 | # | Question | Blocks | Default if unanswered |
 | --- | --- | --- | --- |
 
