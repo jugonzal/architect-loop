@@ -1,0 +1,16 @@
+{
+  "identity": {"name": "threads", "roles": ["roles/cloudsql.client"]},
+  "apis": ["sqladmin.googleapis.com", "sql-component.googleapis.com"],
+  "settings": {
+    "THREADS_PROJECTS": "jugonzal/architect-loop",
+    "THREADS_GITHUB_APP_ID": "TODO(owner)",
+    "THREADS_AUDIENCE": "https://threads-{number}.{region}.run.app",
+    "THREADS_RUNNER_SERVICE_ACCOUNTS": "runner@{project}.iam.gserviceaccount.com"
+  },
+  "secrets": {
+    "DATABASE_URL": "threads-database-url",
+    "THREADS_GITHUB_APP_PRIVATE_KEY": "threads-github-app-private-key",
+    "THREADS_GITHUB_WEBHOOK_SECRET": "threads-github-webhook-secret"
+  },
+  "cloudsql": "threads"
+}
