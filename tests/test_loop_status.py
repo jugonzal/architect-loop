@@ -247,6 +247,10 @@ class World:
     def ref(self, name):
         return self.names.get(name, name)
 
+    def checkout(self, branch):
+        if self.order:  # nothing to check out before the first commit
+            self.git("checkout", "-q", branch)
+
     def render(self, tree):
         base = os.path.join(FIXTURES, tree)
         out = {}
@@ -283,7 +287,7 @@ class World:
         self.git("config", "commit.gpgsign", "false")
         for step in self.spec["steps"]:
             if "tree" in step:
-                self.git("checkout", "-q", "main")
+                self.checkout("main")
                 rendered = self.render(step["tree"])
                 if step["tree"] == "project":
                     self.files = rendered
@@ -292,7 +296,7 @@ class World:
                 self.git("commit", "-q", "-m", step["message"], env=self.dated())
                 self.record(step["commit"])
             elif "commit" in step:
-                self.git("checkout", "-q", step.get("on", "main"))
+                self.checkout(step.get("on", "main"))
                 self.write(step.get("files", {}))
                 for rel, text in step.get("append", {}).items():
                     with open(os.path.join(self.work, rel), "a", encoding="utf-8") as f:
@@ -972,7 +976,7 @@ class TableTest(unittest.TestCase):
         m.pr("loop/thing", 2, "MERGED", base="loop/base", merge_sha=side)
         state, c = self.state(m)
         self.assertEqual(state, "unknown")
-        self.assertIn("no row", c["reason"])
+        self.assertIn("no row", c["reason"].lower())
         m.branches["loop/thing"] = side
         self.assertEqual(self.state(m)[0], "building", "its branch still exists, and none of its work is on main")
 
