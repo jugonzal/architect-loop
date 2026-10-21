@@ -38,25 +38,46 @@ which upgrades the project.
 
 ## Steps
 
-1. **Gather facts once, read-only.**
-   - `git fetch --prune`, then the main branch's SHA (`git rev-parse origin/<main>`).
+Steps 1 to 6 are one script, [scripts/loop_status.py](scripts/loop_status.py) (Python 3, standard library only).
+Run it from the repository's root: `python3 <this skill>/scripts/loop_status.py` gathers the facts, derives every
+state and prints the board of step 9; `<loop>` or `<loop>/<concern>` narrows the board, and `--json` prints the
+status document that [scripts/status.schema.json](scripts/status.schema.json) describes instead. Gathering and
+deriving are separate: `loop_status.py gather > facts.json` writes the facts document, and
+`loop_status.py derive --facts facts.json` derives from it alone, so the same facts always give the same board,
+whoever gathered them. The steps below say what it reads and how it decides, and the table in step 4 is its
+specification. Read its board, then do what only reading can (the first and last checks of step 8), and report.
+If the script cannot run, gather the same facts with the commands below and apply the table by hand.
+
+1. **Gather facts once, read-only.** `loop_status.py gather` runs these, and nothing that writes:
+   - `git fetch --prune`, then the main branch's SHA (`git rev-parse origin/<main>`). The loop documents and
+     `LOOP.md` are read as they are on that commit, never from the working tree.
    - For each environment in `LOOP.md` §3 that agents may read, its served commit, using its command. If the
      command fails or is missing, the environment's state is *unknown*. Say so, and never guess.
-   - Pull requests, in one call: `gh pr list --state all --limit 300 --json number,title,headRefName,baseRefName,state,isDraft,mergeCommit,body,url,statusCheckRollup`.
+   - Pull requests, in one call: `gh pr list --state all --limit 300 --json number,title,headRefName,baseRefName,state,isDraft,mergeCommit,body,url,statusCheckRollup,files`.
      Repeat for any other repository named in a `touches` or `prs` entry, and fetch any PR listed in a `prs`
      entry that the list did not return with `gh pr view <n> --json <same fields>`.
    - Commits on main that carry a trailer: `git log origin/<main> --format='%H%x09%(trailers:key=Concern,valueonly,separator=%x2C)'`.
    - CI for the main branch's head, from `LOOP.md` §4 or `gh run list --commit <sha>`.
+   - The answers to the questions steps 3, 4 and 8 ask of git: `git merge-base --is-ancestor`,
+     `git log <a>..<b> -- <touches>` and `git merge-base`, or for another repository
+     `gh api repos/<owner>/<repo>/compare/<a>...<b>`.
+   - For each open loop-document PR, `scripts/check_loop_pr.sh` run on its head in a throwaway clone.
+
+   A fact that cannot be read is kept with its error, so whatever depends on it derives as `unknown`.
 
 2. **Read every loop.** Each folder in `docs/loops/` is a loop: `README.md` plus one file per concern. Parse
    each concern's front matter (`needs`, `touches`, `effects`, `ships-to`, `prs`, `parked`), its claims
-   (`C#` under Done when), its decisions and questions, and its evidence lines.
+   (`C#` under Done when), its decisions and questions, and its evidence lines. Questions are read by
+   [scripts/questions.py](scripts/questions.py), with their options, recommendation and default. A `ships-to`
+   names a row of `LOOP.md` §3, such as `main`, `staging` or `production/<service>`, and is looked up by that name.
 
 3. **Link work to each concern.** Its work is the union of: pull requests whose head branch is
    `<loop>/<concern>`, or whose body carries `Concern: <loop>/<concern>`; commits on main with that trailer; and
    anything listed in `prs`. For a merged PR, the commit that counts is its merge commit (`mergeCommit`), and a PR
    counts as merged only if that commit is on main (`git merge-base --is-ancestor <sha> origin/<main>`). GitHub's
-   "merged" is not enough: a stacked PR can merge into another branch, where nothing deploys.
+   "merged" is not enough: a stacked PR can merge into another branch, where nothing deploys. A PR merged in
+   another repository counts as merged when its merge commit is on that repository's main (the compare API says
+   `ahead` or `identical`), and for `ships-to: main`, that main serves it.
 
    Without `gh` (not installed, not authenticated, or a host other than GitHub), link from git alone: a PR's work
    on main is the commit whose subject ends `(#N)` (a squash merge) or starts `Merge pull request #N` (a merge
@@ -83,7 +104,8 @@ which upgrades the project.
 
    Definitions:
    - **Serves:** the environment's served commit has every one of the concern's merge commits as an ancestor.
-     For `ships-to: main`, the main branch's head serves whatever is on main.
+     For `ships-to: main`, the main branch's head serves whatever is on main, including a PR merged in another
+     repository whose merge commit is on that repository's main (step 3).
    - **Current HOLDS for a claim on an environment:** its latest evidence line is HOLDS there, its commit is an
      ancestor of the served commit, and `git log --format=%h <proof>..<served> -- <touches>` prints nothing.
      A claim whose Prove says CI holds at rung 5 when CI is green on the main branch's head, with no line needed.
@@ -100,10 +122,14 @@ which upgrades the project.
    **backlog** while none of its
    concerns has a decision, linked work or evidence; shared decisions recorded while planning do not count, so a
    loop stays in the backlog until someone designs or builds one of its concerns. **done** when every concern is
-   done and every `G#` has a current HOLDS. Otherwise **active**.
+   done and every `G#` has a current HOLDS. Otherwise **active**. **Unknown is a loop state too**: when which of
+   these holds rests on a fact that cannot be read (every concern is done or unknown, a goal's environment cannot
+   be read, or a loop that would be in the backlog has linked work that cannot be read), the loop is `unknown`,
+   names what is missing, and is never guessed as active.
 
 6. **Find what needs the owner**, across every loop in scope, and sort it by how many concerns each item
-   unblocks (counting through `needs`, across loops too):
+   unblocks (counting through `needs`, across loops too). The script's `queue` holds one item for each thing
+   below, with the facts it rests on and, for the last three kinds, the command to run:
    - open questions, each with its recommendation and what it blocks;
    - PRs that are ready for review, with CI green and the proof in their body;
    - concerns that are merged and waiting to ship, with their declared `effects` as manual steps;
@@ -116,7 +142,8 @@ which upgrades the project.
    concerns with an incomplete contract (design can draft and gather questions). Several of these can run at
    once, one agent and one worktree each.
 
-8. **Look for drift**, cheaply. Flag:
+8. **Look for drift**, cheaply. The script flags the four checks in the middle of this list, and evidence lines and
+   questions it cannot read; the first and the last need reading, so do those yourself. Flag:
    - "Where we are" text in a loop or concern that the code under its `touches` now contradicts;
    - two concerns that are both not yet merged (open, blocked, ready or building), in this loop or across active
      loops, with overlapping `touches` and no `needs` between them. Concerns already on `main` cannot collide;
@@ -184,4 +211,5 @@ Record only what no command can re-observe. Never record that something is built
 ## Notes
 
 - A deploy that succeeded is not a claim that holds. Shipped and done are different states for that reason.
-- If two runs on the same facts ever disagree, the derivation table above is what to fix, not the facts.
+- If two runs on the same facts ever disagree, the derivation table above is what to fix, not the facts. Fix the
+  table first, then `scripts/loop_status.py` to match it, with a fixture case for the row in the same change.
