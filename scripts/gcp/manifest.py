@@ -355,7 +355,7 @@ def summary(config, label):
                                  or "none"),
              "  Cloud SQL %s" % (service["cloudsql"] or "none")]
     for name, job in config["jobs"].items():
-        lines.append("  job %s: `%s`; tasks %d, retries %d, timeout %d s; settings %s; secrets %s" % (
+        lines.append("  job %s: %s; tasks %d, retries %d, timeout %d s; settings %s; secrets %s" % (
             name, " ".join(job["command"]), job["tasks"], job["max_retries"], job["task_timeout_s"],
             ", ".join(sorted(job["env"])), ", ".join(sorted(job["secrets"])) or "none"))
     return "\n".join(lines)
