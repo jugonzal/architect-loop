@@ -1,8 +1,8 @@
 ---
-needs: [one-repository, session-runner, threads]
-touches: [services/runner/narration/]
+needs: [one-repository, runner-dispatch]
+touches: [services/runner/narration/, services/runner/runner/session.py, services/runner/tests/test_narration.py]
 effects: []
-ships-to: production
+ships-to: production/runner
 ---
 # A running session's milestones appear in its session thread as they happen
 
@@ -20,7 +20,11 @@ ships-to: production
 
 ### Where we are
 
-- Neither the runner nor the thread store exists yet (2026-10-20).
+- Neither the runner nor the thread store exists yet (2026-10-20). (Superseded by the next bullet, 2026-10-20.)
+- Verified 2026-10-20 (main @a9fde89): the runner (PR #20) and threads (PR #21) exist. Threads lets the runner post
+  to a session's thread as that session, with its sponsor, and read members' messages since its last `seq`. The
+  runner's job, `services/runner/runner/session.py`, has no hook for narration, so this concern must change it.
+  `runner-dispatch` changes that file too, so this concern waits for it (per D42).
 
 ### Approach
 

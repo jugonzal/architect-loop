@@ -57,12 +57,13 @@ Per D39: this concern works in `status-api`'s three paths, whose work is already
 
 | # | Decision | Decided by, date | Closes |
 | --- | --- | --- | --- |
+| D1 | `schema_version` stays 1. PR #17 merged at version 1, and nothing reads the schema yet. | Juan, 2026-10-20 | Q1 |
 
 ## Questions
 
 | # | Question | Blocks | Default if unanswered |
 | --- | --- | --- | --- |
-| Q1 | Does `schema_version` change with this concern? It could stay at 1, since nothing produces or reads status documents yet (recommended), or become 2, so anything written against version 1 can tell. | | Stays at 1, unless something reads the schema by the time this merges |
+| ~~Q1~~ | ~~Does `schema_version` change with this concern?~~ → D1 | | |
 
 ## Evidence
 

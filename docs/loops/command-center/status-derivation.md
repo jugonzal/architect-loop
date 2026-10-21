@@ -1,5 +1,5 @@
 ---
-needs: [one-repository, status-api, queue-items, question-options]
+needs: [one-repository, status-api, queue-items]
 touches: [plugin/skills/loop-status/scripts/loop_status.py, plugin/skills/loop-status/SKILL.md, tests/test_loop_status.py, tests/fixtures/loop_status/]
 effects: []
 ships-to: main
@@ -44,7 +44,9 @@ The queue carries all seven kinds of item that step 6 lists (per D34), each with
 (per D38). Step 5 of the table gains a loop state `unknown`, for a loop whose state rests on a fact that could not
 be read (per D37). A question item takes its options and
 recommendation from the reader that `question-options` adds beside this script, so the format has one parser
-(per D33).
+(per D33). That reader, `plugin/skills/loop-status/scripts/questions.py`, is on `main` since PR #18, so this
+concern no longer waits for `question-options` (per D42). A concern's `ships-to` names a `LOOP.md` §3 row, such as
+`production/runner` (per D43), and the script looks the row up by that name.
 
 Before the script implements the table, the table gains D19's rule: a pull request merged in another repository
 counts as merged when its merge commit is on that repository's main. C1's fixtures get a row for it (per D19).

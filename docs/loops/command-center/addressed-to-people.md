@@ -1,5 +1,5 @@
 ---
-needs: [one-repository, status-derivation, status-api, queue-items, environments, question-options]
+needs: [one-repository, status-derivation, status-api, queue-items, app-shell]
 touches: [plugin/skills/loop-status/scripts/addressing.py, plugin/skills/loop-status/SKILL.md, plugin/skills/loop-plan/templates/loop.md, plugin/skills/loop-init/templates/LOOP.md, tests/test_addressing.py, LOOP.md]
 effects: [gate-holder names added to LOOP.md §2 (a change to the contract; the owner merges it), a plugin release so that terminals pick the change up (the owner releases, per D17)]
 ships-to: main
@@ -23,6 +23,9 @@ ships-to: main
 - Corrected 2026-10-20: `touches` lacked `LOOP.md`, though `effects` adds gate holders to its §2.
   `environments` also edits `LOOP.md`, and `question-options` edits `plugin/skills/loop-plan/templates/loop.md`,
   so both are now in `needs`, which keeps any two of them from being built at once.
+- Corrected 2026-10-20 (main @a9fde89): `environments` and `question-options` are on `main` (PRs #19 and #18), so
+  they leave `needs` (per D42). `app-shell` joins it, because it adds the app's rows to `LOOP.md` §3 (its C3, per
+  D43), so the two must not be built at once.
 
 ### Approach
 
