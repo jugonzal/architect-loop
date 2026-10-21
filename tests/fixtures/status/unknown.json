@@ -160,6 +160,7 @@
         "question": "Which store holds the dashboard's metrics?",
         "options": [],
         "recommendation": null,
+        "default": null,
         "blocks": ["C1"]
       }
     }

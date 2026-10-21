@@ -356,7 +356,7 @@
   "queue": [
     {
       "id": "report-pipeline/worker/C2",
-      "kind": "question",
+      "kind": "contradiction",
       "title": "worker's C2 is contradicted: redesign it, or roll back?",
       "why": "C2 CONTRADICTS on staging (rung 1, 2026-10-18), and no decision is dated after it",
       "loop": "report-pipeline",
@@ -366,11 +366,11 @@
       "visible_to": ["ana", "ben"],
       "gate": null,
       "detail": {
-        "ref": "report-pipeline/worker/C2",
-        "question": "The p95 generation time is 41 s on staging, against at most 30 s. Redesign the worker, or roll back #7?",
-        "options": ["Redesign: /loop-design report-pipeline/worker", "Roll back #7 and keep generating reports inline"],
-        "recommendation": "Redesign: /loop-design report-pipeline/worker",
-        "blocks": ["C2"]
+        "claim": "report-pipeline/worker/C2",
+        "evidence": {"date": "2026-10-18", "verdict": "CONTRADICTS", "rung": 1, "environment": "staging", "commit": "780d0c5", "text": "p95 41 s over 200 jobs, needs at most 30 s"},
+        "contradicts": "worker.md, Approach: one worker process renders each report in under 30 s, so no pool of workers is needed",
+        "escalates": false,
+        "command": "/loop-design report-pipeline/worker"
       }
     },
     {
@@ -387,8 +387,12 @@
       "detail": {
         "ref": "report-pipeline/dashboard/Q1",
         "question": "Which store holds the dashboard's metrics?",
-        "options": ["The reports database", "A separate time-series store"],
-        "recommendation": "The reports database, until the page needs more than one sample a minute",
+        "options": [
+          {"text": "The reports database", "consequence": "Nothing new to run or back up, but queries slow the reports above one sample a minute"},
+          {"text": "A separate time-series store", "consequence": "A sample every second, but one more service to deploy, monitor and back up"}
+        ],
+        "recommendation": "The reports database",
+        "default": "The reports database, until the page needs more than one sample a minute",
         "blocks": ["C1"]
       }
     },
@@ -425,6 +429,42 @@
       }
     },
     {
+      "id": "report-pipeline/queue/C2",
+      "kind": "proof",
+      "title": "queue's C2 needs a 10,000-job load on staging",
+      "why": "C2's latest verdict is UNPROVEN on staging: only the owner can start the load",
+      "loop": "report-pipeline",
+      "concerns": ["report-pipeline/queue"],
+      "unblocks": ["report-pipeline/queue"],
+      "waits_on": "ana",
+      "visible_to": ["ana", "ben"],
+      "gate": null,
+      "detail": {
+        "claim": "report-pipeline/queue/C2",
+        "environment": "staging",
+        "missing": "a 10,000-job load on staging",
+        "supplied_by": "the owner",
+        "command": "/loop-prove report-pipeline/queue staging"
+      }
+    },
+    {
+      "id": "example/reports#16",
+      "kind": "refused_pr",
+      "title": "Correct what worker's Where we are says about retries",
+      "why": "check_loop_pr.sh refused it, so no agent may merge it",
+      "loop": "report-pipeline",
+      "concerns": ["report-pipeline/worker"],
+      "unblocks": [],
+      "waits_on": "ana",
+      "visible_to": ["ana", "ben"],
+      "gate": null,
+      "detail": {
+        "pr": {"repository": "example/reports", "number": 16, "url": "https://github.com/example/reports/pull/16", "title": "Correct what worker's Where we are says about retries", "head": "docs/report-pipeline-record-2026-10-20", "base": "main", "state": "open", "draft": false, "merge_commit": null, "on_main": null, "checks": "success"},
+        "failures": ["FAIL: changes a file outside docs/loops/: docs/runbooks/worker.md"],
+        "command": "scripts/check_loop_pr.sh --pr 16"
+      }
+    },
+    {
       "id": "record/report-pipeline/job-contract",
       "kind": "record",
       "title": "Add a Shipped note to job-contract",
@@ -438,6 +478,26 @@
       "detail": {
         "path": "docs/loops/report-pipeline/job-contract.md",
         "text": "Shipped to main in #3 (7c02eb4), as designed. C1 holds by CI. Learned: rejecting an unversioned payload when it is queued found two callers the tests did not cover."
+      }
+    },
+    {
+      "id": "report-pipeline/Q2",
+      "kind": "question",
+      "title": "How long are generated reports kept?",
+      "why": "Q2 is unanswered; it blocks nothing yet",
+      "loop": "report-pipeline",
+      "concerns": [],
+      "unblocks": [],
+      "waits_on": "ana",
+      "visible_to": ["ana", "ben"],
+      "gate": null,
+      "detail": {
+        "ref": "report-pipeline/Q2",
+        "question": "How long are generated reports kept?",
+        "options": [],
+        "recommendation": null,
+        "default": "90 days",
+        "blocks": []
       }
     }
   ],

@@ -1,10 +1,22 @@
 """Tests for plugin/skills/loop-status/scripts/status.schema.json, the status document that the loop-status
-script writes with --json, the status service serves and the app reads (command-center/status-api).
+script writes with --json, the status service serves and the app reads.
 
-- C1: the schema validates every fixture in tests/fixtures/status/, and rejects a document missing a required
-  field. Every required field the schema declares is removed from a fixture in turn, and each removal must fail.
+command-center/status-api:
+- C3 (the part of the split C1 that it kept): the schema validates every fixture in tests/fixtures/status/, and
+  rejects a document missing a required field. Every required field the schema declares is removed from a
+  fixture in turn, and each removal must fail.
 - C2: the fixtures cover every state in the derivation table of loop-status's SKILL.md, plus unknown. The states
   are read from the table itself, so the table, the schema and the fixtures cannot drift apart.
+
+command-center/queue-items:
+- C1: the schema carries every kind of queue item that loop-status's SKILL.md queues (step 6, and its Record
+  step), and the fixtures hold one of each. The kinds are read from SKILL.md, so the skill, the schema and the
+  fixtures cannot drift apart. The three kinds the app shows read-only (a proof, a contradiction and a refused
+  loop-document PR) carry the command to run and their facts, and one without its command is rejected.
+- C2: a question carries its options, each a text with its consequence, a recommendation that names one of them
+  or is null, and its default, kept apart. A question written before the format, with no options and no
+  recommendation, validates. JSON Schema cannot tie the recommendation to an option, so recommendation_problems
+  does, for every fixture.
 
 The tests use only the standard library (LOOP.md §4), so they carry a small validator for the subset of JSON
 Schema (draft 2020-12) that the schema uses. The validator refuses any keyword outside that subset, so the schema
@@ -254,6 +266,80 @@ def concerns_of(doc):
             yield loop, concern
 
 
+def queue_items_in_step_6(text):
+    """The bullets of step 6, 'Find what needs the owner', each joined onto one line."""
+    match = re.search(r"^6\. \*\*Find what needs the owner\*\*(.*?)^\d+\. \*\*", text, re.M | re.S)
+    if not match:
+        raise AssertionError("no step 6 'Find what needs the owner' in %s" % SKILL)
+    bullets = []
+    for line in match.group(1).splitlines():
+        if re.match(r"^\s*- ", line):
+            bullets.append(line.strip()[2:])
+        elif bullets and line.strip():
+            bullets[-1] += " " + line.strip()
+    return bullets
+
+
+# Every kind of queue item, as loop-status's SKILL.md says it: the start of one bullet in step 6, or (for record)
+# its Record step. A bullet that starts with none of these is a kind the schema does not carry yet.
+STEP_6_KINDS = {
+    "question": "open questions",
+    "review": "PRs that are ready for review",
+    "ship": "concerns that are merged and waiting to ship",
+    "proof": "UNPROVEN claims that need something only the owner has",
+    "contradiction": "contradictions that need a call",
+    "refused_pr": "loop-document PRs that `scripts/check_loop_pr.sh` refused",
+}
+RECORD_STEP = re.compile(r"^## Record, on the owner's yes$", re.M)
+# The kinds the app shows read-only, with the command to run (command-center/D34), and the facts each one carries
+# besides it (command-center/D40).
+READ_ONLY_KINDS = {
+    "proof": {"claim", "environment", "missing", "supplied_by"},
+    "contradiction": {"claim", "evidence", "contradicts", "escalates"},
+    "refused_pr": {"pr", "failures"},
+}
+
+
+def queue_kinds_in_skill(text):
+    """The kinds of queue item SKILL.md produces, in its order: one per bullet of step 6, then record."""
+    kinds = []
+    for bullet in queue_items_in_step_6(text):
+        matched = [kind for kind, start in STEP_6_KINDS.items() if bullet.startswith(start)]
+        if len(matched) != 1:
+            raise AssertionError("step 6 queues %r, which is no kind of queue item the schema carries; add the kind "
+                                 "to the schema, the fixtures and STEP_6_KINDS" % bullet)
+        kinds.append(matched[0])
+    if RECORD_STEP.search(text):
+        kinds.append("record")
+    return kinds
+
+
+def recommendation_problems(doc):
+    """What JSON Schema cannot check about a question: that its recommendation is the text of one of its options,
+    or null, and that no two of its options share a text. One line per problem; none for a good document."""
+    problems = []
+    for item in doc["queue"]:
+        if item["kind"] != "question":
+            continue
+        detail = item["detail"]
+        texts = [option["text"] for option in detail["options"]]
+        if len(set(texts)) != len(texts):
+            problems.append("%s: two options share a text" % item["id"])
+        if detail["recommendation"] is not None and detail["recommendation"] not in texts:
+            problems.append("%s: the recommendation %r names none of its options" % (
+                item["id"], detail["recommendation"]))
+    return problems
+
+
+def find_claim(doc, ref):
+    """The claim <loop>/<concern>/C<n> in doc, or None."""
+    loop_id, concern_id, claim_id = ref.split("/")
+    for loop, concern in concerns_of(doc):
+        if loop["id"] == loop_id and concern["id"] == concern_id:
+            return next((claim for claim in concern["claims"] if claim["id"] == claim_id), None)
+    return None
+
+
 def derivation_table_states(text):
     """The first column of the derivation table in loop-status's step 4, in order."""
     lines = text.splitlines()
@@ -381,10 +467,11 @@ class ValidatorTest(unittest.TestCase):
             Validator({"type": "int"}).check_schema()
 
 
-# --- C1: the schema --------------------------------------------------------------------------------------------
+# --- status-api C3: the schema ------------------------------------------------------------------------------------
 
 class SchemaTest(unittest.TestCase):
-    """C1: a versioned schema that validates the fixtures and rejects a document missing a required field."""
+    """status-api C3: a versioned schema that validates the fixtures and rejects a document missing a required
+    field."""
 
     @classmethod
     def setUpClass(cls):
@@ -401,12 +488,12 @@ class SchemaTest(unittest.TestCase):
         self.assertIsInstance(version["const"], int)
         self.assertIn("schema_version", self.schema["required"])
 
-    def test_schema_carries_what_c1_lists(self):
+    def test_schema_carries_what_c3_lists(self):
+        """The kinds themselves are queue-items C1's, in QueueKindTest."""
         defs = self.schema["$defs"]
         self.assertTrue({"project", "loops", "queue", "agents_can_start"} <= set(self.schema["required"]))
         self.assertTrue({"state", "reason", "inputs"} <= set(defs["concern"]["required"]))
-        self.assertTrue({"kind", "unblocks", "waits_on", "visible_to"} <= set(defs["queue_item"]["required"]))
-        self.assertEqual(defs["queue_kind"]["enum"], ["question", "review", "ship", "record"])
+        self.assertTrue({"kind", "unblocks", "waits_on", "visible_to", "gate"} <= set(defs["queue_item"]["required"]))
         branches = [b["properties"]["kind"]["const"] for b in defs["queue_item"]["oneOf"]]
         self.assertEqual(branches, defs["queue_kind"]["enum"], "one detail shape per queue kind")
 
@@ -535,6 +622,199 @@ class StateCoverageTest(unittest.TestCase):
             self.assertTrue(concern["inputs"].get("missing"), concern["id"])
 
 
+# --- queue-items C1: every kind of queue item ---------------------------------------------------------------------
+
+class QueueKindTest(unittest.TestCase):
+    """queue-items C1: the schema and the fixtures carry exactly the kinds of queue item SKILL.md produces, and
+    the three read-only kinds carry the command to run and their facts."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(SKILL, encoding="utf-8") as f:
+            cls.skill = f.read()
+        cls.schema = load(SCHEMA)
+        cls.validator = Validator(cls.schema)
+        cls.fixtures = fixtures()
+
+    def items(self, kind):
+        return [(name, i, item) for name, doc in self.fixtures for i, item in enumerate(doc["queue"])
+                if item["kind"] == kind]
+
+    def test_step_6_and_the_record_step_are_read(self):
+        bullets = queue_items_in_step_6(self.skill)
+        self.assertEqual(len(bullets), len(STEP_6_KINDS), bullets)
+        kinds = queue_kinds_in_skill(self.skill)
+        self.assertEqual(len(kinds), len(set(kinds)), kinds)
+        self.assertEqual(len(kinds), 7, "command-center/D34 names seven kinds")
+
+    def test_a_new_item_in_the_skill_fails_until_the_schema_has_its_kind(self):
+        """So the test above cannot pass while SKILL.md queues something the schema does not carry."""
+        extra = self.skill.replace("   - open questions,", "   - stale runbooks that need a rerun;\n   - open questions,", 1)
+        self.assertNotEqual(extra, self.skill)
+        with self.assertRaises(AssertionError):
+            queue_kinds_in_skill(extra)
+        without_record = RECORD_STEP.sub("## Records", self.skill)
+        self.assertNotIn("record", queue_kinds_in_skill(without_record))
+
+    def test_the_schema_has_exactly_the_skills_kinds(self):
+        self.assertEqual(sorted(self.schema["$defs"]["queue_kind"]["enum"]), sorted(queue_kinds_in_skill(self.skill)))
+
+    def test_one_detail_shape_per_kind(self):
+        defs = self.schema["$defs"]
+        branches = [b["properties"]["kind"]["const"] for b in defs["queue_item"]["oneOf"]]
+        self.assertEqual(branches, defs["queue_kind"]["enum"])
+
+    def test_the_fixtures_hold_every_kind_and_no_other(self):
+        found = {item["kind"] for _, doc in self.fixtures for item in doc["queue"]}
+        self.assertEqual(found, set(queue_kinds_in_skill(self.skill)))
+
+    def test_each_read_only_kind_carries_the_command_and_its_facts(self):
+        defs = self.schema["$defs"]
+        details = {b["properties"]["kind"]["const"]: self.validator.resolve(b["properties"]["detail"]["$ref"])
+                   for b in defs["queue_item"]["oneOf"]}
+        for kind, facts in READ_ONLY_KINDS.items():
+            with self.subTest(kind=kind):
+                self.assertTrue(facts | {"command"} <= set(details[kind]["required"]), details[kind]["required"])
+
+    def test_a_read_only_item_without_its_command_is_rejected(self):
+        for kind in READ_ONLY_KINDS:
+            self.assertTrue(self.items(kind), "no fixture holds a %s item" % kind)
+            for name, i, item in self.items(kind):
+                doc = copy.deepcopy(dict(self.fixtures)[name])
+                del doc["queue"][i]["detail"]["command"]
+                with self.subTest(kind=kind, fixture=name, item=item["id"]):
+                    errors = self.validator.errors(doc)
+                    self.assertTrue(any("'command'" in e for e in errors), errors)
+
+    def test_an_item_with_another_kinds_detail_is_rejected(self):
+        kinds = self.schema["$defs"]["queue_kind"]["enum"]
+        for name, doc in self.fixtures:
+            for i, item in enumerate(doc["queue"]):
+                for kind in kinds:
+                    if kind == item["kind"]:
+                        continue
+                    broken = copy.deepcopy(doc)
+                    broken["queue"][i]["kind"] = kind
+                    with self.subTest(fixture=name, item=item["id"], kind=kind):
+                        self.assertNotEqual(self.validator.errors(broken), [])
+
+    def test_rejects_malformed_read_only_items(self):
+        cases = {
+            "proof": {
+                "a claim without its concern": lambda d: d.update(claim="C2"),
+                "a goal for a claim": lambda d: d.update(claim="report-pipeline/G1"),
+                "no environment": lambda d: d.update(environment=""),
+            },
+            "contradiction": {
+                "a HOLDS line": lambda d: d["evidence"].update(verdict="HOLDS"),
+                "escalates as text": lambda d: d.update(escalates="yes"),
+            },
+            "refused_pr": {
+                "failures as one string": lambda d: d.update(failures="FAIL: changes a file outside docs/loops/"),
+                "a PR number for the PR": lambda d: d.update(pr=16),
+            },
+        }
+        for kind, mutations in cases.items():
+            name, i, _ = self.items(kind)[0]
+            for case, mutate in mutations.items():
+                doc = copy.deepcopy(dict(self.fixtures)[name])
+                mutate(doc["queue"][i]["detail"])
+                with self.subTest(kind=kind, case=case):
+                    self.assertNotEqual(self.validator.errors(doc), [])
+
+
+# --- queue-items C2: a question's options, recommendation and default --------------------------------------------
+
+class QuestionTest(unittest.TestCase):
+    """queue-items C2: options each with a consequence, a recommendation that names one or is null, and a default,
+    kept apart; and a question written before the format still validates."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.schema = load(SCHEMA)
+        cls.validator = Validator(cls.schema)
+        cls.fixtures = fixtures()
+
+    def questions(self):
+        return [(name, i, item) for name, doc in self.fixtures for i, item in enumerate(doc["queue"])
+                if item["kind"] == "question"]
+
+    def with_options(self):
+        return [q for q in self.questions() if q[2]["detail"]["options"]]
+
+    def mutated(self, question, mutate):
+        name, i, _ = question
+        doc = copy.deepcopy(dict(self.fixtures)[name])
+        mutate(doc["queue"][i]["detail"])
+        return doc
+
+    def test_a_question_keeps_options_recommendation_and_default_apart(self):
+        detail = self.schema["$defs"]["question_detail"]
+        self.assertTrue({"options", "recommendation", "default"} <= set(detail["required"]))
+        option = self.validator.resolve(detail["properties"]["options"]["items"]["$ref"])
+        self.assertEqual(sorted(option["required"]), ["consequence", "text"])
+        self.assertFalse(option["additionalProperties"])
+
+    def test_the_fixtures_hold_both_sorts_of_question(self):
+        written_with_options = [q for q in self.with_options() if q[2]["detail"]["recommendation"] is not None]
+        written_before = [q for q in self.questions()
+                          if q[2]["detail"]["options"] == [] and q[2]["detail"]["recommendation"] is None]
+        self.assertTrue(written_with_options, "no question with options and a recommendation")
+        self.assertTrue(written_before, "no question written before the format")
+        self.assertTrue(any(q[2]["detail"]["default"] is not None for q in written_before),
+                        "no question written before the format that shows its default")
+
+    def test_a_question_written_before_the_format_validates(self):
+        def strip(detail):
+            detail["options"] = []
+            detail["recommendation"] = None
+        for question in self.with_options():
+            with self.subTest(fixture=question[0], item=question[2]["id"]):
+                self.assertEqual(self.validator.errors(self.mutated(question, strip)), [])
+
+    def test_an_option_without_a_consequence_is_rejected(self):
+        self.assertTrue(self.with_options())
+        for question in self.with_options():
+            doc = self.mutated(question, lambda d: d["options"][0].pop("consequence"))
+            with self.subTest(fixture=question[0], item=question[2]["id"]):
+                errors = self.validator.errors(doc)
+                self.assertTrue(any("'consequence'" in e for e in errors), errors)
+
+    def test_rejects_malformed_questions(self):
+        question = self.with_options()[0]
+        cases = {
+            "options as plain text": lambda d: d.update(options=[o["text"] for o in d["options"]]),
+            "an empty consequence": lambda d: d["options"][0].update(consequence=""),
+            "an option with a field of its own": lambda d: d["options"][0].update(recommended=True),
+            "a recommendation that is not text": lambda d: d.update(recommendation=0),
+            "no default field": lambda d: d.pop("default"),
+            "a claim for a question": lambda d: d.update(ref="report-pipeline/worker/C2"),
+        }
+        for case, mutate in cases.items():
+            with self.subTest(case=case):
+                self.assertNotEqual(self.validator.errors(self.mutated(question, mutate)), [])
+
+    def test_every_recommendation_names_one_of_its_options(self):
+        for name, doc in self.fixtures:
+            with self.subTest(fixture=name):
+                self.assertEqual(recommendation_problems(doc), [])
+
+    def test_a_recommendation_that_names_no_option_fails(self):
+        """The schema accepts each of these; recommendation_problems is what refuses them."""
+        question = self.with_options()[0]
+        cases = {
+            "the default as the recommendation": lambda d: d.update(recommendation=d["default"] + ", for now"),
+            "an option's text, reworded": lambda d: d.update(recommendation=d["options"][0]["text"] + ", until later"),
+            "a recommendation with no options": lambda d: d.update(options=[]),
+            "two options with one text": lambda d: d["options"][1].update(text=d["options"][0]["text"]),
+        }
+        for case, mutate in cases.items():
+            doc = self.mutated(question, mutate)
+            with self.subTest(case=case):
+                self.assertEqual(self.validator.errors(doc), [])
+                self.assertNotEqual(recommendation_problems(doc), [])
+
+
 class FixtureCoherenceTest(unittest.TestCase):
     """The fixtures are boards a derivation could produce, so the app can be built against them."""
 
@@ -560,6 +840,22 @@ class FixtureCoherenceTest(unittest.TestCase):
                     self.assertEqual(concern["inputs"]["served"]["environment"], ships_to, concern["id"])
                     self.assertEqual(concern["inputs"]["main"], doc["main"]["sha"], concern["id"])
                 self.assertEqual(len({item["id"] for item in doc["queue"]}), len(doc["queue"]), "duplicate ids")
+
+    def test_proofs_and_contradictions_name_a_claim_the_board_has(self):
+        for name, doc in self.fixtures:
+            for item in doc["queue"]:
+                if item["kind"] not in ("proof", "contradiction"):
+                    continue
+                ref = item["detail"]["claim"]
+                claim = find_claim(doc, ref)
+                with self.subTest(fixture=name, item=item["id"]):
+                    self.assertIsNotNone(claim, ref)
+                    self.assertIn(ref.rsplit("/", 1)[0], item["concerns"])
+                    latest = claim["evidence"][-1]["verdict"] if claim["evidence"] else None
+                    if item["kind"] == "proof":
+                        self.assertEqual(latest, "UNPROVEN")
+                    else:
+                        self.assertEqual(item["detail"]["evidence"], claim["evidence"][-1])
 
     def test_the_queue_is_sorted_most_unblocking_first(self):
         for name, doc in self.fixtures:
