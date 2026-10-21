@@ -63,10 +63,12 @@ Standing permissions the owner grants on purpose. Anything not listed here is no
 | staging/runner | Cloud Run service `runner`, us-east1, staging's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh runner staging <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh staging` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
 | staging/threads | Cloud Run service `threads`, us-east1, staging's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh threads staging <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh staging` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
 | staging/notify | Cloud Run service `notify`, us-east1, staging's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh notify staging <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh staging` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
+| staging/app | EAS builds of profile `staging` in `app/eas.json`, installed from TestFlight and Google Play internal testing; they use staging's services | TODO(owner): no, until agents can read EAS builds, which needs an Expo login or `EXPO_TOKEN` | no | owner: from a clean checkout of a commit on `origin/main`, `cd app && eas build --profile staging --platform all`, then `eas submit --profile staging --platform all --latest` | `cd app && eas build:list --build-profile staging --status finished --limit 50 --json --non-interactive \| node src/shell/release/served.js staging` | the same command, with `<sha>` after `served.js staging` |
 | production/status | Cloud Run service `status`, us-east1, production's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh status production <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh production` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
 | production/runner | Cloud Run service `runner`, us-east1, production's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh runner production <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh production` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
 | production/threads | Cloud Run service `threads`, us-east1, production's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh threads production <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh production` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
 | production/notify | Cloud Run service `notify`, us-east1, production's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh notify production <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh production` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
+| production/app | EAS builds of profile `production` in `app/eas.json`, installed from TestFlight and Google Play internal testing; they use production's services | TODO(owner): no, until agents can read EAS builds, which needs an Expo login or `EXPO_TOKEN` | no | owner: from a clean checkout of a commit on `origin/main`, `cd app && eas build --profile production --platform all`, then `eas submit --profile production --platform all --latest` | `cd app && eas build:list --build-profile production --status finished --limit 50 --json --non-interactive \| node src/shell/release/served.js production` | the same command, with `<sha>` after `served.js production` |
 
 List environments from lowest to highest: a concern is proven on each one on its way to its `ships-to`.
 `/loop-status` runs the served-commit command for every environment agents may read. Without that command it
@@ -80,8 +82,17 @@ environment is its own GCP project, named in `scripts/gcp/projects.txt` and crea
 `https://<service>-<project number>.us-east1.run.app/version`, Cloud Run's URL for it, which is also the URL the
 status service reads over HTTP (command-center/D9, D32). A project's number exists only once the owner has run its
 bootstrap, which prints each row's command; until then the rows say TODO(owner) and read as unknown. A service
-not deployed yet answers 404 and reads as unknown too, which is true. A mobile build reports the commit it was
-built from.
+not deployed yet answers 404 and reads as unknown too, which is true.
+
+The app has one row per channel, `staging/app` and `production/app`, each named after the EAS build profile in
+`app/eas.json` that makes its builds (command-center/D43). EAS records the commit each build was made from (its
+`gitCommitHash`, the `git rev-parse HEAD` where `eas build` ran), and `app/eas.json` sets `cli.requireCommit`, so
+EAS refuses to build uncommitted work and that commit describes the build. A row's command prints the commit that
+the channel's latest finished iOS and Android builds were both made from; while they differ, or one platform has
+no build yet, it fails and the channel reads as unknown. Reading EAS's build list needs an Expo login or
+`EXPO_TOKEN`, and the rows have no URL for the status service to GET (command-center/D9), so until that changes
+agents cannot read these rows and they read as unknown (TODO(owner)). The latest finished build is taken to be
+the one testers get, so build a profile only to submit it.
 
 The plugin is not an environment: a release is a tagged commit on `main` that the owner cuts (§2).
 
@@ -99,6 +110,8 @@ The plugin is not an environment: a release is a tagged commit on `main` that th
 | Bootstrap an environment | `sh scripts/gcp/bootstrap.sh <staging\|production> --billing-account=<ID> --budget=<amount>` | owner only (§2: spending, cloud IAM). Idempotent: it prints each change, and a second run prints `0 changes`. Needs the project ID in `scripts/gcp/projects.txt`. See `docs/runbooks/deploy.md` |
 | Deploy | `sh scripts/gcp/deploy.sh <service> <staging\|production> <sha>` | owner only (§2). Refuses a commit not on `origin/main`, builds that commit (not the working tree) for linux/amd64, and fails unless `/version` then answers it. `probe` deploys `scripts/gcp/probe/`. Roll back by deploying the previous commit. See `docs/runbooks/deploy.md` |
 | Verify a deploy | `sh scripts/gcp/served.sh <the row's /version URL> <sha>` | needs no credentials, so agents may run it against any environment they can read. Prints the served commit, and exits 1 if it is not `<sha>` |
+| App tests and types | `cd app && npm install --no-package-lock && npm test && npm run typecheck` | the app's own packages, not the root's; Node 20.19.4 or 22. `npm run check:status` fails when `app/src/api/status.gen.ts` no longer matches the status schema, and `npm run generate:status` rewrites it. CI runs these in `.github/workflows/app.yml` |
+| Build and submit the app | `cd app && eas build --profile <staging\|production> --platform all`, then `eas submit --profile <staging\|production> --platform all --latest` | owner only (§2: store and beta submissions; it needs the Expo account). Build from a clean checkout of a commit on `origin/main`: `cli.requireCommit` refuses uncommitted work. A store build cannot be recalled: roll back by building and submitting the previous commit |
 
 ## 5. Where things live
 

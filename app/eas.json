@@ -1,0 +1,35 @@
+{
+  "cli": {
+    "version": ">= 22.4.0",
+    "appVersionSource": "remote",
+    "requireCommit": true
+  },
+  "build": {
+    "staging": {
+      "distribution": "store",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_ENVIRONMENT": "staging/app",
+        "EXPO_PUBLIC_GITHUB_CLIENT_ID": "TODO(owner): the GitHub OAuth app's client ID",
+        "EXPO_PUBLIC_STATUS_URL": "TODO(owner): staging's status service, https://status-<staging project number>.us-east1.run.app"
+      }
+    },
+    "production": {
+      "distribution": "store",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_ENVIRONMENT": "production/app",
+        "EXPO_PUBLIC_GITHUB_CLIENT_ID": "TODO(owner): the GitHub OAuth app's client ID",
+        "EXPO_PUBLIC_STATUS_URL": "TODO(owner): production's status service, https://status-<production project number>.us-east1.run.app"
+      }
+    }
+  },
+  "submit": {
+    "staging": {
+      "android": { "track": "internal" }
+    },
+    "production": {
+      "android": { "track": "internal" }
+    }
+  }
+}
