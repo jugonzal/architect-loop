@@ -43,12 +43,24 @@ class GitHubClientTest(unittest.TestCase):
         pages = [r for r in self.server.requests if r == ("GET", f"/repos/{PROJECT}/collaborators")]
         self.assertEqual(len(pages), 3)
 
-    def test_an_expired_installation_token_is_replaced(self):
+    def test_a_token_github_stops_accepting_is_replaced(self):
         self.github.is_collaborator(PROJECT, "alice")
-        self.server.installation_tokens = []  # GitHub no longer accepts it
-        self.github._token_expires = 0
+        self.server.installation_tokens = []  # GitHub no longer accepts ghs_fake0
         self.assertTrue(self.github.is_collaborator(PROJECT, "alice"))
-        self.assertEqual(self.server.installation_tokens, ["ghs_fake0"])
+        self.assertEqual(self.server.installation_tokens, ["ghs_fake0"], "a new token was issued and used")
+        exchanges = [r for r in self.server.requests if r[0] == "POST"]
+        self.assertEqual(len(exchanges), 2)
+
+    def test_an_installation_token_is_renewed_within_five_minutes_of_expiring(self):
+        import time
+        self.github.is_collaborator(PROJECT, "alice")
+        token, _ = self.github._tokens[PROJECT]
+        self.github._tokens[PROJECT] = (token, time.time() + 301)
+        self.github.is_collaborator(PROJECT, "alice")
+        self.assertEqual(len([r for r in self.server.requests if r[0] == "POST"]), 1, "still good: reused")
+        self.github._tokens[PROJECT] = (token, time.time() + 299)
+        self.github.is_collaborator(PROJECT, "alice")
+        self.assertEqual(len([r for r in self.server.requests if r[0] == "POST"]), 2, "about to expire: renewed")
 
     def test_an_outage_is_unavailable_not_a_refusal(self):
         self.server.fail_with = 502

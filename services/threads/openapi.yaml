@@ -523,6 +523,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/Unavailable"
 
 components:
   securitySchemes:
@@ -680,7 +682,9 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
     Unavailable:
-      description: GitHub could not be reached to identify the caller or check their access, so nothing is answered.
+      description: |
+        GitHub (or Google's keys) could not be reached to identify the caller or check their access, so nothing is
+        answered; or this deployment is not configured yet, and only `/version` answers.
       content:
         application/json:
           schema:
@@ -929,6 +933,6 @@ components:
       properties:
         error:
           type: string
-          enum: [bad_request, unauthorized, forbidden, not_found, conflict, unavailable]
+          enum: [bad_request, unauthorized, forbidden, not_found, conflict, unavailable, internal]
         message:
           type: string

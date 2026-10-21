@@ -19,6 +19,8 @@ import psycopg
 import yaml
 from psycopg.conninfo import make_conninfo
 from openapi_core import OpenAPI
+from werkzeug.test import EnvironBuilder
+from werkzeug.wrappers import Request
 from openapi_core.contrib.werkzeug import WerkzeugOpenAPIRequest, WerkzeugOpenAPIResponse
 
 from threads import migrate
@@ -172,8 +174,10 @@ class ContractClient:
             kwargs["data"] = json.dumps(json_body)
             kwargs["content_type"] = "application/json"
         response = self.client.open(path, method=method, headers=headers, **kwargs)
-        request = WerkzeugOpenAPIRequest(response.request)
-        op = operation_for(method, response.request.path)
+        # The app has read the request's body, so validate a copy built from the same arguments.
+        copy = Request(EnvironBuilder(path=path, method=method, headers=headers, **kwargs).get_environ())
+        request = WerkzeugOpenAPIRequest(copy)
+        op = operation_for(method, copy.path)
         self.test.assertIsNotNone(op, f"{method} {path} is not in openapi.yaml")
         EXERCISED.add(op)
         if valid_request:
