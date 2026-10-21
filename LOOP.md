@@ -59,17 +59,29 @@ Standing permissions the owner grants on purpose. Anything not listed here is no
 | Environment | Where | Agents may read | Agents may write | Deployed by | Served commit: a command that prints its SHA | Verify with |
 | --- | --- | --- | --- | --- | --- | --- |
 | main | the `main` branch of [jugonzal/architect-loop](https://github.com/jugonzal/architect-loop) | yes | `docs/loops/` only (§2.1) | owner, by merging | `git fetch -q origin && git rev-parse origin/main` | `gh run list --repo jugonzal/architect-loop --commit <sha>` (the `check` workflow) |
-| staging | TODO(owner): GCP, not built yet (command-center/D8) | TODO(owner) | no | owner | TODO(owner): each service's `/version` URL | TODO(owner) |
-| production | TODO(owner): GCP, not built yet (command-center/D8) | TODO(owner) | no | owner | TODO(owner): each service's `/version` URL | TODO(owner) |
+| staging/status | Cloud Run service `status`, us-east1, staging's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh status staging <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh staging` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
+| staging/runner | Cloud Run service `runner`, us-east1, staging's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh runner staging <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh staging` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
+| staging/threads | Cloud Run service `threads`, us-east1, staging's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh threads staging <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh staging` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
+| staging/notify | Cloud Run service `notify`, us-east1, staging's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh notify staging <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh staging` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
+| production/status | Cloud Run service `status`, us-east1, production's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh status production <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh production` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
+| production/runner | Cloud Run service `runner`, us-east1, production's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh runner production <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh production` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
+| production/threads | Cloud Run service `threads`, us-east1, production's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh threads production <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh production` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
+| production/notify | Cloud Run service `notify`, us-east1, production's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh notify production <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh production` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
 
 List environments from lowest to highest: a concern is proven on each one on its way to its `ships-to`.
 `/loop-status` runs the served-commit command for every environment agents may read. Without that command it
 cannot tell a merged concern from a shipped one, so fill it in first. What an environment serves is what the
 command prints, not what a document says.
 
-The command center has more than one deployable (status service, runner, thread store, mobile app). Give each its
-own row here once it exists, with a `/version` URL that the status service can read over HTTP
-(command-center/D9). A mobile build reports the commit it was built from.
+The command center has more than one deployable, so staging and production each have one row per service, named
+`<environment>/<service>` after the service's folder in `services/` (command-center/environments). Each
+environment is its own GCP project, named in `scripts/gcp/projects.txt` and created by `scripts/gcp/bootstrap.sh`
+(§4). A service's served-commit command reads its unauthenticated `/version` at
+`https://<service>-<project number>.us-east1.run.app/version`, Cloud Run's URL for it, which is also the URL the
+status service reads over HTTP (command-center/D9, D32). A project's number exists only once the owner has run its
+bootstrap, which prints each row's command; until then the rows say TODO(owner) and read as unknown. A service
+not deployed yet answers 404 and reads as unknown too, which is true. A mobile build reports the commit it was
+built from.
 
 The plugin is not an environment: a release is a tagged commit on `main` that the owner cuts (§2).
 
@@ -84,8 +96,9 @@ The plugin is not an environment: a release is a tagged commit on `main` that th
 | CI result for a commit | `gh run list --repo jugonzal/architect-loop --commit <sha>` | |
 | Install the skills from a checkout | `sh scripts/install.sh --user`, or `--project <dir>` | copies `plugin/skills/loop-*` |
 | Release the plugin | owner only (§2) | |
-| Deploy | TODO(owner) | owner only (§2) |
-| Verify a deploy | TODO(owner) | agents may run it against any environment they can read |
+| Bootstrap an environment | `sh scripts/gcp/bootstrap.sh <staging\|production> --billing-account=<ID> --budget=<amount>` | owner only (§2: spending, cloud IAM). Idempotent: it prints each change, and a second run prints `0 changes`. Needs the project ID in `scripts/gcp/projects.txt`. See `docs/runbooks/deploy.md` |
+| Deploy | `sh scripts/gcp/deploy.sh <service> <staging\|production> <sha>` | owner only (§2). Refuses a commit not on `origin/main`, builds that commit (not the working tree) for linux/amd64, and fails unless `/version` then answers it. `probe` deploys `scripts/gcp/probe/`. Roll back by deploying the previous commit. See `docs/runbooks/deploy.md` |
+| Verify a deploy | `sh scripts/gcp/served.sh <the row's /version URL> <sha>` | needs no credentials, so agents may run it against any environment they can read. Prints the served commit, and exits 1 if it is not `<sha>` |
 
 ## 5. Where things live
 
@@ -102,6 +115,8 @@ The plugin is not an environment: a release is a tagged commit on `main` that th
   tag.
 - **Method docs:** `README.md` and `docs/*.md` (method, patterns, failure modes, adopting, upgrading).
 - **Runbooks:** `docs/runbooks/<topic>.md`, corrected after every real run.
+- **Environments:** `scripts/gcp/` creates the GCP projects and deploys to them, and `docs/runbooks/deploy.md`
+  says how. The owner runs both (§2).
 - **Memory:** `docs/memory/<slug>.md`, shared by every person and agent tool. (Use an agent's private memory
   only for personal preferences; project facts go here.)
 - **Command center code:** `services/` and `app/`, once their concerns are built. Nothing in `plugin/` may refer
