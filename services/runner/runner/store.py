@@ -1,12 +1,13 @@
 """The runner's own store of sessions and their spend (command-center/D26).
 
 Nothing else keeps these, and nothing about any loop lives here: wiping it loses the estimates' history and the
-record of past sessions, never a loop's state (G4). A dispatch claims its concern here in one transaction, so of
-two dispatches at once at most one starts (session-runner Approach, C3).
+record of past sessions, never a loop's state (G4). A dispatch claims here in one transaction, so of two
+dispatches at once that would each hold a concern at most one starts, and a sponsor never passes the cap
+(runner-dispatch C2, session-runner C6).
 
 `Store` is the interface the dispatcher and the session job use. `SqliteStore` implements it on one SQLite file,
-which is what the tests exercise and what a single machine can run. Which database backs the store in staging
-and production is not recorded in the loop's decisions yet; any backend must give `claim` the same guarantee.
+which is what the tests exercise and what a single machine can run. Staging and production use Firestore
+(command-center/D44), which `runner-store` adds; any backend must give `claim` the same guarantee.
 """
 
 import contextlib
@@ -16,11 +17,21 @@ import os
 import sqlite3
 from typing import Protocol
 
+from .config import HOLDING_SKILLS
 from .models import ACTIVE, Refusal, Session, parse_iso
 
 
 class Store(Protocol):
-    def claim(self, session: Session, cap: int, now: str, lost_after_s: float) -> Refusal | None: ...
+    def claim(self, session: Session, cap: int, now: str, lost_after_s: float) -> Refusal | None:
+        """Store `session` and answer None, or store nothing and answer why, all in one transaction.
+
+        First every active session silent for longer than `lost_after_s` ends as `lost` (as `expire_lost`). Then:
+        if `session.holds` (a /loop-build or /loop-design, session-runner D6) and an active session that holds the
+        same project and concern exists, refuse `running-session`, naming those holding sessions only. Then, if the
+        sponsor already has `cap` active sessions, whatever their skill, refuse `sponsor-cap` naming them all
+        (command-center/D22). A session that does not hold its concern is never refused for the concern."""
+        ...
+
     def get(self, session_id: str) -> Session | None: ...
     def list(self, state: str = "active", sponsor: str | None = None, project: str | None = None) -> list: ...
     def set_execution(self, session_id: str, execution: str) -> None: ...
@@ -55,9 +66,11 @@ CREATE TABLE IF NOT EXISTS sessions (
     stop_requested INTEGER NOT NULL DEFAULT 0,
     execution TEXT
 );
--- A second guarantee under the claim's transaction: one active session per concern.
-CREATE UNIQUE INDEX IF NOT EXISTS one_active_session_per_concern
-    ON sessions (project, concern) WHERE state IN ('starting', 'running', 'stopping');
+-- A second guarantee under the claim's transaction: one active session holding each concern (session-runner D6).
+-- The previous runner's index allowed one active session of any skill; a file it made gets this one instead.
+DROP INDEX IF EXISTS one_active_session_per_concern;
+CREATE UNIQUE INDEX IF NOT EXISTS one_holding_session_per_concern
+    ON sessions (project, concern) WHERE skill IN {holding} AND state IN ('starting', 'running', 'stopping');
 CREATE INDEX IF NOT EXISTS sessions_by_sponsor ON sessions (sponsor, state);
 CREATE TABLE IF NOT EXISTS measurements (
     source TEXT PRIMARY KEY,
@@ -68,6 +81,9 @@ CREATE TABLE IF NOT EXISTS measurements (
     at TEXT NOT NULL
 );
 """
+
+HOLDING_SQL = "(" + ", ".join(f"'{skill}'" for skill in HOLDING_SKILLS) + ")"
+SCHEMA = SCHEMA.replace("{holding}", HOLDING_SQL)
 
 COLUMNS = ("id", "project", "skill", "concern", "arguments", "model", "sponsor", "budget_usd", "plugin_release",
            "branch", "created_at", "state", "outcome", "started_at", "ended_at", "heartbeat_at", "spend",
@@ -135,13 +151,14 @@ class SqliteStore:
     def claim(self, session, cap, now, lost_after_s):
         with self._transaction() as db:
             self._expire_lost(db, now, lost_after_s)
-            on_concern = self._select(db, f"project = ? AND concern = ? AND state IN {ACTIVE_SQL}",
-                                      (session.project, session.concern))
-            if on_concern:
-                return Refusal("running-session",
-                               f"{session.concern} already has a running session: "
-                               + "; ".join(s.describe() for s in on_concern),
-                               sessions=on_concern)
+            if session.holds:
+                holding = self._select(db, f"project = ? AND concern = ? AND skill IN {HOLDING_SQL} "
+                                           f"AND state IN {ACTIVE_SQL}", (session.project, session.concern))
+                if holding:
+                    return Refusal("running-session",
+                                   f"{session.concern} is held by a running /loop-build or /loop-design session: "
+                                   + "; ".join(s.describe() for s in holding),
+                                   sessions=holding)
             mine = self._select(db, f"sponsor = ? AND state IN {ACTIVE_SQL}", (session.sponsor,))
             if len(mine) >= cap:
                 return Refusal("sponsor-cap",

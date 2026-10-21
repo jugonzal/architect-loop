@@ -42,10 +42,14 @@ paths:
       operationId: dispatch
       summary: Start a skill on a concern as a session sponsored by the caller.
       description: |
-        Refused (409) when the concern already has an open pull request or a running session, or when the
+        Only `loop-build` and `loop-design` hold the concern they run on (session-runner D6). Either is refused
+        (409) when the concern already has an open pull request or a running `loop-build` or `loop-design`
+        session; `loop-prove` and `loop-status` run beside them and hold nothing. Any dispatch is refused when the
         caller already runs as many sessions as the per-sponsor cap in the runner's config (3 by default,
-        command-center/D22). Each refusal names the pull requests or sessions that exist. The concern is
-        claimed atomically, so of two dispatches at once at most one starts.
+        command-center/D22), counting every running session whatever its skill, or when its budget is above the
+        ceiling in the runner's config ($10 by default, session-runner D8). Each refusal names the pull requests
+        or sessions that exist, or the cap or the ceiling. The claim is atomic, so of two dispatches at once that
+        would each hold a concern at most one starts.
       requestBody:
         required: true
         content:
@@ -271,7 +275,9 @@ components:
           maxLength: 2000
           default: ""
         budget_usd:
-          description: The session's budget in dollars, a target it may pass by one model response (command-center/D21).
+          description: |
+            The session's budget in dollars, a target it may pass by one model response (command-center/D21). A
+            budget above the ceiling in the runner's config is refused with a `budget-ceiling` refusal (409).
           type: number
           exclusiveMinimum: 0
         plugin_release:
@@ -393,19 +399,24 @@ components:
       properties:
         refused:
           type: string
-          enum: [open-pull-request, running-session, sponsor-cap]
-        message: {type: string, description: A sentence that names what already exists.}
+          enum: [open-pull-request, running-session, sponsor-cap, budget-ceiling]
+        message: {type: string, description: A sentence that names what already exists, or the limit passed.}
         pull_requests:
           description: For `open-pull-request`, the concern's open pull requests.
           type: array
           items: {$ref: "#/components/schemas/PullRequest"}
         sessions:
-          description: For `running-session`, the concern's running sessions; for `sponsor-cap`, the sponsor's.
+          description: |
+            For `running-session`, the running `loop-build` and `loop-design` sessions that hold the concern; for
+            `sponsor-cap`, every session the sponsor runs.
           type: array
           items: {$ref: "#/components/schemas/Session"}
         cap:
           description: For `sponsor-cap`, the cap the sponsor reached.
           type: integer
+        ceiling_usd:
+          description: For `budget-ceiling`, the ceiling in the runner's config, in dollars (session-runner D8).
+          type: number
     Problem:
       type: object
       additionalProperties: false

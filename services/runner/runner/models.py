@@ -4,6 +4,8 @@ import datetime
 import uuid
 from dataclasses import dataclass, field
 
+from .config import HOLDING_SKILLS
+
 ACTIVE = ("starting", "running", "stopping")
 OUTCOMES = ("completed", "budget", "sponsor", "error", "lost")
 
@@ -51,6 +53,11 @@ class Session:
     def active(self):
         return self.state in ACTIVE
 
+    @property
+    def holds(self):
+        """Whether it holds its concern (session-runner D6): a /loop-build or /loop-design on a concern."""
+        return self.skill in HOLDING_SKILLS
+
     def public(self):
         """The Session object of openapi.yaml."""
         return {
@@ -67,17 +74,20 @@ class Session:
 
 @dataclass
 class Refusal:
-    """Why a dispatch was refused, and what already exists (C3)."""
+    """Why a dispatch was refused, naming what already exists or the limit it passed (runner-dispatch C2)."""
 
-    refused: str  # open-pull-request | running-session | sponsor-cap
+    refused: str  # open-pull-request | running-session | sponsor-cap | budget-ceiling
     message: str
     pull_requests: list = field(default_factory=list)
     sessions: list = field(default_factory=list)
     cap: int | None = None
+    ceiling_usd: float | None = None
 
     def public(self):
         body = {"refused": self.refused, "message": self.message, "pull_requests": list(self.pull_requests),
                 "sessions": [s.public() for s in self.sessions]}
         if self.cap is not None:
             body["cap"] = self.cap
+        if self.ceiling_usd is not None:
+            body["ceiling_usd"] = self.ceiling_usd
         return body

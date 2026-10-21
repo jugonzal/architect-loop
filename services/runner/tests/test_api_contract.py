@@ -184,6 +184,15 @@ class RequestContractTest(unittest.TestCase):
                 self.assertEqual(response.status, 400, response)
                 self.assertEqual(response.json["error"], "invalid-request")
 
+    def test_a_budget_above_the_ceiling_is_a_valid_request_refused_as_a_refusal(self):
+        """The ceiling is config (session-runner D8), so the spec leaves it out of the request and documents the
+        refusal instead."""
+        body = dispatch_body(budget_usd=25.0)
+        self.assertEqual(request_errors("POST", "/sessions", body), [])
+        response = runner(self)[0].call("POST", "/sessions", body, token="tok-juan")
+        self.assertEqual((response.status, response.json["refused"], response.json["ceiling_usd"]),
+                         (409, "budget-ceiling", 10.0))
+
     def test_a_body_that_is_not_json_is_a_400(self):
         response = runner(self)[0].call("POST", "/sessions", raw=b"{not json", token="tok-juan")
         self.assertEqual(response.status, 400)

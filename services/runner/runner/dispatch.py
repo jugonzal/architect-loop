@@ -1,9 +1,10 @@
-"""Dispatch: who is calling, whether they may start a session, and claiming the concern (C1, C3, D22, D28)."""
+"""Dispatch: who is calling, whether they may start a session, and claiming the concern (runner-dispatch C2;
+session-runner C5, C6, D6, D8; command-center/D22, D28)."""
 
 import math
 import re
 
-from .config import SKILLS
+from .config import HOLDING_SKILLS, SKILLS
 from .github import GitHubError, concern_pull_requests
 from .models import Refusal, Session, iso, new_session_id, utcnow
 from .spend import estimate_from
@@ -88,6 +89,12 @@ class Dispatcher:
         if request["project"] != self.config.project:
             raise ApiError(422, "unknown-project", f"this runner serves {self.config.project}, "
                                                    f"not {request['project']}")
+        ceiling = self.config.budget_ceiling_usd
+        if request["budget_usd"] > ceiling:
+            raise Refused(Refusal(
+                "budget-ceiling",
+                f"a budget of ${request['budget_usd']:,.2f} is above the runner's ceiling of ${ceiling:,.2f} "
+                f"(session-runner D8)", ceiling_usd=ceiling))
         loop, concern = request["concern"].split("/")
         if not self._github(self.github.concern_exists, loop, concern):
             raise ApiError(422, "unknown-concern", f"{request['concern']} is not a concern on "
@@ -95,13 +102,16 @@ class Dispatcher:
         if not self._github(self.github.release_exists, request["plugin_release"]):
             raise ApiError(422, "unknown-release", f"{request['plugin_release']} is not a release tag of "
                                                    f"{self.config.project}")
-        pulls = concern_pull_requests(self._github(self.github.open_pull_requests), request["concern"])
-        if pulls:
-            raise Refused(Refusal(
-                "open-pull-request",
-                f"{request['concern']} already has an open pull request: "
-                + "; ".join(f"#{p['number']} {p['url']} from {p['head']}" for p in pulls),
-                pull_requests=pulls))
+        if request["skill"] in HOLDING_SKILLS:
+            # D6: an open pull request holds its concern against another /loop-build or /loop-design; a /loop-prove
+            # or /loop-status runs beside it, so a proof can go into that pull request's body.
+            pulls = concern_pull_requests(self._github(self.github.open_pull_requests), request["concern"])
+            if pulls:
+                raise Refused(Refusal(
+                    "open-pull-request",
+                    f"{request['concern']} already has an open pull request: "
+                    + "; ".join(f"#{p['number']} {p['url']} from {p['head']}" for p in pulls),
+                    pull_requests=pulls))
         now = iso(self.now())
         session = Session(
             id=self.new_id(), project=request["project"], skill=request["skill"], concern=request["concern"],

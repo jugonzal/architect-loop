@@ -1,4 +1,5 @@
-"""C3 and command-center/D22, D28: who may dispatch, what is refused, and that each refusal names what exists.
+"""Who may dispatch, what is refused, and that each refusal names what exists: runner-dispatch C2 (session-runner
+C6, D6, D8) and command-center/D22, D28.
 
 Every call goes through the WSGI app and is checked against openapi.yaml as well.
 """
@@ -120,6 +121,19 @@ class OpenPullRequestTest(Base):
         self.github.open_pr(20, f"{CONCERN}-extra", body=f"Concern: {CONCERN}-extra\n")
         self.assertEqual(self.dispatch().status, 201)
 
+    def test_a_design_dispatch_is_refused_too(self):
+        self.github.open_pr(17, CONCERN)
+        response = self.dispatch(skill="loop-design")
+        self.assertEqual((response.status, response.json["refused"]), (409, "open-pull-request"))
+        self.assertIn("#17", response.json["message"])
+
+    def test_prove_and_status_are_admitted_beside_an_open_pull_request(self):
+        """session-runner D6: so a proof can go into the open pull request's body."""
+        self.github.open_pr(17, CONCERN)
+        self.assertEqual(self.started(skill="loop-prove")["concern"], CONCERN)
+        self.assertEqual(self.started(skill="loop-status")["concern"], CONCERN)
+        self.assertEqual(len(self.launcher.launched), 2)
+
 
 class RunningSessionTest(Base):
     """C3: a concern with a running session is refused, whoever sponsors it, and the refusal names the session."""
@@ -159,6 +173,34 @@ class RunningSessionTest(Base):
             self.store.publish(first["id"], None, self.clock().isoformat())
         self.assertEqual(self.dispatch().json["refused"], "running-session")
 
+    def test_a_design_and_a_build_hold_the_concern_against_each_other(self):
+        for running, second in (("loop-build", "loop-design"), ("loop-design", "loop-build")):
+            with self.subTest(running=running, second=second):
+                self.setUp()
+                first = self.started("tok-juan", skill=running)
+                response = self.dispatch("tok-ana", skill=second)
+                self.assertEqual((response.status, response.json["refused"]), (409, "running-session"))
+                self.assertEqual([s["id"] for s in response.json["sessions"]], [first["id"]])
+                self.assertIn(first["id"], response.json["message"])
+
+    def test_prove_and_status_run_beside_a_build(self):
+        build = self.started("tok-juan", skill="loop-build")
+        prove = self.started("tok-ana", skill="loop-prove")
+        status = self.started("tok-ana", skill="loop-status")
+        self.assertEqual(self.launcher.launched, [build["id"], prove["id"], status["id"]])
+
+    def test_prove_and_status_hold_nothing(self):
+        self.started("tok-juan", skill="loop-prove")
+        self.started("tok-juan", skill="loop-status")
+        self.started("tok-ana", skill="loop-prove")
+        self.assertEqual(self.started("tok-ana", skill="loop-build")["skill"], "loop-build")
+
+    def test_the_refusal_names_only_the_sessions_that_hold_the_concern(self):
+        build = self.started("tok-juan", skill="loop-build")
+        self.started("tok-ana", skill="loop-prove")
+        response = self.dispatch("tok-ana", skill="loop-design")
+        self.assertEqual([s["id"] for s in response.json["sessions"]], [build["id"]])
+
 
 class SponsorCapTest(Base):
     """C3 and D22: a sponsor may run at most the cap in the runner's config, 3 by default."""
@@ -186,6 +228,12 @@ class SponsorCapTest(Base):
     def test_the_list_reports_the_cap(self):
         self.assertEqual(self.client.call("GET", "/sessions", token="tok-juan").json["cap_per_sponsor"], 3)
 
+    def test_every_running_session_counts_whatever_its_skill(self):
+        running = [self.started(skill=s)["id"] for s in ("loop-build", "loop-prove", "loop-status")]
+        response = self.dispatch(skill="loop-prove", concern=OTHER)
+        self.assertEqual((response.status, response.json["refused"]), (409, "sponsor-cap"))
+        self.assertEqual(sorted(s["id"] for s in response.json["sessions"]), sorted(running))
+
 
 class LoweredCapTest(Base):
     config = {"cap_per_sponsor": 1}
@@ -197,19 +245,53 @@ class LoweredCapTest(Base):
         self.assertEqual([s["id"] for s in response.json["sessions"]], [first["id"]])
 
 
+class BudgetCeilingTest(Base):
+    """session-runner D8: a budget above the ceiling in the runner's config, $10 by default, is refused, naming it."""
+
+    def test_a_budget_above_the_ceiling_is_refused_naming_the_ceiling(self):
+        response = self.dispatch(budget_usd=10.01)
+        self.assertEqual(response.status, 409)
+        self.assertEqual((response.json["refused"], response.json["ceiling_usd"]), ("budget-ceiling", 10.0))
+        self.assertIn("$10.00", response.json["message"])
+        self.assertIn("$10.01", response.json["message"])
+        self.assertEqual((response.json["pull_requests"], response.json["sessions"]), ([], []))
+        self.assertEqual(self.launcher.launched, [])
+        self.assertEqual(self.store.list(state="all"), [])
+
+    def test_a_budget_at_the_ceiling_is_admitted(self):
+        self.assertEqual(self.started(budget_usd=10)["budget_usd"], 10.0)
+
+    def test_the_ceiling_holds_for_every_skill(self):
+        for skill in ("loop-design", "loop-build", "loop-prove", "loop-status"):
+            with self.subTest(skill=skill):
+                self.assertEqual(self.dispatch(skill=skill, budget_usd=50).json["refused"], "budget-ceiling")
+
+
+class LoweredCeilingTest(Base):
+    config = {"budget_ceiling_usd": 1.0}
+
+    def test_the_ceiling_is_a_config_change(self):
+        response = self.dispatch(budget_usd=1.5)
+        self.assertEqual((response.status, response.json["refused"], response.json["ceiling_usd"]),
+                         (409, "budget-ceiling", 1.0))
+        self.assertIn("$1.00", response.json["message"])
+        self.assertEqual(self.started(budget_usd=1.0)["budget_usd"], 1.0)
+
+
 class AtomicClaimTest(Base):
     """Two dispatches at once cannot both start: the claim is one transaction in the store."""
 
     def race(self, bodies, tokens):
+        # Every dispatch checks its release, a /loop-prove included, so that is where they all meet before claiming.
         barrier = threading.Barrier(len(bodies))
-        original = self.github.open_pull_requests
+        original = self.github.release_exists
 
-        def both_pass_the_pull_request_check():
-            result = original()
+        def all_pass_the_checks_before_the_claim(tag):
+            result = original(tag)
             barrier.wait(timeout=5)
             return result
 
-        self.github.open_pull_requests = both_pass_the_pull_request_check
+        self.github.release_exists = all_pass_the_checks_before_the_claim
         results = [None] * len(bodies)
 
         def go(i):
@@ -227,6 +309,17 @@ class AtomicClaimTest(Base):
         self.assertEqual(statuses, [201, 409])
         self.assertEqual(len(self.store.list()), 1)
         self.assertEqual(len(self.launcher.launched), 1)
+
+    def test_a_build_and_a_design_at_once_on_one_concern_start_one(self):
+        statuses, _ = self.race([dispatch_body(skill="loop-build"), dispatch_body(skill="loop-design")],
+                                ["tok-juan", "tok-ana"])
+        self.assertEqual(statuses, [201, 409])
+        self.assertEqual(len(self.launcher.launched), 1)
+
+    def test_a_build_and_a_prove_at_once_on_one_concern_both_start(self):
+        statuses, _ = self.race([dispatch_body(skill="loop-build"), dispatch_body(skill="loop-prove")],
+                                ["tok-juan", "tok-ana"])
+        self.assertEqual(statuses, [201, 201])
 
     def test_two_dispatches_at_the_cap_at_once_start_one(self):
         self.started(concern=CONCERN)
