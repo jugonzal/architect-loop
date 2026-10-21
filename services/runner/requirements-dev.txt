@@ -1,0 +1,5 @@
+# The runner's test dependencies, on top of its runtime ones.
+-r requirements.txt
+PyYAML==6.0.3
+jsonschema==4.26.0
+openapi-spec-validator==0.9.0

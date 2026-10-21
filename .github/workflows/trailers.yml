@@ -1,0 +1,31 @@
+# Fail any pull request with a commit by the runner's GitHub App that lacks `Sponsored-by:` (session-runner D4).
+# The owner makes this job, `trailers`, a required status check on main.
+#
+# Configuration the owner sets once the runner's GitHub App exists: the repository variable RUNNER_APP_SLUG, the
+# app's slug. Until it is set, no commit is recognised as the runner's and the check passes with a warning.
+name: trailers
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  trailers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check that every runner commit names its sponsor
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          RUNNER_APP_SLUG: ${{ vars.RUNNER_APP_SLUG }}
+        run: |
+          # Run the checker as it is on the base branch, so a pull request cannot loosen the check it is judged
+          # by. Only the pull request that adds the checker runs its own copy.
+          if git cat-file -e "$BASE:services/runner/runner/trailers.py" 2>/dev/null; then
+            git show "$BASE:services/runner/runner/trailers.py" > "$RUNNER_TEMP/trailers.py"
+          else
+            cp services/runner/runner/trailers.py "$RUNNER_TEMP/trailers.py"
+          fi
+          python3 -I "$RUNNER_TEMP/trailers.py" --base "$BASE" --head "$HEAD"
