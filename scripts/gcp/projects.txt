@@ -4,5 +4,5 @@
 # The owner names each project ID before the first bootstrap. An ID is 6 to 30 characters of lowercase letters,
 # digits and hyphens, starts with a letter, is unique across all of Google Cloud, and cannot be reused once it has
 # been taken, even after the project is deleted. Until a line names one, both scripts refuse that environment.
-staging TODO(owner)
-production TODO(owner)
+staging loops-512401
+production loops-512402
