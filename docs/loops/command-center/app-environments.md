@@ -1,5 +1,5 @@
 ---
-needs: [one-repository, app-shell, status-api]
+needs: [app-shell, status-api]
 touches: [app/src/app/(tabs)/environments/, app/src/features/environments/]
 effects: []
 ships-to: production/app

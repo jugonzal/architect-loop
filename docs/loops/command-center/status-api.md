@@ -1,5 +1,5 @@
 ---
-needs: [one-repository]
+needs: []
 touches: [plugin/skills/loop-status/scripts/status.schema.json, tests/test_status_schema.py, tests/fixtures/status/]
 effects: []
 ships-to: main

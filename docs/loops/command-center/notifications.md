@@ -1,5 +1,5 @@
 ---
-needs: [one-repository, app-shell, status-service, addressed-to-people, service-manifests]
+needs: [app-shell, status-service, addressed-to-people, service-manifests]
 touches: [services/notify/, .github/workflows/notify.yml, app/src/app/notifications/, app/src/features/notifications/]
 effects: [Expo push credentials, with an APNs key and an FCM key (secrets; identity and access), push notifications and digests sent to real users (sending to real users), the notifier's own Firestore database for devices and settings in each GCP project (spending; cloud IAM; per command-center/D26, D44), a Cloud Run service in each project (spending)]
 ships-to: production/notify

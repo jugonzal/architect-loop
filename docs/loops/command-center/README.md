@@ -46,7 +46,8 @@ person in one terminal can push a loop forward.
   makes the move safe, and every other concern needs it. Every concern's `touches` are paths in this repository.
   `one-repository`'s `architect-loop:` prefixes name this same repository: they date from when it was built from
   `jugonzal/loops`, which the owner archives once the move is done. Nothing is built there. (Corrected
-  2026-10-20: this said the loop still lived in `jugonzal/loops`.)
+  2026-10-20: this said the loop still lived in `jugonzal/loops`.) (Corrected 2026-10-21: no concern needs
+  `one-repository` any more, per D49.)
 
 ## Where we are
 
@@ -181,6 +182,7 @@ person in one terminal can push a loop forward.
 | D46 | Each service's deploy config lives in a manifest in its own folder: its non-secret settings, the names of its secrets, its Cloud SQL instance, its runtime identity, its jobs and the APIs it needs. `deploy.sh` applies it on every deploy, so the config is reviewed in pull requests and rolls back with the code, and `bootstrap.sh` enables the APIs and creates what the manifests declare. `service-manifests` builds this for the runner and threads, and each later service adds its own manifest. | Juan, 2026-10-20 | Closes Q47 |
 | D47 | Every service reads the commit it runs from the environment variable `COMMIT_SHA`, which `deploy.sh` sets. | Juan, 2026-10-20 | Closes Q48; refines D32; confirms PRs #19, #20 and #21 |
 | D48 | Every service's API keys a project as `{owner}/{repo}` in its paths, as threads does (`/projects/{owner}/{repo}/...`). The status service serves `/projects/{owner}/{repo}/status`. | Juan, 2026-10-20 | Closes Q49; refines D18; confirms PR #21 |
+| D49 | `one-repository` leaves every concern's `needs`, as D42 allows: its work is on `main`, so every concern builds against it there. Its `touches` cover most of the repository, so it goes stale with almost every merge, and under the table that blocked every concern that needed it. It stays a concern with its own claims and state, and re-proving it is `/loop-prove`'s. | Juan, 2026-10-21 | Applies D42; raised by `status-derivation`'s run on this repository, which found `one-repository` stale since PR #17 |
 
 ## Questions
 

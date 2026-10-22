@@ -1,5 +1,5 @@
 ---
-needs: [one-repository, status-derivation, status-api, queue-items, app-shell]
+needs: [status-derivation, status-api, queue-items, app-shell]
 touches: [plugin/skills/loop-status/scripts/addressing.py, plugin/skills/loop-status/SKILL.md, plugin/skills/loop-plan/templates/loop.md, plugin/skills/loop-init/templates/LOOP.md, tests/test_addressing.py, LOOP.md]
 effects: [gate-holder names added to LOOP.md §2 (a change to the contract; the owner merges it), a plugin release so that terminals pick the change up (the owner releases, per D17)]
 ships-to: main

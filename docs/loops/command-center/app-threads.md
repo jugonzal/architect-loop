@@ -1,5 +1,5 @@
 ---
-needs: [one-repository, app-shell]
+needs: [app-shell]
 touches: [app/src/app/threads/, app/src/features/threads/]
 effects: []
 ships-to: production/app

@@ -1,5 +1,5 @@
 ---
-needs: [one-repository]
+needs: []
 touches: [services/runner/, .github/workflows/trailers.yml, .github/workflows/runner.yml]
 effects: [Agent SDK sessions that cost money, each with a budget shown to its sponsor before it starts (spending), Cloud Run jobs in the staging and production GCP projects (spending; cloud IAM), the runner's own Firestore database for sessions and spend in each project (spending; cloud IAM; per command-center/D26, D44), the Anthropic API key and the runner's own GitHub App that pushes branches and opens PRs on jugonzal/architect-loop (secrets; identity and access; per command-center/D27), the repository made public and main protected so that nothing reaches it except through a PR (publishing and a repository setting; the owner does both, per command-center/D24), the trailer check made a required status check on main (a repository setting; the owner sets it, per D4)]
 ships-to: production/runner
