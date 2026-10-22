@@ -4,6 +4,13 @@
 # Registry repository for their images; a deploy identity that deploy.sh acts as; and a monthly budget that emails
 # the billing account's administrators at 50%, 90% and 100% of the amount named here.
 #
+# It also creates what the services' manifests declare (command-center/service-manifests C2, per
+# command-center/D46): every manifest in the working tree, services/*/service.json and scripts/gcp/probe/service.json,
+# is checked first, and a run stops before any gcloud call if one does not fit the format. Then it enables the APIs
+# they list, creates each service's runtime identity with the roles its manifest gives it, lets each identity read
+# the secrets its own manifest names, and creates the Firestore databases they declare. It never creates a secret:
+# the owner creates each one and its value (docs/runbooks/deploy.md), and the run names the ones still missing.
+#
 # Every step reads first, changes only what is missing, and prints what it found or changed, so a second run
 # changes nothing and says "0 changes". It never relinks billing, deletes anything or removes a grant. It ends by
 # printing each service's /version URL for LOOP.md §3.
@@ -49,6 +56,23 @@ printf '%s\n' "$budget" | grep -Eq '^[0-9]+([A-Z]{3})?$' || usage
 units=$(printf '%s\n' "$budget" | sed 's/[A-Z]*$//')
 currency=$(printf '%s\n' "$budget" | sed 's/^[0-9]*//')
 
+# The services' manifests (command-center/D46), checked before anything is read or changed in Google Cloud.
+command -v python3 >/dev/null 2>&1 || { echo "bootstrap: python3 is not installed; it reads the manifests" >&2; exit 1; }
+manifest() { python3 "$here/scripts/gcp/manifest.py" "$@"; }
+manifest check-all "$here" || exit 1
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/bootstrap.XXXXXX")
+trap 'rm -rf "$tmp"' EXIT
+for kind in apis identities secrets firestore; do
+  manifest list "$here" "$kind" >"$tmp/$kind"
+done
+apis=$APIS
+for api in $(cat "$tmp/apis"); do
+  case " $apis " in
+    *" $api "*) ;;
+    *) apis="$apis $api" ;;
+  esac
+done
+
 changes=0
 ok() { echo "ok       $*"; }
 changed() { changes=$((changes + 1)); echo "changed  $*"; }
@@ -91,10 +115,10 @@ case $linked in
     exit 1 ;;
 esac
 
-# 3. The APIs.
+# 3. The APIs: the ones every project has, then the ones the manifests list.
 enabled=$(gcloud services list --enabled --project="$project" --format='value(config.name)')
 missing=
-for api in $APIS; do
+for api in $apis; do
   printf '%s\n' "$enabled" | grep -qx "$api" || missing="$missing $api"
 done
 if [ -n "$missing" ]; then
@@ -103,7 +127,7 @@ if [ -n "$missing" ]; then
   gcloud services enable $missing --project="$project" --quiet
   changed "enabled$missing"
 else
-  ok "APIs enabled: $APIS"
+  ok "APIs enabled: $apis"
 fi
 
 # 4. The image repository.
@@ -150,7 +174,64 @@ else
   changed "let $account act as $sa (roles/iam.serviceAccountTokenCreator)"
 fi
 
-# 6. The budget (environments/D2). It is found by its display name, which the project ID makes unique.
+# 6. Each service's runtime identity, and the roles its manifest gives it on the project (service-manifests C2).
+# The lists are read on descriptor 3, so that no gcloud call can read them from its standard input.
+while read -r name label roles <&3; do
+  runtime=$name@$project.iam.gserviceaccount.com
+  if gcloud iam service-accounts describe "$runtime" --project="$project" --format='value(email)' >/dev/null 2>&1; then
+    ok "runtime identity $runtime ($label)"
+  else
+    gcloud iam service-accounts create "$name" --project="$project" --display-name="Runs $label" --quiet
+    changed "created runtime identity $runtime ($label)"
+  fi
+  [ -n "$roles" ] || continue
+  held=$(gcloud projects get-iam-policy "$project" --flatten='bindings[].members' \
+    --filter="bindings.members:serviceAccount:$runtime" --format='value(bindings.role)')
+  for role in $roles; do
+    if printf '%s\n' "$held" | grep -qx "$role"; then
+      ok "$runtime holds $role"
+    else
+      retry gcloud projects add-iam-policy-binding "$project" --member="serviceAccount:$runtime" --role="$role" \
+        --condition=None --format=none --quiet
+      changed "granted $role to $runtime"
+    fi
+  done
+done 3<"$tmp/identities"
+
+# 7. Each runtime identity may read the secrets its own manifest names, one grant per secret, and no others. The
+# owner creates the secrets and their values; one that does not exist yet is named, and granted on a later run.
+missing_secrets=
+while read -r name secret label <&3; do
+  runtime=$name@$project.iam.gserviceaccount.com
+  if ! gcloud secrets describe "$secret" --project="$project" --format='value(name)' >/dev/null 2>&1; then
+    missing_secrets="$missing_secrets $secret"
+    echo "missing  secret $secret, which $label names: create it (docs/runbooks/deploy.md), then run this again"
+    continue
+  fi
+  readers=$(gcloud secrets get-iam-policy "$secret" --project="$project" --flatten='bindings[].members' \
+    --filter='bindings.role:roles/secretmanager.secretAccessor' --format='value(bindings.members)')
+  if printf '%s\n' "$readers" | grep -qix "serviceAccount:$runtime"; then
+    ok "$runtime may read secret $secret"
+  else
+    retry gcloud secrets add-iam-policy-binding "$secret" --project="$project" --member="serviceAccount:$runtime" \
+      --role=roles/secretmanager.secretAccessor --format=none --quiet
+    changed "let $runtime read secret $secret (roles/secretmanager.secretAccessor)"
+  fi
+done 3<"$tmp/secrets"
+
+# 8. The Firestore databases the manifests declare, each in the region, in native mode (command-center/D44).
+while read -r database label <&3; do
+  if gcloud firestore databases describe --database="$database" --project="$project" --format='value(name)' \
+      >/dev/null 2>&1; then
+    ok "Firestore database $database ($label)"
+  else
+    retry gcloud firestore databases create --database="$database" --location="$REGION" --type=firestore-native \
+      --project="$project" --format=none --quiet
+    changed "created Firestore database $database in $REGION ($label)"
+  fi
+done 3<"$tmp/firestore"
+
+# 9. The budget (environments/D2). It is found by its display name, which the project ID makes unique.
 budget_name="$project-monthly"
 budgets=$(retry gcloud billing budgets list --billing-account="$billing" --billing-project="$project" \
   --format='value(displayName,name,amount.specifiedAmount.units,amount.specifiedAmount.currencyCode)')
@@ -177,6 +258,10 @@ fi
 if [ "$changes" = 1 ]; then noun=change; else noun=changes; fi
 echo
 echo "$env: $changes $noun. Project $project, number $number, region $REGION."
+if [ -n "$missing_secrets" ]; then
+  echo "Secrets to create before deploying a service that names them:$missing_secrets."
+  echo "Create them (docs/runbooks/deploy.md), then run this again so that each service may read its own."
+fi
 echo "The served-commit command of each $env row in LOOP.md §3 (a service not deployed yet answers 404 and reads as unknown):"
 for service in $SERVICES; do
   echo "  $env/$service  sh scripts/gcp/served.sh https://$service-$number.$REGION.run.app/version"

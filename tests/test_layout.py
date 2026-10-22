@@ -149,20 +149,86 @@ def fake_gcloud(state, argv, entry):
             members = policy.setdefault(one("role"), [])
             members += [one("member")] if one("member") not in members else []
             return 0
-    if pos[:2] == ["run", "deploy"]:
-        service = project["run"].setdefault(pos[2], {"env": {}})
-        service.update(image=one("image"), region=one("region"), public=bool(one("allow-unauthenticated")),
-                       deployed_as=one("impersonate-service-account"))
-        for pair in (one("update-env-vars") or "").split(","):
-            if pair:
-                key, _, value = pair.partition("=")
-                service["env"][key] = value
+    if pos[:2] == ["run", "deploy"] or pos[:3] == ["run", "jobs", "deploy"]:
+        return fake_run_deploy(project, pos, flags, one, fail, entry)
+    if pos[:3] == ["firestore", "databases", "describe"]:
+        database = one("database") or "(default)"
+        if database not in project.setdefault("firestore", {}):
+            return fail("NOT_FOUND: Database projects/%s/databases/%s does not exist." % (one("project"), database))
+        return say("projects/%s/databases/%s" % (one("project"), database))
+    if pos[:3] == ["firestore", "databases", "create"]:
+        database = one("database") or "(default)"
+        if "firestore.googleapis.com" not in project["services"]:
+            return fail("PERMISSION_DENIED: Cloud Firestore API has not been used in project %s" % one("project"))
+        if database in project.setdefault("firestore", {}):
+            return fail("ALREADY_EXISTS: Database already exists.")
+        project["firestore"][database] = {"location": one("location"), "type": one("type")}
         return 0
+    if pos[:1] == ["secrets"] and len(pos) > 2:
+        secret = project.setdefault("secrets", {}).get(pos[2])
+        if secret is None:
+            return fail("NOT_FOUND: Secret [projects/%s/secrets/%s] not found." % (one("project"), pos[2]))
+        if pos[1] == "describe":
+            return say("projects/%s/secrets/%s" % (one("project"), pos[2]))
+        if pos[1] == "get-iam-policy":
+            return say(*secret["policy"].get(one("filter").split(":", 1)[1], []))
+        if pos[1] == "add-iam-policy-binding":
+            members = secret["policy"].setdefault(one("role"), [])
+            members += [one("member")] if one("member") not in members else []
+            return 0
     if pos[:3] == ["run", "services", "describe"]:
         if pos[3] not in project["run"]:
             return fail("NOT_FOUND: service %s" % pos[3])
         return say("https://%s-%s.%s.run.app" % (pos[3], project["number"], one("region")))
     return fail("the fake gcloud does not model: %s" % " ".join(argv), 2)
+
+
+def fake_run_deploy(project, pos, flags, one, fail, entry):
+    """`gcloud run deploy` and `gcloud run jobs deploy`, with Cloud Run's replace and keep semantics for each flag.
+
+    --env-vars-file replaces every variable, --set-secrets every secret and --set-cloudsql-instances every instance;
+    the --clear- flags empty them; a flag not given keeps what the service or job had. Like Cloud Run, it refuses
+    a runtime identity that does not exist, and a secret that is missing or that the identity cannot read.
+    """
+    job = pos[1] == "jobs"
+    kind, name = ("jobs", pos[3]) if job else ("run", pos[2])
+    target = project.setdefault(kind, {}).get(name, {"env": {}, "secrets": {}, "cloudsql": [], "identity": ""})
+    identity = one("service-account") or target["identity"]
+    if identity and identity not in project["accounts"]:
+        return fail("Service account %s does not exist." % identity)
+    env, secrets, cloudsql = dict(target["env"]), dict(target["secrets"]), list(target["cloudsql"])
+    if one("env-vars-file"):
+        with open(one("env-vars-file")) as f:
+            entry["env_vars_file"] = env = json.load(f)
+    for pair in (one("update-env-vars") or "").split(","):
+        if pair:
+            key, _, value = pair.partition("=")
+            env[key] = value
+    if one("clear-secrets"):
+        secrets = {}
+    if one("set-secrets") is not None:
+        secrets = dict(pair.split("=", 1) for pair in one("set-secrets").split(",") if pair)
+    for ref in secrets.values():
+        secret = project.setdefault("secrets", {}).get(ref.split(":")[0])
+        if secret is None:
+            return fail("Secret projects/%s/secrets/%s was not found" % (one("project"), ref.split(":")[0]))
+        if "serviceAccount:" + identity not in secret["policy"].get("roles/secretmanager.secretAccessor", []):
+            return fail("spec.template.spec.containers[0].env.valueFrom.secretKeyRef: Permission denied on secret: "
+                        "%s for Revision service account %s." % (ref, identity))
+    if one("clear-cloudsql-instances"):
+        cloudsql = []
+    if one("set-cloudsql-instances") is not None:
+        cloudsql = [i for i in one("set-cloudsql-instances").split(",") if i]
+    target.update(image=one("image"), region=one("region"), deployed_as=one("impersonate-service-account"),
+                  identity=identity, env=env, secrets=secrets, cloudsql=cloudsql)
+    if job:
+        target.update(command=[c for c in (one("command") or "").split(",") if c],
+                      args=[a for a in (one("args") or "").split(",") if a], tasks=one("tasks"),
+                      max_retries=one("max-retries"), task_timeout=one("task-timeout"))
+    else:
+        target["public"] = bool(one("allow-unauthenticated"))
+    project[kind][name] = target
+    return 0
 
 
 def fake_docker(state, argv, entry):
@@ -373,6 +439,44 @@ class GcpHarness(unittest.TestCase):
         if os.path.exists(path):
             os.remove(path)
 
+    def add_secret(self, name, project=STAGING):
+        """What the owner does by hand before a service that names a secret is deployed: create it, with a value."""
+        state = self.state()
+        state["projects"][project].setdefault("secrets", {})[name] = {"policy": {}}
+        self.set_state(state)
+
+    def add_service(self, root, name, manifest):
+        """A service folder with a Dockerfile and its manifest (command-center/D46)."""
+        write(root, "services/%s/Dockerfile" % name, "FROM scratch\n")
+        write(root, "services/%s/service.json" % name, json.dumps(manifest, indent=1) + "\n")
+
+    # Git is real: self.root becomes a repository with an origin of its own, as deploy.sh expects.
+
+    def init_repo(self):
+        """Commit everything in self.root on main and push it to a new bare origin; return the commit."""
+        self.git("init", "-q", "-b", "main")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "First commit")
+        origin = tempfile.mkdtemp(prefix="gcp-origin-")
+        self.addCleanup(shutil.rmtree, origin)
+        subprocess.run(["git", "init", "-q", "--bare", origin], check=True, env=self.env)
+        self.git("remote", "add", "origin", origin)
+        self.git("push", "-q", "origin", "main")
+        return self.git("rev-parse", "HEAD")
+
+    def git(self, *args):
+        return subprocess.run(["git", "-C", self.root, *args], check=True, capture_output=True, text=True,
+                              env=self.env).stdout.strip()
+
+    def commit(self, message):
+        write(self.root, "notes/%s.txt" % message.replace(" ", "-"), message + "\n")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", message)
+        return self.git("rev-parse", "HEAD")
+
+    def deploy(self, service, sha, env="staging"):
+        return self.run_script(self.root, "deploy.sh", service, env, sha)
+
 
 class BootstrapTest(GcpHarness):
     """bootstrap.sh creates an environment's project and what it needs, and a second run changes nothing (C1)."""
@@ -394,6 +498,8 @@ class BootstrapTest(GcpHarness):
             "projects add-iam-policy-binding " + STAGING,
             "projects add-iam-policy-binding " + STAGING,
             "iam service-accounts add-iam-policy-binding " + self.ACCOUNT,
+            # The probe's own runtime identity, from scripts/gcp/probe/service.json (service-manifests C2).
+            "iam service-accounts create probe-runtime",
             "billing budgets create",
         ])
         state = self.state()
@@ -410,7 +516,7 @@ class BootstrapTest(GcpHarness):
                          (BILLING, "25", "USD", "month"))
         self.assertEqual(budget["thresholds"], ["percent=0.5", "percent=0.9", "percent=1.0"])
         self.assertEqual(budget["projects"], ["projects/" + STAGING])
-        self.assertIn("10 changes", result.stdout)
+        self.assertIn("11 changes", result.stdout)
         for service in SERVICES:
             self.assertIn("https://%s-%s.us-east1.run.app/version" % (service, project["number"]), result.stdout)
 
@@ -484,38 +590,21 @@ class DeployTest(GcpHarness):
     """deploy.sh builds a commit on origin/main and deploys it, and refuses any other commit (C2)."""
 
     bootstrapped = None
+    # A service whose manifest names only its runtime identity (tests/test_service_manifests.py covers the rest).
+    STATUS = {"identity": {"name": "status"}}
 
     def setUp(self):
         if DeployTest.bootstrapped is None:
             # Bootstrap once (BootstrapTest covers it), then start each test from the cloud it left.
-            self.assertEqual(self.bootstrap(self.make_root()).returncode, 0)
+            root = self.make_root()
+            self.add_service(root, "status", self.STATUS)
+            self.assertEqual(self.bootstrap(root).returncode, 0)
             DeployTest.bootstrapped = self.state()
         self.root = self.make_root()
         self.set_state(DeployTest.bootstrapped)
-        write(self.root, "services/status/Dockerfile", "FROM scratch\n")
-        self.git("init", "-q", "-b", "main")
-        self.git("add", "-A")
-        self.git("commit", "-q", "-m", "First commit")
-        origin = tempfile.mkdtemp(prefix="gcp-origin-")
-        self.addCleanup(shutil.rmtree, origin)
-        subprocess.run(["git", "init", "-q", "--bare", origin], check=True, env=self.env)
-        self.git("remote", "add", "origin", origin)
-        self.git("push", "-q", "origin", "main")
-        self.main = self.git("rev-parse", "HEAD")
+        self.add_service(self.root, "status", self.STATUS)
+        self.main = self.init_repo()
         self.number = self.state()["projects"][STAGING]["number"]
-
-    def git(self, *args):
-        return subprocess.run(["git", "-C", self.root, *args], check=True, capture_output=True, text=True,
-                              env=self.env).stdout.strip()
-
-    def commit(self, message):
-        write(self.root, "notes/%s.txt" % message.replace(" ", "-"), message + "\n")
-        self.git("add", "-A")
-        self.git("commit", "-q", "-m", message)
-        return self.git("rev-parse", "HEAD")
-
-    def deploy(self, service, sha, env="staging"):
-        return self.run_script(self.root, "deploy.sh", service, env, sha)
 
     def test_it_deploys_a_commit_on_main_and_reads_it_back(self):
         result = self.deploy("probe", self.main[:7])
@@ -539,6 +628,8 @@ class DeployTest(GcpHarness):
         self.assertEqual(service["env"], {"COMMIT_SHA": self.main})
         self.assertTrue(service["public"], "/version must answer without credentials (D32)")
         self.assertEqual(service["deployed_as"], "deploy@%s.iam.gserviceaccount.com" % STAGING)
+        # It runs as the identity its manifest names, scripts/gcp/probe/service.json (service-manifests C1).
+        self.assertEqual(service["identity"], "probe-runtime@%s.iam.gserviceaccount.com" % STAGING)
         url = "https://probe-%s.us-east1.run.app/version" % self.number
         self.assertIn(url, result.stdout)
         self.assertIn(self.main, result.stdout)

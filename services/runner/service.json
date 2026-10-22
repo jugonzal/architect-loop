@@ -1,0 +1,23 @@
+{
+  "identity": {"name": "runner", "roles": ["roles/run.jobsExecutorWithOverrides"]},
+  "settings": {
+    "RUNNER_GCP_PROJECT": "{project}",
+    "RUNNER_APP_ID": "TODO(owner)",
+    "RUNNER_APP_INSTALLATION_ID": "TODO(owner)",
+    "RUNNER_APP_SLUG": "TODO(owner)"
+  },
+  "secrets": {
+    "RUNNER_APP_PRIVATE_KEY": "runner-app-private-key"
+  },
+  "jobs": {
+    "runner-session": {
+      "command": ["python", "-m", "runner", "job"],
+      "tasks": 1,
+      "max_retries": 0,
+      "task_timeout_s": 3600,
+      "secrets": {
+        "ANTHROPIC_API_KEY": "runner-anthropic-api-key"
+      }
+    }
+  }
+}
