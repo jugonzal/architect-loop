@@ -1,5 +1,5 @@
 ---
-needs: [one-repository]
+needs: []
 touches: [scripts/gcp/, docs/runbooks/deploy.md, tests/test_layout.py, tests/test_service_manifests.py, services/runner/service.json, services/threads/service.json]
 effects: [each service's settings, secret references, Cloud SQL attachment, runtime identity and jobs, applied on every deploy (the owner runs each deploy, per LOOP.md §2), the APIs and Firestore databases the manifests declare, created by the bootstrap (spending; cloud IAM; the owner runs it), the runtime identities and their IAM roles (cloud IAM), the secrets' values in Secret Manager (secrets; the owner creates them, and the manifests hold only their names)]
 ships-to: main

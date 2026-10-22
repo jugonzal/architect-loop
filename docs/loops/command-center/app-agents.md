@@ -1,5 +1,5 @@
 ---
-needs: [one-repository, app-shell, status-api, runner-dispatch]
+needs: [app-shell, status-api, runner-dispatch]
 touches: [app/src/app/(tabs)/agents/, app/src/features/agents/]
 effects: [starting sessions that cost money: the person sees the estimate and the budget and confirms each start (spending)]
 ships-to: production/app

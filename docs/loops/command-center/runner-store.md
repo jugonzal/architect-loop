@@ -1,5 +1,5 @@
 ---
-needs: [one-repository, runner-dispatch, service-manifests]
+needs: [runner-dispatch, service-manifests]
 touches: [services/runner/service.json, services/runner/runner/firestore_store.py, services/runner/runner/main.py, services/runner/requirements.txt, services/runner/requirements-dev.txt, services/runner/tests/test_firestore_store.py, .github/workflows/runner.yml]
 effects: [the runner's own Firestore database in each GCP project, created by the bootstrap from the runner's manifest (spending; cloud IAM; per command-center/D44, D46; the owner runs the bootstrap)]
 ships-to: production/runner

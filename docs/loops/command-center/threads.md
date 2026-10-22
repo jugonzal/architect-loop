@@ -1,5 +1,5 @@
 ---
-needs: [one-repository]
+needs: []
 touches: [services/threads/, .github/workflows/threads.yml]
 effects: [a Cloud SQL Postgres instance in the staging and production GCP projects (spending; cloud IAM), messages written by project members (production data: deleting or expiring them is gated), threads' own read-only GitHub App with webhooks for pull request reviews and review comments (identity and access; per command-center/D27), its key and webhook secret in Secret Manager (secrets)]
 ships-to: production/threads

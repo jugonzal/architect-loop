@@ -1,5 +1,5 @@
 ---
-needs: [one-repository, runner-dispatch]
+needs: [runner-dispatch]
 touches: [services/runner/narration/, services/runner/runner/session.py, services/runner/tests/test_narration.py]
 effects: []
 ships-to: production/runner

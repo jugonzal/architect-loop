@@ -1,5 +1,5 @@
 ---
-needs: [one-repository, status-api, queue-items]
+needs: [status-api, queue-items]
 touches: [app/package.json, app/app.json, app/eas.json, app/tsconfig.json, app/src/app/_layout.tsx, app/src/app/(tabs)/_layout.tsx, app/src/shell/, app/src/api/, app/src/theme/, .github/workflows/app.yml, LOOP.md]
 effects: [a GitHub OAuth app for sign-in, with the device flow enabled, that asks for no repository access (identity and access; per command-center/D28 and D1 here), an Expo account with EAS build credentials (new vendor account: identity and access; spending; secrets), Apple Developer and Google Play accounts (identity and access; spending), TestFlight and Play internal-testing submissions (owner only)]
 ships-to: production/app

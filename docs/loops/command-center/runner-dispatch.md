@@ -1,5 +1,5 @@
 ---
-needs: [one-repository]
+needs: []
 touches: [services/runner/runner/, services/runner/openapi.yaml, services/runner/tests/]
 effects: []
 ships-to: production/runner

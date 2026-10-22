@@ -1,5 +1,5 @@
 ---
-needs: [one-repository]
+needs: []
 touches: [LOOP.md, scripts/gcp/, docs/runbooks/deploy.md, scripts/check.sh, tests/test_layout.py]
 effects: [two GCP projects, staging and production, linked to the owner's billing account (spending; cloud IAM; the owner runs the scripts that create them), an Artifact Registry repository and a deploy identity in each (spending; cloud IAM), new LOOP.md §3 rows and §4 deploy and verify commands (a change to the contract; the owner merges it), every deploy (the owner runs it, per LOOP.md §2)]
 ships-to: main
