@@ -1,0 +1,60 @@
+{
+  "comment": "What the derivation table in loop-status SKILL.md gives for world.json, worked out by hand from the table, one row and definition at a time; each concern file in project/ says why. The test derives the world both from gathered and from supplied facts and compares both with this.",
+  "loops": {
+    "audit": "open",
+    "billing": "parked",
+    "inbox": "unknown",
+    "onboarding": "done",
+    "reports": "active",
+    "search": "backlog"
+  },
+  "concerns": {
+    "billing/invoices": "parked",
+    "inbox/digest": "unknown",
+    "onboarding/welcome": "done",
+    "reports/archive": "parked",
+    "reports/audit-trail": "unknown",
+    "reports/contract": "done",
+    "reports/dashboard": "open",
+    "reports/exporter": "ready",
+    "reports/importer": "contradicted",
+    "reports/legacy": "shipped",
+    "reports/metrics": "stale",
+    "reports/notifier": "blocked",
+    "reports/queue": "shipped",
+    "reports/ranking": "open",
+    "reports/retries": "building",
+    "reports/scheduler": "merged",
+    "reports/stacked": "building",
+    "reports/tools-sync": "done",
+    "reports/worker": "contradicted",
+    "search/indexer": "ready"
+  },
+  "queue": [
+    {"id": "reports/worker/C2", "kind": "contradiction", "unblocks": ["reports/worker", "reports/notifier"]},
+    {"id": "reports/dashboard/Q1", "kind": "question", "unblocks": ["reports/dashboard"]},
+    {"id": "example/reports#5", "kind": "review", "unblocks": ["reports/retries"]},
+    {"id": "ship/production", "kind": "ship", "unblocks": ["reports/scheduler"]},
+    {"id": "reports/queue/C2", "kind": "proof", "unblocks": ["reports/queue"]},
+    {"id": "reports/importer/C1", "kind": "contradiction", "unblocks": ["reports/importer"]},
+    {"id": "reports/Q2", "kind": "question", "unblocks": []},
+    {"id": "example/reports#9", "kind": "refused_pr", "unblocks": []},
+    {"id": "record/onboarding", "kind": "record", "unblocks": []},
+    {"id": "record/reports/contract", "kind": "record", "unblocks": []}
+  ],
+  "agents_can_start": [
+    {"concern": "reports/exporter", "action": "build", "command": "/loop-build reports/exporter"},
+    {"concern": "search/indexer", "action": "build", "command": "/loop-build search/indexer"},
+    {"concern": "reports/legacy", "action": "prove", "command": "/loop-prove reports/legacy main"},
+    {"concern": "reports/metrics", "action": "prove", "command": "/loop-prove reports/metrics staging"},
+    {"concern": "reports/queue", "action": "prove", "command": "/loop-prove reports/queue staging"},
+    {"concern": "reports/ranking", "action": "design", "command": "/loop-design reports/ranking"}
+  ],
+  "drift": [
+    "docs/loops/reports/dashboard.md and docs/loops/reports/exporter.md, touches",
+    "docs/loops/reports/retries.md, needs",
+    "docs/loops/reports/retries.md, since reports/retries started",
+    "example/reports#3, linked to reports/worker"
+  ],
+  "missing": ["sandbox's served commit", "vault's served commit"]
+}

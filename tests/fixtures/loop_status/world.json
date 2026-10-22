@@ -1,0 +1,88 @@
+{
+  "comment": "The world the loop_status tests build: a git history, the pull requests the forge reports, what each environment serves and the checks on main. tests/test_loop_status.py builds it twice: as a real repository with a bare origin and a fake gh, which loop_status.py gathers from, and as a facts document supplied directly, the way the status service supplies one. Commits are named; {sha:<name>} in project/ and early/ is replaced by that commit's short hash.",
+  "project": "example/reports",
+  "as_of": "2026-10-21T09:00:00Z",
+  "steps": [
+    {"commit": "base", "files": {"README.md": "Reports\n", ".gitignore": "served/\n", "served.sh": "#!/bin/sh\n# Prints the commit an environment serves, from the test's served/<env> file.\ncat \"served/$1\" 2>/dev/null || { echo \"no build answers for $1\" >&2; exit 1; }\n"}, "message": "Start the reports project"},
+    {"tree": "early", "commit": "early-docs", "message": "Plan the retries and stacked concerns"},
+
+    {"branch": "reports/contract", "at": "main"},
+    {"commit": "contract-1", "on": "reports/contract", "files": {"src/jobs/contract.py": "VERSION = 1\n", "tests/test_contract.py": "# contract tests\n"}, "message": "Reject a job payload without a version\n\nConcern: reports/contract"},
+    {"merge": "contract-merge", "from": "reports/contract", "message": "Merge pull request #1 from example/reports/contract"},
+
+    {"branch": "reports/queue", "at": "main"},
+    {"commit": "queue-1", "on": "reports/queue", "files": {"src/queue/queue.py": "QUEUE = []\n"}, "message": "Keep queued jobs across a restart\n\nConcern: reports/queue"},
+    {"merge": "queue-merge", "from": "reports/queue", "message": "Merge pull request #2 from example/reports/queue"},
+
+    {"branch": "reports/worker", "at": "main"},
+    {"commit": "worker-1", "on": "reports/worker", "files": {"src/worker/worker.py": "WORKERS = 1\n", "README.md": "Reports, made by one worker\n"}, "message": "Generate reports in a background worker\n\nConcern: reports/worker"},
+    {"merge": "worker-merge", "from": "reports/worker", "message": "Merge pull request #3 from example/reports/worker"},
+
+    {"branch": "reports/scheduler", "at": "main"},
+    {"commit": "scheduler-1", "on": "reports/scheduler", "files": {"src/scheduler/schedule.py": "AT = '09:00'\n"}, "message": "Queue scheduled reports at their time\n\nConcern: reports/scheduler"},
+    {"merge": "scheduler-merge", "from": "reports/scheduler", "message": "Merge pull request #4 from example/reports/scheduler"},
+
+    {"branch": "reports/metrics", "at": "main"},
+    {"commit": "metrics-1", "on": "reports/metrics", "files": {"src/metrics.py": "FIELDS = ['duration', 'outcome']\n"}, "message": "Record each job's duration and outcome\n\nConcern: reports/metrics"},
+    {"merge": "metrics-merge", "from": "reports/metrics", "message": "Merge pull request #6 from example/reports/metrics"},
+
+    {"branch": "reports/legacy", "at": "main"},
+    {"commit": "legacy-1", "on": "reports/legacy", "files": {"src/legacy/importer.py": "FORMATS = ['v1']\n"}, "message": "Import reports from the old system\n\nConcern: reports/legacy"},
+    {"merge": "legacy-merge", "from": "reports/legacy", "message": "Merge pull request #8 from example/reports/legacy"},
+
+    {"branch": "reports/audit-trail", "at": "main"},
+    {"commit": "audit-1", "on": "reports/audit-trail", "files": {"src/audit/trail.py": "ENTRIES = []\n"}, "message": "Keep an audit entry for every edit\n\nConcern: reports/audit-trail"},
+    {"merge": "audit-merge", "from": "reports/audit-trail", "message": "Merge pull request #7 from example/reports/audit-trail"},
+
+    {"branch": "inbox/digest", "at": "main"},
+    {"commit": "digest-1", "on": "inbox/digest", "files": {"src/digest/digest.py": "ITEMS = []\n"}, "message": "List every waiting item in a digest\n\nConcern: inbox/digest"},
+    {"merge": "digest-merge", "from": "inbox/digest", "message": "Merge pull request #13 from example/inbox/digest"},
+
+    {"branch": "onboarding/welcome", "at": "main"},
+    {"commit": "welcome-1", "on": "onboarding/welcome", "files": {"src/onboarding/welcome.py": "SAMPLE = 'sample.pdf'\n"}, "message": "Send a welcome email with a sample report on sign-up\n\nConcern: onboarding/welcome"},
+    {"merge": "welcome-merge", "from": "onboarding/welcome", "message": "Merge pull request #12 from example/onboarding/welcome"},
+
+    {"branch": "reports/retries", "at": "main"},
+    {"commit": "retries-1", "on": "reports/retries", "files": {"src/retries.py": "ATTEMPTS = 3\n", "tests/test_retries.py": "# retries tests\n"}, "message": "Retry a failed report job at most three times\n\nConcern: reports/retries"},
+
+    {"branch": "reports/stacked-base", "at": "main"},
+    {"branch": "reports/stacked", "at": "main"},
+    {"commit": "stacked-1", "on": "reports/stacked", "files": {"src/stacked.py": "STACKED = True\n"}, "message": "Add the stacked change\n\nConcern: reports/stacked"},
+    {"merge": "stacked-merge", "into": "reports/stacked-base", "from": "reports/stacked", "message": "Merge pull request #10 from example/reports/stacked"},
+
+    {"commit": "metrics-change", "files": {"src/metrics.py": "FIELDS = ['duration', 'outcome', 'attempts']\n"}, "message": "Count attempts in the job metrics"},
+    {"label": "staging-build", "at": "main"},
+    {"tree": "project", "commit": "docs", "message": "Write the loops"},
+
+    {"branch": "docs/reports-record-2026-10-20", "at": "main"},
+    {"commit": "record-1", "on": "docs/reports-record-2026-10-20", "append": {"LOOP.md": "\nA line the record step should not have written.\n"}, "message": "Record what the reports loop shipped"}
+  ],
+  "branches": ["reports/retries", "reports/stacked", "reports/stacked-base", "docs/reports-record-2026-10-20"],
+  "pull_refs": {"9": "record-1"},
+  "served": {"staging": "staging-build", "production": "worker-merge", "vault": "staging-build"},
+  "checks_on_main": "success",
+  "pull_requests": [
+    {"number": 1, "title": "Reject a job payload without a version", "head": "reports/contract", "base": "main", "state": "MERGED", "draft": false, "merge": "contract-merge", "checks": "SUCCESS", "files": ["src/jobs/contract.py", "tests/test_contract.py"], "body": "A job payload without a version is now rejected.\n\nConcern: reports/contract\n"},
+    {"number": 2, "title": "Keep queued jobs across a restart", "head": "reports/queue", "base": "main", "state": "MERGED", "draft": false, "merge": "queue-merge", "checks": "SUCCESS", "files": ["src/queue/queue.py"], "body": "Queued jobs survive a restart.\n\nConcern: reports/queue\n"},
+    {"number": 3, "title": "Generate reports in a background worker", "head": "reports/worker", "base": "main", "state": "MERGED", "draft": false, "merge": "worker-merge", "checks": "SUCCESS", "files": ["src/worker/worker.py", "README.md"], "body": "One worker renders each report.\n\nConcern: reports/worker\n"},
+    {"number": 4, "title": "Queue scheduled reports at their time", "head": "reports/scheduler", "base": "main", "state": "MERGED", "draft": false, "merge": "scheduler-merge", "checks": "SUCCESS", "files": ["src/scheduler/schedule.py"], "body": "Scheduled reports are queued at their time.\n\nConcern: reports/scheduler\n"},
+    {"number": 5, "title": "Retry a failed report job at most three times", "head": "reports/retries", "base": "main", "state": "OPEN", "draft": false, "merge": null, "checks": "SUCCESS", "files": ["src/retries.py", "tests/test_retries.py"], "body": "## What this changes\n\nA job that fails three times is marked failed.\n\n## How it was proven before the merge\n\n- [x] Unit tests: `python3 -m unittest -v`, 31 passed\n- [x] C1: HOLDS (rung 5, local): a job that fails 4 times is attempted 3 times and marked failed\n\n## Still to prove after the merge\n\n- C1 on staging.\n\nConcern: reports/retries\n"},
+    {"number": 6, "title": "Record each job's duration and outcome", "head": "reports/metrics", "base": "main", "state": "MERGED", "draft": false, "merge": "metrics-merge", "checks": "SUCCESS", "files": ["src/metrics.py"], "body": "Each job records its duration and outcome.\n\nConcern: reports/metrics\n"},
+    {"number": 7, "title": "Keep an audit entry for every edit", "head": "reports/audit-trail", "base": "main", "state": "MERGED", "draft": false, "merge": "audit-merge", "checks": "SUCCESS", "files": ["src/audit/trail.py"], "body": "Every edit adds an audit entry.\n\nConcern: reports/audit-trail\n"},
+    {"number": 8, "title": "Import reports from the old system", "head": "reports/legacy", "base": "main", "state": "MERGED", "draft": false, "merge": "legacy-merge", "checks": "SUCCESS", "files": ["src/legacy/importer.py"], "body": "Old reports import.\n\nConcern: reports/legacy\n"},
+    {"number": 9, "title": "Record what the reports loop shipped", "head": "docs/reports-record-2026-10-20", "base": "main", "state": "OPEN", "draft": false, "merge": null, "checks": "SUCCESS", "files": ["LOOP.md"], "body": "Shipped notes for the reports loop.\n"},
+    {"number": 10, "title": "Add the stacked change", "head": "reports/stacked", "base": "reports/stacked-base", "state": "MERGED", "draft": false, "merge": "stacked-merge", "checks": "SUCCESS", "files": ["src/stacked.py"], "body": "Stacked on another branch.\n\nConcern: reports/stacked\n"},
+    {"number": 12, "title": "Send a welcome email with a sample report on sign-up", "head": "onboarding/welcome", "base": "main", "state": "MERGED", "draft": false, "merge": "welcome-merge", "checks": "SUCCESS", "files": ["src/onboarding/welcome.py"], "body": "A welcome email on sign-up.\n\nConcern: onboarding/welcome\n"},
+    {"number": 13, "title": "List every waiting item in a digest", "head": "inbox/digest", "base": "main", "state": "MERGED", "draft": false, "merge": "digest-merge", "checks": "SUCCESS", "files": ["src/digest/digest.py"], "body": "A digest of waiting items.\n\nConcern: inbox/digest\n"},
+    {"number": 14, "title": "Export reports as CSV, first try", "head": "reports/exporter", "base": "main", "state": "CLOSED", "draft": false, "merge": null, "checks": "FAILURE", "files": ["src/export/csv.py"], "body": "Abandoned.\n\nConcern: reports/exporter\n"}
+  ],
+  "other_repositories": {
+    "example/tools": {
+      "default_branch": "main",
+      "on_main": ["5a1f0e2d9c8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f"],
+      "pull_requests": [
+        {"number": 11, "title": "Sync report templates to the reports repository", "head": "sync-templates", "base": "main", "state": "MERGED", "draft": false, "merge_sha": "5a1f0e2d9c8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f", "checks": "SUCCESS", "files": ["sync/templates.py"], "body": "Templates sync on every change.\n"}
+      ]
+    }
+  }
+}
