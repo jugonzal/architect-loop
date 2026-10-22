@@ -1,0 +1,30 @@
+# The app's own tests and type check, with its own packages (command-center/D30). The root `check` stays standard
+# library only and does not run these. It runs on every pull request and on every push to main, so CI on main's
+# head always says whether the app still builds against the status schema; the screen concerns' "in CI on main"
+# claims read it.
+#
+# There is no lockfile yet (app/package-lock.json is outside app-shell's touches), so each run resolves the
+# packages afresh within the ranges app/package.json pins.
+name: app
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install --no-package-lock --no-audit --no-fund
+      # The generated status types must match plugin/skills/loop-status/scripts/status.schema.json (D15).
+      - run: npm run check:status
+      - run: npm run typecheck
+      - run: npm test -- --ci
