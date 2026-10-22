@@ -10,8 +10,9 @@ import unittest
 from openapi_spec_validator import validate
 
 from runner.api import Api
+from runner.config import SCOPES, SKILLS
 from tests.contract import SPEC, ContractClient, documented, request_errors
-from tests.fakes import CONCERN, OTHER, PROJECT, dispatch_body, make_runner
+from tests.fakes import CONCERN, ENVIRONMENT, LOOP, OTHER, PROJECT, dispatch_body, make_runner, scoped_body
 
 SID = "0" * 31 + "1"
 
@@ -148,6 +149,10 @@ class RequestContractTest(unittest.TestCase):
         dispatch_body(skill="loop-status", arguments="--json"),
         dispatch_body(concern=OTHER, budget_usd=0.05),
         {k: v for k, v in dispatch_body().items() if k != "arguments"},
+        dispatch_body(concern=None, skill="loop-ship", environment=ENVIRONMENT),
+        dispatch_body(concern=None, skill="loop-ship", environment="main", arguments="--verify"),
+        dispatch_body(concern=None, skill="loop-status", loop=LOOP, arguments="--json"),
+        dispatch_body(concern=None, skill="loop-design", loop=LOOP),
     ]
     INVALID = [
         dispatch_body(skill="loop-ship"),
@@ -167,6 +172,21 @@ class RequestContractTest(unittest.TestCase):
         {k: v for k, v in dispatch_body().items() if k != "project"},
         [],
         "loop-build",
+        dispatch_body(concern=None),
+        dispatch_body(loop=LOOP),
+        dispatch_body(environment=ENVIRONMENT),
+        dispatch_body(concern=None, skill="loop-status", loop=LOOP, environment=ENVIRONMENT),
+        dispatch_body(concern=None, skill="loop-build", loop=LOOP),
+        dispatch_body(concern=None, skill="loop-prove", loop=LOOP),
+        dispatch_body(concern=None, skill="loop-ship", loop=LOOP),
+        dispatch_body(concern=None, skill="loop-status", environment=ENVIRONMENT),
+        dispatch_body(concern=None, skill="loop-design", environment=ENVIRONMENT),
+        dispatch_body(concern=None, skill="loop-ship", environment="Staging/Runner"),
+        dispatch_body(concern=None, skill="loop-ship", environment="staging/runner/x"),
+        dispatch_body(concern=None, skill="loop-ship", environment=""),
+        dispatch_body(concern=None, skill="loop-status", loop="command-center/x"),
+        dispatch_body(concern=None, skill="loop-status", loop=""),
+        dispatch_body(concern=None, skill="loop-status", loop=7),
     ]
 
     def test_valid_dispatches_match_the_spec_and_start(self):
@@ -183,6 +203,28 @@ class RequestContractTest(unittest.TestCase):
                 response = runner(self)[0].call("POST", "/sessions", body, token="tok-juan")
                 self.assertEqual(response.status, 400, response)
                 self.assertEqual(response.json["error"], "invalid-request")
+
+    def test_the_spec_and_the_runner_agree_on_every_skill_and_target(self):
+        """runner-dispatch C3: `loop-design`, `loop-build`, `loop-prove` and `loop-status` on a concern,
+        `loop-design` and `loop-status` on a loop, `loop-ship` on an environment, and nothing else."""
+        for scope in SCOPES:
+            for skill in SKILLS:
+                with self.subTest(scope=scope, skill=skill):
+                    body = scoped_body(scope, skill)
+                    allowed = skill in SCOPES[scope]
+                    self.assertEqual(request_errors("POST", "/sessions", body) == [], allowed)
+                    status = runner(self)[0].call("POST", "/sessions", body, token="tok-juan").status
+                    self.assertEqual(status, 201 if allowed else 400)
+        self.assertEqual(set(SPEC["components"]["schemas"]["Skill"]["enum"]), set(SKILLS))
+
+    def test_a_budget_above_the_ceiling_is_a_valid_request_refused_as_a_refusal(self):
+        """The ceiling is config (session-runner D8), so the spec leaves it out of the request and documents the
+        refusal instead."""
+        body = dispatch_body(budget_usd=25.0)
+        self.assertEqual(request_errors("POST", "/sessions", body), [])
+        response = runner(self)[0].call("POST", "/sessions", body, token="tok-juan")
+        self.assertEqual((response.status, response.json["refused"], response.json["ceiling_usd"]),
+                         (409, "budget-ceiling", 10.0))
 
     def test_a_body_that_is_not_json_is_a_400(self):
         response = runner(self)[0].call("POST", "/sessions", raw=b"{not json", token="tok-juan")
@@ -201,6 +243,16 @@ class RoundTripTest(unittest.TestCase):
         self.assertEqual(one["state"], "starting")
         self.assertIsNone(one["outcome"])
         self.assertEqual(listed["cap_per_sponsor"], 3)
+
+    def test_a_session_on_a_loop_or_an_environment_reads_back_the_same(self):
+        client = runner(self)[0]
+        for scope, skill in (("loop", "loop-status"), ("environment", "loop-ship")):
+            with self.subTest(scope=scope):
+                created = client.call("POST", "/sessions", scoped_body(scope, skill), token="tok-juan").json
+                one = client.call("GET", f"/sessions/{created['id']}", token="tok-ana").json
+                self.assertEqual(one, created)
+                self.assertEqual((one["concern"], one["branch"], one["final_message"]), (None, "main", None))
+                self.assertEqual(one[scope], LOOP if scope == "loop" else ENVIRONMENT)
 
     def test_the_location_header_names_the_session(self):
         client = runner(self)[0]

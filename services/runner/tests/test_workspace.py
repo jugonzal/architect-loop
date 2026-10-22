@@ -1,8 +1,9 @@
 """A session's workspace: its own fresh clone on `<loop>/<concern>`, the trailer hook, and the plugin release.
 
-C1 (in part) and D4: the hook adds `Concern:` and `Sponsored-by:`, `--no-verify` skips it, and the trailers
-check fails the commit that skipped it. D17: the session runs the release named in the dispatch, never the
-clone's own `plugin/`. Everything runs against a local bare repository standing in for GitHub.
+session-runner C5 and D4, runner-dispatch C1: the hook adds `Sponsored-by:` to every session's commits and
+`Concern:` only to a `/loop-build` session's (command-center/D45), `--no-verify` skips it, and the trailers check
+fails the commit that skipped it, whatever the skill. D17: the session runs the release named in the dispatch,
+never the clone's own `plugin/`. Everything runs against a local bare repository standing in for GitHub.
 """
 
 import json
@@ -11,18 +12,21 @@ import subprocess
 import unittest
 
 from runner import trailers
+from runner.config import SCOPES
 from runner.models import Session
-from runner.workspace import Workspace, WorkspaceError
+from runner.workspace import Workspace, WorkspaceError, trailers_for
 from tests.gitrepo import BOT, SLUG, Repo, clean_env, git
-from tests.fakes import CONCERN, PROJECT, scratch
+from tests.fakes import CONCERN, PROJECT, SCOPED, scratch
+
+PAIRS = [(scope, skill) for scope, skills in SCOPES.items() for skill in skills]
 
 PLUGIN_JSON = '{"name": "architect-loop", "version": "%s"}\n'
 
 
-def session(concern=CONCERN, release="v0.3.0", sponsor="juan", sid="a" * 32):
-    return Session(id=sid, project=PROJECT, skill="loop-build", concern=concern, arguments="", model="m",
-                   sponsor=sponsor, budget_usd=1.0, plugin_release=release, branch=concern,
-                   created_at="2026-10-20T12:00:00Z")
+def session(concern=CONCERN, release="v0.3.0", sponsor="juan", sid="a" * 32, skill="loop-build", scope=None):
+    on = SCOPED[scope] if scope else {"concern": concern, "branch": concern}
+    return Session(id=sid, project=PROJECT, skill=skill, arguments="", model="m", sponsor=sponsor, budget_usd=1.0,
+                   plugin_release=release, created_at="2026-10-20T12:00:00Z", **on)
 
 
 class Origin:
@@ -67,6 +71,17 @@ class WorkspaceTest(unittest.TestCase):
         prepared = self.prepare()
         self.assertEqual(git(prepared.clone, "rev-parse", "HEAD"), sha)
         self.assertEqual(git(prepared.clone, "rev-parse", "--abbrev-ref", "@{upstream}"), f"origin/{CONCERN}")
+
+    def test_a_loop_or_environment_session_works_on_main_and_makes_no_branch(self):
+        """runner-dispatch C3: it clones main and pushes no branch of its own unless its skill opens a PR."""
+        for n, scope in enumerate(("loop", "environment"), 1):
+            with self.subTest(scope=scope):
+                prepared = self.prepare(session(scope=scope, skill="loop-status" if scope == "loop" else "loop-ship",
+                                                sid=f"{n:032x}"))
+                self.assertEqual(git(prepared.clone, "branch", "--show-current"), "main")
+                self.assertEqual(git(prepared.clone, "rev-parse", "HEAD"), git(self.origin.path, "rev-parse", "main"))
+                self.assertEqual(git(prepared.clone, "branch", "--format=%(refname:short)"), "main")
+                self.assertEqual(self.workspace.pushed_branches(prepared.clone), [])
 
     def test_commits_are_the_bots(self):
         prepared = self.prepare()
@@ -143,6 +158,60 @@ class HookTest(unittest.TestCase):
         subprocess.run(["git", "add", "x.md"], cwd=self.prepared.clone, check=True, env=env)
         subprocess.run(["git", "commit", "-q", "-m", "Add x"], cwd=self.prepared.clone, check=True, env=env)
         self.assertIn("Sponsored-by: ana", git(self.prepared.clone, "log", "-1", "--format=%B"))
+
+
+class TrailersPerSkillTest(unittest.TestCase):
+    """runner-dispatch C1, for each skill the job can run: `Sponsored-by:` on every commit, and `Concern:` only on a
+    `/loop-build` session's (command-center/D45). The trailers check passes each, so it stays true for every skill."""
+
+    def setUp(self):
+        self.origin = Origin(self)
+        self.workspace = Workspace(self.origin.path, scratch(self), BOT, env=clean_env())
+
+    def prepared(self, skill, n, scope="concern"):
+        s = session(skill=skill, sponsor="ana", sid=f"{n:032x}", scope=scope)
+        prepared = self.workspace.prepare(s)
+        self.addCleanup(self.workspace.cleanup, s.id)
+        return prepared
+
+    def commit(self, clone, message, *flags):
+        with open(os.path.join(clone, "work.md"), "a") as f:
+            f.write("more\n")
+        subprocess.run(["git", "add", "work.md"], cwd=clone, check=True, env=clean_env())
+        subprocess.run(["git", "commit", "-q", *flags, "-m", message], cwd=clone, check=True, env=clean_env(),
+                       capture_output=True)
+        return git(clone, "log", "-1", "--format=%B")
+
+    def parsed(self, clone, message):
+        return trailers.trailers(clone, message)
+
+    def test_only_a_loop_build_sessions_trailers_name_the_concern(self):
+        for scope, skill in PAIRS:
+            with self.subTest(scope=scope, skill=skill):
+                expected = [("Sponsored-by", "juan")]
+                if skill == "loop-build":
+                    expected = [("Concern", CONCERN)] + expected
+                self.assertEqual(trailers_for(session(skill=skill, scope=scope)), expected)
+
+    def test_each_skills_commits_carry_the_sponsor_and_only_a_builds_the_concern(self):
+        for n, (scope, skill) in enumerate(PAIRS, 1):
+            with self.subTest(scope=scope, skill=skill):
+                clone = self.prepared(skill, n, scope).clone
+                base = git(clone, "rev-parse", "HEAD")
+                found = self.parsed(clone, self.commit(clone, "Record the work\n\nBecause."))
+                self.assertIn(("Sponsored-by", "ana"), found)
+                self.assertEqual([v for k, v in found if k == "Concern"], [CONCERN] if skill == "loop-build" else [])
+                self.assertTrue(trailers.check(clone, base, "HEAD", SLUG).ok)
+
+    def test_a_no_verify_commit_fails_the_trailers_check_whatever_the_skill(self):
+        for n, (scope, skill) in enumerate(PAIRS, 1):
+            with self.subTest(scope=scope, skill=skill):
+                clone = self.prepared(skill, n, scope).clone
+                base = git(clone, "rev-parse", "HEAD")
+                self.commit(clone, "Record the work without a sponsor", "--no-verify")
+                result = trailers.check(clone, base, "HEAD", SLUG)
+                self.assertFalse(result.ok)
+                self.assertEqual(len(result.failures), 1)
 
 
 class PushedBranchesTest(unittest.TestCase):

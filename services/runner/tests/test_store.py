@@ -1,4 +1,6 @@
-"""The runner's store (command-center/D26): the atomic claim behind C3, spend publication, and measurements."""
+"""The runner's store (command-center/D26): the atomic claim behind runner-dispatch C2 (only `/loop-build` and
+`/loop-design` hold a concern, session-runner D6; every running session counts toward its sponsor's cap, D22),
+spend publication, and measurements."""
 
 import os
 import sqlite3
@@ -8,14 +10,38 @@ import unittest
 from runner.config import DEFAULT_SEEDS
 from runner.models import Session
 from runner.store import SqliteStore
-from tests.fakes import CONCERN, OTHER, PROJECT, scratch
+from tests.fakes import CONCERN, ENVIRONMENT, LOOP, OTHER, PROJECT, SCOPED, scratch
 
 NOW = "2026-10-20T12:00:00Z"
+
+# The store's schema as session-runner first built it (main @a9fde89), to check that a file it made still opens.
+V1_SCHEMA = """
+CREATE TABLE sessions (
+    id TEXT PRIMARY KEY, project TEXT NOT NULL, skill TEXT NOT NULL, concern TEXT NOT NULL, arguments TEXT NOT NULL,
+    model TEXT NOT NULL, sponsor TEXT NOT NULL, budget_usd REAL NOT NULL, plugin_release TEXT NOT NULL,
+    branch TEXT NOT NULL, created_at TEXT NOT NULL, state TEXT NOT NULL, outcome TEXT, started_at TEXT,
+    ended_at TEXT, heartbeat_at TEXT, spend TEXT, pull_requests TEXT NOT NULL DEFAULT '[]',
+    stop_requested INTEGER NOT NULL DEFAULT 0, execution TEXT
+);
+CREATE UNIQUE INDEX one_active_session_per_concern
+    ON sessions (project, concern) WHERE state IN ('starting', 'running', 'stopping');
+CREATE INDEX sessions_by_sponsor ON sessions (sponsor, state);
+CREATE TABLE measurements (
+    source TEXT PRIMARY KEY, skill TEXT NOT NULL, model TEXT NOT NULL, usd REAL NOT NULL, wall_clock_s REAL NOT NULL,
+    at TEXT NOT NULL
+);
+"""
 
 
 def session(n, concern=CONCERN, sponsor="juan", skill="loop-build", model="claude-opus-5-5", created_at=NOW):
     return Session(id=f"{n:032x}", project=PROJECT, skill=skill, concern=concern, arguments="", model=model,
                    sponsor=sponsor, budget_usd=1.0, plugin_release="v0.3.0", branch=concern, created_at=created_at)
+
+
+def scoped(n, scope, skill, sponsor="juan"):
+    """A session on the test concern, loop or environment (runner-dispatch C3)."""
+    return Session(id=f"{n:032x}", project=PROJECT, skill=skill, arguments="", model="claude-opus-5-5",
+                   sponsor=sponsor, budget_usd=1.0, plugin_release="v0.3.0", created_at=NOW, **SCOPED[scope])
 
 
 def final(usd, wall=60.0, basis="sdk result"):
@@ -51,6 +77,77 @@ class StoreTest(unittest.TestCase):
             db.execute("INSERT INTO sessions (id, project, skill, concern, arguments, model, sponsor, budget_usd, "
                        "plugin_release, branch, created_at, state) VALUES ('x', ?, 'loop-build', ?, '', 'm', 'ana', "
                        "1, 'v0.3.0', ?, ?, 'running')", (PROJECT, CONCERN, CONCERN, NOW))
+
+    def test_a_prove_or_a_status_claim_beside_a_holding_session_is_stored(self):
+        self.claim(session(1, skill="loop-build"))
+        self.assertIsNone(self.claim(session(2, sponsor="ana", skill="loop-prove")))
+        self.assertIsNone(self.claim(session(3, sponsor="ana", skill="loop-status")))
+        self.assertEqual(len(self.store.list()), 3)
+
+    def test_a_holding_claim_beside_a_prove_is_stored_and_a_second_one_is_refused(self):
+        self.claim(session(1, skill="loop-prove"))
+        self.assertIsNone(self.claim(session(2, sponsor="ana", skill="loop-design")))
+        refusal = self.claim(session(3, sponsor="bea", skill="loop-build"))
+        self.assertEqual(refusal.refused, "running-session")
+        self.assertEqual([s.id for s in refusal.sessions], [session(2).id])
+
+    def test_the_database_itself_refuses_two_holding_sessions_but_not_a_prove_beside_one(self):
+        self.claim(session(1, skill="loop-design"))
+        db = sqlite3.connect(self.path)
+        self.addCleanup(db.close)
+        insert = ("INSERT INTO sessions (id, project, skill, concern, arguments, model, sponsor, budget_usd, "
+                  "plugin_release, branch, created_at, state) VALUES (?, ?, ?, ?, '', 'm', 'ana', 1, 'v0.3.0', ?, ?, "
+                  "'running')")
+        db.execute(insert, ("p", PROJECT, "loop-prove", CONCERN, CONCERN, NOW))
+        with self.assertRaises(sqlite3.IntegrityError):
+            db.execute(insert, ("b", PROJECT, "loop-build", CONCERN, CONCERN, NOW))
+
+    def test_every_active_session_counts_toward_the_cap_whatever_its_skill(self):
+        for n, skill in enumerate(("loop-build", "loop-prove", "loop-status"), 1):
+            self.assertIsNone(self.claim(session(n, skill=skill)))
+        refusal = self.claim(session(4, concern=OTHER, skill="loop-prove"))
+        self.assertEqual((refusal.refused, refusal.cap, len(refusal.sessions)), ("sponsor-cap", 3, 3))
+
+    def test_a_loop_or_environment_session_holds_nothing_and_counts_toward_the_cap(self):
+        self.assertIsNone(self.claim(scoped(1, "loop", "loop-design")))
+        self.assertIsNone(self.claim(scoped(2, "loop", "loop-design", sponsor="ana")))
+        self.assertIsNone(self.claim(scoped(3, "environment", "loop-ship")))
+        self.assertIsNone(self.claim(scoped(4, "environment", "loop-ship", sponsor="ana")))
+        self.assertIsNone(self.claim(session(5, skill="loop-build")))
+        refusal = self.claim(session(6, concern=OTHER, skill="loop-prove"))
+        self.assertEqual((refusal.refused, len(refusal.sessions)), ("sponsor-cap", 3))
+
+    def test_a_session_reads_back_with_what_it_runs_on(self):
+        for n, scope, skill in ((1, "loop", "loop-status"), (2, "environment", "loop-ship")):
+            with self.subTest(scope=scope):
+                self.claim(scoped(n, scope, skill))
+                found = self.store.get(scoped(n, scope, skill).id)
+                self.assertEqual(found, scoped(n, scope, skill))
+                self.assertEqual((found.concern, found.loop, found.environment, found.branch),
+                                 (None, LOOP if scope == "loop" else None,
+                                  ENVIRONMENT if scope == "environment" else None, "main"))
+                self.assertFalse(found.holds)
+
+    def test_the_final_message_is_kept_with_how_it_ended(self):
+        self.claim(scoped(1, "environment", "loop-ship"))
+        ended = self.store.finish(scoped(1, "environment", "loop-ship").id, "completed", final(0.4), [], NOW,
+                                  final_message="## Ship brief\n\nThree concerns go out.")
+        self.assertEqual(ended.final_message, "## Ship brief\n\nThree concerns go out.")
+        self.assertEqual(self.store.get(ended.id).public()["final_message"], "## Ship brief\n\nThree concerns go out.")
+
+    def test_a_session_that_ends_without_one_has_no_final_message(self):
+        self.claim(session(1))
+        self.assertIsNone(self.store.finish(session(1).id, "error", None, [], NOW).final_message)
+
+    def test_ten_proves_at_once_on_one_concern_are_all_stored(self):
+        results = self.race([session(n, sponsor=f"p{n}", skill="loop-prove") for n in range(1, 11)])
+        self.assertEqual(results, [None] * 10)
+
+    def test_holding_and_non_holding_claims_at_once_store_one_holder_and_every_prove(self):
+        claims = [session(n, sponsor=f"p{n}", skill="loop-build" if n % 2 else "loop-prove") for n in range(1, 11)]
+        results = self.race(claims)
+        stored = [c.skill for c, r in zip(claims, results) if r is None]
+        self.assertEqual(sorted(stored), ["loop-build"] + ["loop-prove"] * 5)
 
     def test_ten_claims_at_once_on_one_concern_store_exactly_one(self):
         results = self.race([session(n, sponsor=f"p{n}") for n in range(1, 11)])
@@ -150,6 +247,26 @@ class StoreTest(unittest.TestCase):
             self.store.finish(s.id, "completed", final(0.3), [], NOW)
         sources = [m["source"] for m in self.store.measurements("loop-status", "claude-opus-5-5", 10)]
         self.assertNotIn("seed:loop-status:claude-opus-5-5", sources)
+
+    def test_a_store_made_by_the_previous_runner_lets_a_prove_beside_a_build(self):
+        """Its index refused any second active session on a concern; opening it replaces that index."""
+        path = os.path.join(scratch(self), "old.sqlite3")
+        db = sqlite3.connect(path)
+        db.executescript(V1_SCHEMA)
+        db.execute("INSERT INTO sessions (id, project, skill, concern, arguments, model, sponsor, budget_usd, "
+                   "plugin_release, branch, created_at, state) VALUES (?, ?, 'loop-build', ?, '', 'm', 'juan', 1, "
+                   "'v0.3.0', ?, ?, 'running')", ("b" * 32, PROJECT, CONCERN, CONCERN, NOW))
+        db.commit()
+        db.close()
+        store = SqliteStore(path)
+        self.assertIsNone(store.claim(session(2, sponsor="ana", skill="loop-prove"), 3, NOW, 3600))
+        self.assertEqual(store.claim(session(3, sponsor="ana", skill="loop-design"), 3, NOW, 3600).refused,
+                         "running-session")
+        old = store.get("b" * 32)  # its row is kept, and now says it runs on no loop or environment
+        self.assertEqual((old.concern, old.loop, old.environment, old.final_message), (CONCERN, None, None, None))
+        self.assertIsNone(store.claim(scoped(4, "loop", "loop-status", sponsor="bea"), 3, NOW, 3600))
+        SqliteStore(path)  # opening it again changes nothing
+        self.assertEqual(len(store.list()), 3)
 
     def test_list_filters(self):
         self.claim(session(1))

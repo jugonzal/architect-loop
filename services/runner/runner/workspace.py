@@ -1,5 +1,6 @@
-"""A session's workspace: a fresh clone of the project on `<loop>/<concern>`, with the runner's commit-msg hook,
-and the plugin release named in the dispatch beside it, read-only (session-runner Approach, D4; D17)."""
+"""A session's workspace: a fresh clone of the project on `<loop>/<concern>`, or on main for a session on a loop or
+an environment (runner-dispatch C3), with the runner's commit-msg hook, and the plugin release named in the
+dispatch beside it, read-only (session-runner Approach, D4; D17)."""
 
 import io
 import json
@@ -11,9 +12,12 @@ import subprocess
 import tarfile
 from dataclasses import dataclass
 
+from .config import CONCERN_TRAILER_SKILLS
+
 HOOK = """#!/bin/sh
 # Installed by the architect-loop runner in this session's clone (session-runner D4): every commit names its
-# concern and its sponsor. `git commit --no-verify` skips this hook; the trailers check fails such a commit.
+# sponsor, and a /loop-build session's commits name their concern too (command-center/D45).
+# `git commit --no-verify` skips this hook; the trailers check fails such a commit.
 exec git interpret-trailers --in-place --if-exists doNothing {trailers} "$1"
 """
 
@@ -31,8 +35,10 @@ class Prepared:
 
 
 def trailers_for(session):
-    """The trailers a session's commits and pull requests carry (C1)."""
-    return [("Concern", session.concern), ("Sponsored-by", session.sponsor)]
+    """The trailers a session's commits and pull requests carry (runner-dispatch C1, command-center/D45):
+    `Sponsored-by:` always, and `Concern:` before it only in a /loop-build session."""
+    concern = [("Concern", session.concern)] if session.skill in CONCERN_TRAILER_SKILLS else []
+    return concern + [("Sponsored-by", session.sponsor)]
 
 
 class Workspace:
@@ -69,6 +75,9 @@ class Workspace:
         return Prepared(root, clone, plugin_dir, plugin_name)
 
     def _branch(self, clone, branch):
+        if branch == self.main_branch:  # a session on a loop or an environment makes no branch of its own
+            self._git(clone, "switch", "--quiet", branch)
+            return
         remote = f"refs/remotes/origin/{branch}"
         exists = subprocess.run(["git", "rev-parse", "--verify", "--quiet", remote], cwd=clone, env=self.env,
                                 capture_output=True).returncode == 0

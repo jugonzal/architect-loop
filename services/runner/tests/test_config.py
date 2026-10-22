@@ -2,7 +2,8 @@
 
 import unittest
 
-from runner.config import ALLOWED_TOOLS, DEFAULT_SKILL_MODELS, SKILLS, Config
+from runner.config import (ALLOWED_TOOLS, CONCERN_TRAILER_SKILLS, DEFAULT_SKILL_MODELS, HOLDING_SKILLS, SCOPES, SKILLS,
+                           Config)
 
 
 class ConfigTest(unittest.TestCase):
@@ -11,11 +12,26 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(config.project, "jugonzal/architect-loop")  # D18
         self.assertEqual(config.cap_per_sponsor, 3)  # D22
         self.assertEqual(config.skill_models["loop-status"], "claude-sonnet-5-5")  # D5
-        for skill in ("loop-design", "loop-build", "loop-prove"):
+        for skill in ("loop-design", "loop-build", "loop-prove", "loop-ship"):
             self.assertEqual(config.skill_models[skill], "claude-opus-5-5")
         self.assertLessEqual(config.spend_interval_s, 10)  # D23
         self.assertEqual(config.region, "us-east1")  # D32
         self.assertEqual(ALLOWED_TOOLS, ("Bash", "Read", "Write", "Edit", "Glob", "Grep", "Skill"))  # D3
+        self.assertEqual(config.budget_ceiling_usd, 10.0)  # D8
+        self.assertEqual(HOLDING_SKILLS, ("loop-build", "loop-design"))  # D6
+        self.assertEqual(CONCERN_TRAILER_SKILLS, ("loop-build",))  # command-center/D45
+
+    def test_each_skill_is_dispatched_on_what_runner_dispatch_c3_lists(self):
+        self.assertEqual(SCOPES, {"concern": ("loop-design", "loop-build", "loop-prove", "loop-status"),
+                                  "loop": ("loop-design", "loop-status"),
+                                  "environment": ("loop-ship",)})
+        self.assertEqual({s for skills in SCOPES.values() for s in skills}, set(SKILLS))
+        self.assertTrue(set(HOLDING_SKILLS) <= set(SCOPES["concern"]))
+
+    def test_a_ceiling_that_is_not_a_positive_amount_is_refused(self):
+        for ceiling in (0, -1, float("inf"), float("nan")):
+            with self.subTest(ceiling=ceiling), self.assertRaises(ValueError):
+                Config(budget_ceiling_usd=ceiling)
 
     def test_publishing_less_often_than_every_ten_seconds_is_refused(self):
         with self.assertRaises(ValueError):
@@ -38,8 +54,9 @@ class ConfigTest(unittest.TestCase):
         config = Config.from_env({
             "RUNNER_CAP_PER_SPONSOR": "1", "RUNNER_SKILL_MODELS": '{"loop-build": "claude-sonnet-5-5"}',
             "RUNNER_SPEND_INTERVAL_S": "2.5", "COMMIT_SHA": "abc1234", "RUNNER_APP_SLUG": "architect-loop-runner",
-            "RUNNER_STORE": "/data/runner.sqlite3",
+            "RUNNER_STORE": "/data/runner.sqlite3", "RUNNER_BUDGET_CEILING_USD": "2.5",
         })
+        self.assertEqual(config.budget_ceiling_usd, 2.5)
         self.assertEqual(config.cap_per_sponsor, 1)
         self.assertEqual(config.skill_models["loop-build"], "claude-sonnet-5-5")
         self.assertEqual(config.skill_models["loop-status"], "claude-sonnet-5-5")

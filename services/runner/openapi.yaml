@@ -1,11 +1,12 @@
 openapi: 3.1.0
 info:
   title: architect-loop session runner
-  version: 0.1.0
-  summary: Start a loop skill on a concern as a session that names its sponsor and stops at a budget.
+  version: 0.2.0
+  summary: Start a loop skill on a concern, a loop or an environment as a session that names its sponsor and stops at a budget.
   description: |
     The runner starts one session per dispatch, each in its own Cloud Run job, on its own fresh clone of the
-    project, from the plugin release named in the dispatch (command-center/session-runner).
+    project, from the plugin release named in the dispatch (command-center/session-runner). A dispatch names
+    exactly one of a concern, a loop or an environment (command-center/runner-dispatch C3).
 
     Every call except `GET /version` carries the caller's GitHub token. The runner reads only `GET /user` with
     it, to learn who is calling, and checks that person is a collaborator on the project with its own GitHub App.
@@ -40,12 +41,17 @@ paths:
   /sessions:
     post:
       operationId: dispatch
-      summary: Start a skill on a concern as a session sponsored by the caller.
+      summary: Start a skill on a concern, a loop or an environment as a session sponsored by the caller.
       description: |
-        Refused (409) when the concern already has an open pull request or a running session, or when the
+        Only `loop-build` and `loop-design` hold the concern they run on (session-runner D6). Either is refused
+        (409) when the concern already has an open pull request or a running `loop-build` or `loop-design`
+        session; `loop-prove` and `loop-status` run beside them and hold nothing. Any dispatch is refused when the
         caller already runs as many sessions as the per-sponsor cap in the runner's config (3 by default,
-        command-center/D22). Each refusal names the pull requests or sessions that exist. The concern is
-        claimed atomically, so of two dispatches at once at most one starts.
+        command-center/D22), counting every running session whatever its skill, or when its budget is above the
+        ceiling in the runner's config ($10 by default, session-runner D8). Each refusal names the pull requests
+        or sessions that exist, or the cap or the ceiling. The claim is atomic, so of two dispatches at once that
+        would each hold a concern at most one starts. A dispatch on a loop or an environment holds no concern,
+        so only the cap and the ceiling can refuse it.
       requestBody:
         required: true
         content:
@@ -76,7 +82,9 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/Refusal"}
         "422":
-          description: The project is not served by this runner, or the concern or the plugin release does not exist.
+          description: |
+            The project is not served by this runner, or the concern, the loop, the environment or the plugin
+            release does not exist on the project's main branch.
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Problem"}
@@ -123,7 +131,7 @@ paths:
   /sessions/{id}:
     get:
       operationId: getSession
-      summary: One session, with its latest published spend.
+      summary: One session, with its latest published spend and, once it has ended, its final message.
       parameters:
         - $ref: "#/components/parameters/SessionId"
       responses:
@@ -246,11 +254,19 @@ components:
     Skill:
       description: The loop skill to run, without its slash.
       type: string
-      enum: [loop-design, loop-build, loop-prove, loop-status]
+      enum: [loop-design, loop-build, loop-prove, loop-status, loop-ship]
     Concern:
       description: The concern to run it on, as loop/concern.
       type: string
       pattern: "^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$"
+    Loop:
+      description: The loop to run it on, by its folder in docs/loops/.
+      type: string
+      pattern: "^[a-z0-9][a-z0-9-]*$"
+    Environment:
+      description: The environment to run it on, as a row of the project's LOOP.md §3 names it, such as `staging/runner` or `main`.
+      type: string
+      pattern: "^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)?$"
     Version:
       type: object
       additionalProperties: false
@@ -258,20 +274,44 @@ components:
       properties:
         commit: {type: string, pattern: "^[0-9a-f]{7,40}$"}
     DispatchRequest:
+      description: |
+        A skill and exactly one thing to run it on (runner-dispatch C3): `loop-design`, `loop-build`,
+        `loop-prove` and `loop-status` on a concern, `loop-design` and `loop-status` on a loop, and `loop-ship`
+        on an environment.
       type: object
       additionalProperties: false
-      required: [project, skill, concern, budget_usd, plugin_release]
+      required: [project, skill, budget_usd, plugin_release]
+      oneOf:
+        - required: [concern]
+          properties:
+            skill: {enum: [loop-design, loop-build, loop-prove, loop-status]}
+            loop: false
+            environment: false
+        - required: [loop]
+          properties:
+            skill: {enum: [loop-design, loop-status]}
+            concern: false
+            environment: false
+        - required: [environment]
+          properties:
+            skill: {enum: [loop-ship]}
+            concern: false
+            loop: false
       properties:
         project: {$ref: "#/components/schemas/Project"}
         skill: {$ref: "#/components/schemas/Skill"}
         concern: {$ref: "#/components/schemas/Concern"}
+        loop: {$ref: "#/components/schemas/Loop"}
+        environment: {$ref: "#/components/schemas/Environment"}
         arguments:
-          description: Passed to the skill after the concern, as a person would type them.
+          description: Passed to the skill after the concern, loop or environment, as a person would type them.
           type: string
           maxLength: 2000
           default: ""
         budget_usd:
-          description: The session's budget in dollars, a target it may pass by one model response (command-center/D21).
+          description: |
+            The session's budget in dollars, a target it may pass by one model response (command-center/D21). A
+            budget above the ceiling in the runner's config is refused with a `budget-ceiling` refusal (409).
           type: number
           exclusiveMinimum: 0
         plugin_release:
@@ -279,21 +319,38 @@ components:
           type: string
           pattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
     Session:
+      description: Exactly one of `concern`, `loop` and `environment` is set, as in the dispatch that started it.
       type: object
       additionalProperties: false
-      required: [id, project, skill, concern, arguments, model, sponsor, budget_usd, plugin_release, branch, state,
-                 outcome, created_at, started_at, ended_at, spend, pull_requests]
+      required: [id, project, skill, concern, loop, environment, arguments, model, sponsor, budget_usd,
+                 plugin_release, branch, state, outcome, created_at, started_at, ended_at, spend, pull_requests,
+                 final_message]
       properties:
         id: {type: string, pattern: "^[0-9a-f]{32}$"}
         project: {$ref: "#/components/schemas/Project"}
         skill: {$ref: "#/components/schemas/Skill"}
-        concern: {$ref: "#/components/schemas/Concern"}
+        concern:
+          oneOf:
+            - {$ref: "#/components/schemas/Concern"}
+            - {type: "null"}
+        loop:
+          oneOf:
+            - {$ref: "#/components/schemas/Loop"}
+            - {type: "null"}
+        environment:
+          oneOf:
+            - {$ref: "#/components/schemas/Environment"}
+            - {type: "null"}
         arguments: {type: string}
         model: {type: string, description: The model from the runner's skill to model map (session-runner D5).}
         sponsor: {type: string, description: "The GitHub login of the person who dispatched it, from GET /user."}
         budget_usd: {type: number}
         plugin_release: {type: string}
-        branch: {type: string, description: "The branch the session's clone starts on, loop/concern."}
+        branch:
+          description: |
+            The branch the session's clone starts on: loop/concern for a concern, the project's main branch for a
+            loop or an environment, which pushes no branch of its own unless its skill opens a pull request.
+          type: string
         state:
           type: string
           enum: [starting, running, stopping, ended]
@@ -316,6 +373,11 @@ components:
           description: Pull requests opened from branches the session pushed, found when it ends.
           type: array
           items: {$ref: "#/components/schemas/PullRequest"}
+        final_message:
+          description: |
+            The session's last assistant message, kept when it ends (runner-dispatch C3): for a dispatched
+            `loop-ship`, its brief (app-inbox D1). Null until it ends, and when it ended before saying anything.
+          type: [string, "null"]
     SessionList:
       type: object
       additionalProperties: false
@@ -393,19 +455,24 @@ components:
       properties:
         refused:
           type: string
-          enum: [open-pull-request, running-session, sponsor-cap]
-        message: {type: string, description: A sentence that names what already exists.}
+          enum: [open-pull-request, running-session, sponsor-cap, budget-ceiling]
+        message: {type: string, description: A sentence that names what already exists, or the limit passed.}
         pull_requests:
           description: For `open-pull-request`, the concern's open pull requests.
           type: array
           items: {$ref: "#/components/schemas/PullRequest"}
         sessions:
-          description: For `running-session`, the concern's running sessions; for `sponsor-cap`, the sponsor's.
+          description: |
+            For `running-session`, the running `loop-build` and `loop-design` sessions that hold the concern; for
+            `sponsor-cap`, every session the sponsor runs.
           type: array
           items: {$ref: "#/components/schemas/Session"}
         cap:
           description: For `sponsor-cap`, the cap the sponsor reached.
           type: integer
+        ceiling_usd:
+          description: For `budget-ceiling`, the ceiling in the runner's config, in dollars (session-runner D8).
+          type: number
     Problem:
       type: object
       additionalProperties: false
@@ -414,6 +481,6 @@ components:
         error:
           type: string
           enum: [unauthenticated, not-a-collaborator, invalid-request, unknown-project, unknown-concern,
-                 unknown-release, no-such-session, not-the-sponsor, already-ended, launch-failed, upstream-failed,
-                 no-commit, not-found, method-not-allowed]
+                 unknown-loop, unknown-environment, unknown-release, no-such-session, not-the-sponsor,
+                 already-ended, launch-failed, upstream-failed, no-commit, not-found, method-not-allowed]
         message: {type: string}

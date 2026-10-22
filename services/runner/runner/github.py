@@ -5,6 +5,7 @@ the runner's own GitHub App, with an installation token scoped to the one projec
 permissions that call needs. The app does not exist yet; the owner creates it (see services/runner/README.md).
 """
 
+import base64
 import calendar
 import json
 import re
@@ -34,6 +35,8 @@ class GitHub(Protocol):
     def is_collaborator(self, login: str) -> bool: ...
     def concern_exists(self, loop: str, concern: str) -> bool: ...
     def release_exists(self, tag: str) -> bool: ...
+    def loop_exists(self, loop: str) -> bool: ...
+    def environments(self) -> list: ...
     def open_pull_requests(self) -> list: ...
     def pull_requests_for_heads(self, heads) -> list: ...
     def set_pull_request_body(self, number: int, body: str) -> None: ...
@@ -46,6 +49,25 @@ def concern_pull_requests(pulls, concern):
     trailer = re.compile(rf"^Concern:\s*{re.escape(concern)}\s*$", re.MULTILINE | re.IGNORECASE)
     return [{"number": p["number"], "url": p["url"], "head": p["head"]} for p in pulls
             if p["head"] == concern or trailer.search(p.get("body") or "")]
+
+
+ENVIRONMENTS_HEADING = re.compile(r"^#{1,6}\s+(?:\d+(?:\.\d+)*\.?\s+)?Environments\s*$", re.IGNORECASE)
+
+
+def environments_in(loop_md):
+    """The environments LOOP.md names: the first column of the table in its "Environments" section (§3), the names
+    `/loop-ship` takes (command-center/D43)."""
+    names, inside = [], False
+    for line in loop_md.splitlines():
+        if re.match(r"^#{1,6}\s", line):
+            inside = bool(ENVIRONMENTS_HEADING.match(line.strip()))
+            continue
+        if not (inside and line.lstrip().startswith("|")):
+            continue
+        first = line.strip().strip("|").split("|")[0].strip().strip("`*").strip()
+        if first and not set(first) <= set("-: ") and first.lower() != "environment":
+            names.append(first)
+    return names
 
 
 def urllib_transport(method, url, headers, body=None, timeout=30):
@@ -135,6 +157,17 @@ class RestGitHub:
 
     def release_exists(self, tag):
         return self._exists(f"{self._repo}/git/ref/tags/{urllib.parse.quote(tag)}")
+
+    def loop_exists(self, loop):
+        return self._exists(f"{self._repo}/contents/docs/loops/{loop}/README.md?ref={self.main_branch}")
+
+    def environments(self):
+        status, answer = self._as_app("GET", f"{self._repo}/contents/LOOP.md?ref={self.main_branch}")
+        if status == 404:
+            return []
+        if status != 200 or not isinstance(answer, dict) or answer.get("encoding") != "base64":
+            raise GitHubError(f"reading LOOP.md answered {status}")
+        return environments_in(base64.b64decode(answer["content"]).decode())
 
     def _pulls(self, query, permissions=SERVICE_PERMISSIONS):
         found, page = [], 1

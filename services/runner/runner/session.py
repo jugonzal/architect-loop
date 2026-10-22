@@ -1,5 +1,5 @@
 """One session's job: run a loop skill with the Agent SDK on the session's own clone, publish its spend while it
-runs, stop it at its budget or when its sponsor asks, and record how it ended (session-runner C1, C4; D2, D3).
+runs, stop it at its budget or when its sponsor asks, and record how it ended (session-runner C4, C5; D2, D3).
 
 The job runs once per session, as one execution of a Cloud Run job (D2). It shares the runner's store with the
 dispatching service, which is how its spend reaches the API and how a stop request reaches it.
@@ -10,7 +10,7 @@ import logging
 import re
 import time
 
-from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ResultMessage
+from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ResultMessage, TextBlock
 
 from .config import ALLOWED_TOOLS
 from .github import JOB_PERMISSIONS
@@ -42,23 +42,47 @@ def build_options(session, prepared, env):
 
 
 def prompt_for(session, prepared):
-    return " ".join(part for part in (f"/{prepared.plugin_name}:{session.skill}", session.concern,
+    return " ".join(part for part in (f"/{prepared.plugin_name}:{session.skill}", session.target,
                                       session.arguments.strip()) if part)
 
 
-def with_trailers(body, concern, sponsor):
-    """A pull request body with the session's trailers, or None when it already has them (C1).
+class FinalMessage:
+    """The session's last assistant message (runner-dispatch C3; app-inbox D1): the text of the last model response
+    of the session itself, not of a subagent, that said anything. One response can arrive as several messages that
+    share its id, so their text is kept together."""
 
-    Like the commit-msg hook, it keeps a `Concern:` the skill wrote and adds `Sponsored-by:` beside it."""
+    def __init__(self):
+        self._id, self._parts = None, []
+
+    def add(self, message):
+        if message.parent_tool_use_id is not None:
+            return
+        texts = [block.text for block in message.content if isinstance(block, TextBlock) and block.text.strip()]
+        if not texts:
+            return
+        if message.message_id is None or message.message_id != self._id:
+            self._id, self._parts = message.message_id, []
+        self._parts += texts
+
+    @property
+    def text(self):
+        return "\n\n".join(self._parts) if self._parts else None
+
+
+def with_trailers(body, concern, sponsor):
+    """A pull request body with the session's trailers, or None when it already has them (runner-dispatch C1).
+
+    `concern` is None except in a /loop-build session (command-center/D45), so only that one adds `Concern:`. Like
+    the commit-msg hook, it keeps a `Concern:` the skill wrote and adds `Sponsored-by:` beside it."""
     lines = (body or "").splitlines()
     concern_at = [i for i, line in enumerate(lines) if re.match(r"(?i)^concern:\s*\S", line)]
     sponsored = any(re.match(r"(?i)^sponsored-by:\s*\S", line) for line in lines)
-    if sponsored and concern_at:
+    if sponsored and (concern_at or concern is None):
         return None
     if concern_at:
         lines.insert(concern_at[-1] + 1, f"Sponsored-by: {sponsor}")
         return "\n".join(lines)
-    added = [f"Concern: {concern}"] + ([] if sponsored else [f"Sponsored-by: {sponsor}"])
+    added = ([f"Concern: {concern}"] if concern else []) + ([] if sponsored else [f"Sponsored-by: {sponsor}"])
     return "\n".join(lines + ([""] if lines else []) + added)
 
 
@@ -78,7 +102,7 @@ class SessionJob:
             return self.store.finish(session_id, "error", None, [], iso(self.now()))
         session = self.store.mark_running(session_id, iso(self.now()))
         self._id, self._client, self._interrupted = session_id, None, None
-        self._done = asyncio.Event()
+        self._done, self._said = asyncio.Event(), FinalMessage()
         meter = Meter(self.config.prices[session.model], session.budget_usd, self.monotonic)
         publisher = asyncio.create_task(self._publish_every(meter))
         if session.stop_requested:
@@ -107,7 +131,8 @@ class SessionJob:
         else:
             final = meter.final(now)
         pulls = await asyncio.to_thread(self._sign_pull_requests, session, prepared) if prepared else []
-        return self.store.finish(session_id, outcome, final, pulls, iso(self.now()))
+        said = self._said.text or (result.result if result is not None else None)
+        return self.store.finish(session_id, outcome, final, pulls, iso(self.now()), final_message=said)
 
     async def _converse(self, options, prompt, meter):
         result = None
@@ -119,6 +144,7 @@ class SessionJob:
             async for message in client.receive_response():
                 if isinstance(message, AssistantMessage):
                     meter.add(message.message_id, message.usage)
+                    self._said.add(message)
                     if meter.crossed:
                         # D21: stop at the first response that crosses the budget, even if the SDK has not.
                         await self._interrupt("budget")
@@ -169,7 +195,7 @@ class SessionJob:
             pulls = self.github.pull_requests_for_heads(heads)
             trailers = dict(trailers_for(session))
             for pull in pulls:
-                body = with_trailers(pull.get("body"), trailers["Concern"], trailers["Sponsored-by"])
+                body = with_trailers(pull.get("body"), trailers.get("Concern"), trailers["Sponsored-by"])
                 if body is not None:
                     self.github.set_pull_request_body(pull["number"], body)
             return [{"number": p["number"], "url": p["url"], "head": p["head"]} for p in pulls]

@@ -1,18 +1,23 @@
-"""Dispatch: who is calling, whether they may start a session, and claiming the concern (C1, C3, D22, D28)."""
+"""Dispatch: who is calling, what they may start it on, whether they may start it, and claiming the concern
+(runner-dispatch C2, C3; session-runner C5, C6, D6, D8; command-center/D22, D28)."""
 
 import math
 import re
 
-from .config import SKILLS
+from .config import SCOPES, SKILLS
 from .github import GitHubError, concern_pull_requests
-from .models import Refusal, Session, iso, new_session_id, utcnow
+from .models import Refusal, Session, holds, iso, new_session_id, utcnow
 from .spend import estimate_from
 
 PROJECT = re.compile(r"^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$")
 CONCERN = re.compile(r"^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$")
+LOOP = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+ENVIRONMENT = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)?$")  # a LOOP.md §3 row, such as staging/runner
 RELEASE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+$")
-FIELDS = {"project", "skill", "concern", "arguments", "budget_usd", "plugin_release"}
-REQUIRED = FIELDS - {"arguments"}
+TARGETS = tuple(SCOPES)  # concern, loop, environment: a dispatch names exactly one (runner-dispatch C3)
+FIELDS = {"project", "skill", *TARGETS, "arguments", "budget_usd", "plugin_release"}
+REQUIRED = {"project", "skill", "budget_usd", "plugin_release"}
+A = {"concern": "a concern", "loop": "a loop", "environment": "an environment"}
 
 
 class ApiError(Exception):
@@ -46,6 +51,9 @@ def validate(body):
         ("project", lambda v: isinstance(v, str) and PROJECT.match(v), "a repository as owner/name"),
         ("skill", lambda v: v in SKILLS, f"one of {', '.join(SKILLS)}"),
         ("concern", lambda v: isinstance(v, str) and CONCERN.match(v), "loop/concern"),
+        ("loop", lambda v: isinstance(v, str) and LOOP.match(v), "a loop's name, such as command-center"),
+        ("environment", lambda v: isinstance(v, str) and ENVIRONMENT.match(v),
+         "an environment as LOOP.md names it, such as staging/runner"),
         ("plugin_release", lambda v: isinstance(v, str) and RELEASE.match(v), "a release tag such as v0.3.0"),
         ("budget_usd", lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0,
          "a number of dollars above 0"),
@@ -54,7 +62,16 @@ def validate(body):
     for name, ok, expected in checks:
         if name in body and not ok(body[name]):
             raise invalid(f"{name} must be {expected}")
-    return {**body, "arguments": body.get("arguments", ""), "budget_usd": float(body["budget_usd"])}
+    named = [t for t in TARGETS if t in body]
+    if len(named) != 1:
+        raise invalid("a dispatch names exactly one of concern, loop and environment"
+                      + (f", not {' and '.join(named)}" if named else ""))
+    scope = named[0]
+    if body["skill"] not in SCOPES[scope]:
+        on = " or ".join(A[s] for s in SCOPES if body["skill"] in SCOPES[s])
+        raise invalid(f"{body['skill']} runs on {on}, not on {A[scope]}")
+    return {**body, "scope": scope, "target": body[scope], "arguments": body.get("arguments", ""),
+            "budget_usd": float(body["budget_usd"])}
 
 
 class Dispatcher:
@@ -88,26 +105,35 @@ class Dispatcher:
         if request["project"] != self.config.project:
             raise ApiError(422, "unknown-project", f"this runner serves {self.config.project}, "
                                                    f"not {request['project']}")
-        loop, concern = request["concern"].split("/")
-        if not self._github(self.github.concern_exists, loop, concern):
-            raise ApiError(422, "unknown-concern", f"{request['concern']} is not a concern on "
-                                                   f"{self.config.main_branch}: no docs/loops/{loop}/{concern}.md")
+        ceiling = self.config.budget_ceiling_usd
+        if request["budget_usd"] > ceiling:
+            raise Refused(Refusal(
+                "budget-ceiling",
+                f"a budget of ${request['budget_usd']:,.2f} is above the runner's ceiling of ${ceiling:,.2f} "
+                f"(session-runner D8)", ceiling_usd=ceiling))
+        self._check_target(request["scope"], request["target"])
         if not self._github(self.github.release_exists, request["plugin_release"]):
             raise ApiError(422, "unknown-release", f"{request['plugin_release']} is not a release tag of "
                                                    f"{self.config.project}")
-        pulls = concern_pull_requests(self._github(self.github.open_pull_requests), request["concern"])
-        if pulls:
-            raise Refused(Refusal(
-                "open-pull-request",
-                f"{request['concern']} already has an open pull request: "
-                + "; ".join(f"#{p['number']} {p['url']} from {p['head']}" for p in pulls),
-                pull_requests=pulls))
+        if holds(request["skill"], request.get("concern")):
+            # D6: an open pull request holds its concern against another /loop-build or /loop-design; a /loop-prove
+            # or /loop-status runs beside it, so a proof can go into that pull request's body.
+            pulls = concern_pull_requests(self._github(self.github.open_pull_requests), request["concern"])
+            if pulls:
+                raise Refused(Refusal(
+                    "open-pull-request",
+                    f"{request['concern']} already has an open pull request: "
+                    + "; ".join(f"#{p['number']} {p['url']} from {p['head']}" for p in pulls),
+                    pull_requests=pulls))
         now = iso(self.now())
+        # A session on a concern starts on its branch; one on a loop or an environment works from main and pushes no
+        # branch of its own unless its skill opens a pull request (runner-dispatch C3).
+        branch = request["concern"] if request["scope"] == "concern" else self.config.main_branch
         session = Session(
-            id=self.new_id(), project=request["project"], skill=request["skill"], concern=request["concern"],
-            arguments=request["arguments"], model=self.config.skill_models[request["skill"]], sponsor=sponsor,
-            budget_usd=request["budget_usd"], plugin_release=request["plugin_release"], branch=request["concern"],
-            created_at=now)
+            id=self.new_id(), project=request["project"], skill=request["skill"], concern=request.get("concern"),
+            loop=request.get("loop"), environment=request.get("environment"), arguments=request["arguments"],
+            model=self.config.skill_models[request["skill"]], sponsor=sponsor, budget_usd=request["budget_usd"],
+            plugin_release=request["plugin_release"], branch=branch, created_at=now)
         refusal = self.store.claim(session, self.config.cap_per_sponsor, now, self.config.lost_after_s)
         if refusal:
             raise Refused(refusal)
@@ -119,6 +145,25 @@ class Dispatcher:
                                                  f"{session.concern} is free again: {error}") from error
         self.store.set_execution(session.id, execution)
         return self.store.get(session.id)
+
+    def _check_target(self, scope, target):
+        """The concern, loop or environment exists on main, so no session starts, and spends, on a typo."""
+        main = self.config.main_branch
+        if scope == "concern":
+            loop, concern = target.split("/")
+            if not self._github(self.github.concern_exists, loop, concern):
+                raise ApiError(422, "unknown-concern", f"{target} is not a concern on {main}: "
+                                                       f"no docs/loops/{loop}/{concern}.md")
+        elif scope == "loop":
+            if not self._github(self.github.loop_exists, target):
+                raise ApiError(422, "unknown-loop", f"{target} is not a loop on {main}: "
+                                                    f"no docs/loops/{target}/README.md")
+        else:
+            known = self._github(self.github.environments)
+            if target not in known:
+                raise ApiError(422, "unknown-environment",
+                               f"{target} is not an environment in LOOP.md §3 on {main}, which lists "
+                               + (", ".join(known) if known else "none"))
 
     def sessions(self, state="active", sponsor=None, project=None):
         if state not in ("active", "all"):

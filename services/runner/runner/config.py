@@ -1,13 +1,32 @@
 """The runner's config, read from environment variables (command-center/D32).
 
-Changing the cap or the skill to model map is a config change, not a design change (session-runner Approach).
+Changing the cap, the budget ceiling or the skill to model map is a config change, not a design change
+(session-runner Approach).
 """
 
 import json
+import math
 import os
 from dataclasses import dataclass, field
 
-SKILLS = ("loop-design", "loop-build", "loop-prove", "loop-status")
+SKILLS = ("loop-design", "loop-build", "loop-prove", "loop-status", "loop-ship")
+
+# runner-dispatch C3: a dispatch names exactly one of a concern, a loop or an environment, and each skill runs only on
+# what it is listed for here: `/loop-ship <environment>`, `/loop-status <loop>` and `/loop-design <loop>` beside the
+# four concern skills.
+SCOPES = {
+    "concern": ("loop-design", "loop-build", "loop-prove", "loop-status"),
+    "loop": ("loop-design", "loop-status"),
+    "environment": ("loop-ship",),
+}
+
+# session-runner D6: only these hold the concern they run on. While one of them runs on a concern, or the concern has
+# an open pull request, another dispatch of either is refused; every other skill runs beside them and holds nothing.
+HOLDING_SKILLS = ("loop-build", "loop-design")
+
+# command-center/D45: only a /loop-build session's commits and pull requests carry `Concern:`. Every session's carry
+# `Sponsored-by:`, whatever its skill.
+CONCERN_TRAILER_SKILLS = ("loop-build",)
 
 # session-runner D5: /loop-status on Sonnet 5.5, every other skill on Opus 5.5.
 DEFAULT_SKILL_MODELS = {
@@ -15,6 +34,7 @@ DEFAULT_SKILL_MODELS = {
     "loop-design": "claude-opus-5-5",
     "loop-build": "claude-opus-5-5",
     "loop-prove": "claude-opus-5-5",
+    "loop-ship": "claude-opus-5-5",
 }
 
 # List prices in dollars per million tokens, used only for the running estimate while a session runs (D23); the
@@ -45,6 +65,7 @@ class Config:
     project: str = "jugonzal/architect-loop"
     main_branch: str = "main"
     cap_per_sponsor: int = 3
+    budget_ceiling_usd: float = 10.0  # session-runner D8: a dispatch whose budget is above it is refused
     skill_models: dict = field(default_factory=lambda: dict(DEFAULT_SKILL_MODELS))
     prices: dict = field(default_factory=lambda: {k: dict(v) for k, v in DEFAULT_PRICES.items()})
     seeds: tuple = DEFAULT_SEEDS
@@ -70,6 +91,8 @@ class Config:
                              f"not {self.spend_interval_s}")
         if self.cap_per_sponsor < 1:
             raise ValueError(f"cap_per_sponsor must be at least 1, not {self.cap_per_sponsor}")
+        if not (math.isfinite(self.budget_ceiling_usd) and self.budget_ceiling_usd > 0):
+            raise ValueError(f"budget_ceiling_usd must be a number of dollars above 0, not {self.budget_ceiling_usd}")
         missing = [s for s in SKILLS if s not in self.skill_models]
         if missing:
             raise ValueError(f"skill_models has no model for {', '.join(missing)}")
@@ -102,7 +125,8 @@ class Config:
                 values[key] = env[name]
         numbers = {"RUNNER_CAP_PER_SPONSOR": ("cap_per_sponsor", int),
                    "RUNNER_SPEND_INTERVAL_S": ("spend_interval_s", float),
-                   "RUNNER_LOST_AFTER_S": ("lost_after_s", float)}
+                   "RUNNER_LOST_AFTER_S": ("lost_after_s", float),
+                   "RUNNER_BUDGET_CEILING_USD": ("budget_ceiling_usd", float)}
         for name, (key, kind) in numbers.items():
             if env.get(name):
                 values[key] = kind(env[name])
