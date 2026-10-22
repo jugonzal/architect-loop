@@ -1,8 +1,8 @@
 ---
 needs: [status-api, queue-items]
 touches: [app/package.json, app/app.json, app/eas.json, app/tsconfig.json, app/src/app/_layout.tsx, app/src/app/(tabs)/_layout.tsx, app/src/shell/, app/src/api/, app/src/theme/, .github/workflows/app.yml, LOOP.md]
-effects: [a GitHub OAuth app for sign-in, with the device flow enabled, that asks for no repository access (identity and access; per command-center/D28 and D1 here), an Expo account with EAS build credentials (new vendor account: identity and access; spending; secrets), Apple Developer and Google Play accounts (identity and access; spending), TestFlight and Play internal-testing submissions (owner only)]
-ships-to: production/app
+effects: [a GitHub OAuth app for sign-in with the device flow enabled that asks for no repository access (per command-center/D28 and D1 here; gates: identity), an Expo account with EAS build credentials (a new vendor account; gates: identity, spending, secrets), Apple Developer and Google Play accounts (gates: identity, spending), TestFlight and Play internal-testing submissions (the owner submits them; gates: store)]
+ships-to: staging/app
 ---
 # A signed-in person has the app on their phone, registered for push, with a tab for each screen
 
@@ -10,15 +10,18 @@ ships-to: production/app
 
 - **C1** A build installs on iOS and Android, signs in with GitHub through the device flow (per D1), and shows the
   person's name. It shows the tabs from the screen design (Needs you, Loops, Agents, Environments) without a More
-  tab (per command-center/D4). Prove: a TestFlight build and a Play internal build, installed on devices and signed
+  tab (per command-center/D4). Prove: the shell's tests, which sign in against a fake GitHub and render the four
+  tabs, in CI on main (per D2), then a TestFlight build and a Play internal build, installed on devices and signed
   in against staging.
 - ~~**C2** The device registers for push, and a test notification sent to that person arrives on their devices
   and no one else's. Prove: two devices with two accounts, on staging.~~ Moved to `notifications` C1, which owns
   registration, the device store and sending (per command-center/D35).
 - **C3** `LOOP.md` §3 has a `staging/app` and a `production/app` row. Each has a served-commit command that prints
   the commit that the build serving that channel was made from, and `/loop-status` reads both (per
-  command-center/D43). Prove: each row's command against a build whose commit is known, on staging/app, then
-  production/app.
+  command-center/D43). Prove: `served.js`'s tests against EAS build-list fixtures, in CI on main (per D2), then the
+  `staging/app` row's command against a build whose commit is known, on staging/app. Production's row is proven
+  by the later loop (per command-center/D54). Once `app-served` is deployed, the row reads through the status
+  service (per command-center/D57).
 
 ## Design
 
@@ -33,7 +36,12 @@ ships-to: production/app
   app's settings (per D1).
 - Assumed: an EAS build records the git commit it was built from, so C3's rows can read it. Check with
   `eas build:list --json` on the first build, and whether reading it needs an Expo token; if it does, agents
-  cannot read the rows, and that is a question for `/loop-design`.
+  cannot read the rows, and that is a question for `/loop-design`. (Answered 2026-10-22: reading it needs an Expo
+  login, per `LOOP.md` §3, so `app-served` serves it at a URL, per command-center/D57.)
+- Verified 2026-10-22 (main @e63f06b): `src/shell/__tests__/shell.test.tsx` and `src/shell/auth/__tests__/signIn.test.ts`
+  sign in against a fake GitHub and render the tabs, and `src/shell/release/__tests__/served.test.ts` covers the
+  rows' rule. `.github/workflows/app.yml` runs them. Under command-center/D50 the six screen concerns wait until
+  every claim here holds somewhere, so C1 and C3 now start with that CI rung (D2).
 
 ### Approach
 
@@ -54,12 +62,14 @@ needs a new build.
 | # | Decision | Decided by, date | Closes |
 | --- | --- | --- | --- |
 | D1 | The app signs in with GitHub's device flow. No client secret is kept in the app or in any service, and no service is needed for sign-in, so this concern needs none. The person copies a code and confirms it on github.com. The owner enables the device flow on the OAuth app. | Juan, 2026-10-20 | Q1 |
+| D2 | C1 and C3 start their Prove with a CI rung, from the shell's and `served.js`'s tests on main, so this concern meets command-center/D50 and the screens can be built. The staging/app steps still decide done. | Juan, 2026-10-22 | Q2 |
 
 ## Questions
 
 | # | Question | Blocks | Default if unanswered |
 | --- | --- | --- | --- |
 | ~~Q1~~ | ~~How does the app sign in, when GitHub's web flow needs a client secret that a phone app cannot keep? (raised by this design's read of GitHub's docs)~~ → D1 | | |
+| ~~Q2~~ | ~~How do the screens start, when command-center/D50 holds them until every claim here is proven and C1 needs a TestFlight build? (raised by the 2026-10-22 design)~~ → D2 | | |
 
 ## Evidence
 

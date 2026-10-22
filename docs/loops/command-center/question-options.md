@@ -1,7 +1,7 @@
 ---
 needs: []
 touches: [plugin/skills/loop-plan/templates/loop.md, plugin/skills/loop-plan/templates/concern.md, plugin/skills/loop-plan/SKILL.md, plugin/skills/loop-design/SKILL.md, plugin/skills/loop-status/scripts/questions.py, tests/test_questions.py, tests/fixtures/questions/]
-effects: [a plugin release so that terminals write the new format (the owner releases, per D17)]
+effects: [a plugin release so that terminals write the new format (the owner releases it per D17; gates: release)]
 ships-to: main
 ---
 # Every open question carries its options and a recommendation in the file that raises it

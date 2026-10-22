@@ -1,8 +1,8 @@
 ---
-needs: [app-shell, status-service, addressed-to-people, service-manifests]
-touches: [services/notify/, .github/workflows/notify.yml, app/src/app/notifications/, app/src/features/notifications/]
-effects: [Expo push credentials, with an APNs key and an FCM key (secrets; identity and access), push notifications and digests sent to real users (sending to real users), the notifier's own Firestore database for devices and settings in each GCP project (spending; cloud IAM; per command-center/D26, D44), a Cloud Run service in each project (spending)]
-ships-to: production/notify
+needs: [app-shell, app-clients, service-manifests]
+touches: [services/notify/, .github/workflows/notify.yml, app/src/api/notify.gen.ts, app/src/app/notifications/, app/src/features/notifications/]
+effects: [Expo push credentials with an APNs key and an FCM key (gates: secrets, identity), push notifications and digests sent to real users (gates: send), the notifier's own Firestore database for devices and settings in staging's GCP project (per command-center/D26 and D44; gates: spending, infra), a Cloud Run service in staging's project (gates: spending)]
+ships-to: staging/notify
 ---
 # Each person hears about the items waiting on them, blocking ones at once and the rest in their digest
 
@@ -24,7 +24,9 @@ ships-to: production/notify
 - No service and no device store exist (2026-10-20).
 - Proposal §5: push only for blocking items addressed to the person; everything else in a digest the person
   schedules; quiet hours per person; backlog loops carry no notifications.
-- `waits_on` comes from `addressed-to-people`, and the queue from `status-service`.
+- `waits_on` comes from `addressed-to-people`, and the queue from `status-service`. Per command-center/D51 neither is
+  in `needs`: this concern builds against the status schema and the status service's path (per D48), both on
+  `main`, and its staging proofs wait until staging serves both.
 
 ### Approach
 
@@ -32,7 +34,8 @@ Per D35, D26, D28, D29, D30 and D32: a Cloud Run service in `services/notify/`, 
 `services/notify/tests/` run by `.github/workflows/notify.yml`. It keeps each person's devices, digest time and
 quiet hours in a Firestore database of its own (per command-center/D44), along with the items it has already pushed, so each one is pushed once. It reads
 the status service's queue with its Cloud Run service identity, polling often enough to push within a minute, and
-sends through Expo's push service. Its API is in `services/notify/openapi.yaml`, and its deploy config in its manifest,
+sends through Expo's push service. Its API is in `services/notify/openapi.yaml`, and the app's client for it is
+generated into `app/src/api/notify.gen.ts` with `app-clients`' generator (per command-center/D55). Its deploy config is in its manifest,
 `services/notify/service.json`, in the format `service-manifests` defines (per command-center/D46). A blocking item is
 one whose `unblocks` names at least one concern (per D2), and the digest is one push (per D1). Its app screen
 reaches devices with the next app build, so C1's proof needs one built after this merges. The app's registration and

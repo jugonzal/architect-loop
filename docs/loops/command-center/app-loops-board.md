@@ -2,7 +2,7 @@
 needs: [app-shell, status-api]
 touches: [app/src/app/(tabs)/loops/, app/src/features/loops/]
 effects: []
-ships-to: production/app
+ships-to: staging/app
 ---
 # Anyone on the project can see every loop and concern with its state and the fact behind it
 
@@ -21,7 +21,8 @@ ships-to: production/app
 
 Follow the Loops and Concern artboards (per D4). The concern page's state strip is redrawn with the derivation's
 states, and "in review" or "proving" becomes the reason line under it (per D5). The batons and sessions sections
-of the artboard are left out, and the concern-thread link at the bottom opens `app-threads`.
+of the artboard are left out, and the concern-thread link at the bottom opens
+`/threads/loops/[loop]/concerns/[concern]`, which `app-threads` serves (per D52).
 
 ## Decisions
 

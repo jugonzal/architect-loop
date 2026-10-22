@@ -20,20 +20,23 @@ person in one terminal can push a loop forward.
 - The app editing files directly. It dispatches skills, and the skills write to the repository.
 - Per-person metrics of any kind.
 - A desktop or web client.
+- Production (per D54). Phase 1 ships to staging. Production's bootstrap, its deploys and the goals' proofs on it
+  are a later loop, planned with `/loop-plan` once this one is done.
 
 ## Goals
 
 - **G1** The owner runs one real loop in this repository from a phone, end to end. That means answering a
   question, reviewing a PR evidence-first, saying "deployed" on a ship card and approving a record card, all
   without a terminal. Each action lands in `docs/loops/` through its skill. Prove: a walkthrough on a real loop,
-  with the resulting commits and PRs listed, using the production app build against production services.
+  with the resulting commits and PRs listed, using the staging app build against staging services (per D54).
 - **G2** A concern whose `effects` cross a gate puts its card in the inbox of that gate's named holder, not the
   loop owner's, when they are different people. Other members of the loop see the card but cannot act on it
-  (per D10). Prove: three signed-in accounts on staging (owner, gate holder, member), with a test concern that
-  declares a gated effect.
+  (per D10). Prove: three signed-in accounts on staging (owner, gate holder, member), with a concern in the
+  sandbox loop that declares an effect on a gate only the sandbox crosses, held by the second person (per D58,
+  D61).
 - **G3** The app shows the same state as `/loop-status` for every concern in this repository, derived from the
   same commits, and shows `unknown` wherever `/loop-status` does (per D5). Prove: a comparison run over every
-  concern in `docs/loops/` on production, with zero differences.
+  concern in `docs/loops/` on staging, with zero differences (per D54).
 - **G4** The repository stays the brain. If the command center's stores (the threads, the runner's sessions,
   the notifier's devices and settings) are wiped, no state, decision or evidence shown for any loop changes
   (per D26). Prove: wipe every store on staging and re-run the G3 comparison.
@@ -48,6 +51,11 @@ person in one terminal can push a loop forward.
   `jugonzal/loops`, which the owner archives once the move is done. Nothing is built there. (Corrected
   2026-10-20: this said the loop still lived in `jugonzal/loops`.) (Corrected 2026-10-21: no concern needs
   `one-repository` any more, per D49.)
+- **Sandbox loop (per D61):** a `sandbox` loop in this repository will hold the test concerns that staging proofs
+  dispatch on, open PRs for and record into. It does not exist yet. `/loop-plan sandbox` creates it before the
+  first staging proof that needs a test concern. Nothing in this loop needs it to build.
+- **Production (per D54):** a later loop, through `/loop-plan` once this one is done. It takes over the
+  `production/*` rows of `LOOP.md` §3, production's bootstrap, and the goals' proofs there.
 
 ## Where we are
 
@@ -125,6 +133,33 @@ person in one terminal can push a loop forward.
   store is SQLite, which the service and its jobs, in separate containers, cannot share (D44). The job holds the
   app's private key. Nothing in the job posts to a thread. `runner-dispatch` and `runner-store` build the changes,
   and `session-narration` the threads.
+- **Verified** (`scripts/gcp/projects.txt` on main @e63f06b, PR #30's body, and `curl` of each staging `/version`,
+  2026-10-22): staging's project is `loops-512401` (number 665570365697) and its bootstrap ran on 2026-10-22.
+  Production's ID is `loops-512402`, but production has not been bootstrapped. All four staging services answer
+  404 at `https://<service>-665570365697.us-east1.run.app/version`, so nothing is deployed there. PR #30, which
+  is open, fills in staging's four rows in §3 with those URLs.
+- **Verified** (`loop_status.py` on main @e63f06b, 2026-10-22): under D42 and the derivation table, six of the
+  unbuilt concerns read `unknown` and three read `blocked`, and none is ready. The unknowns are there because
+  their `needs` listed `app-shell`, whose `ships-to` row (`production/app`) no one can read. The blocked ones are
+  there because `service-manifests` is not done on its row. D50 replaces the rule, and `needs-proven` builds it.
+- **Verified** (`app/` on main @e63f06b, 2026-10-22): each screen adds its own folder under `app/src/app/(tabs)/`
+  without editing the shell (`app/src/shell/tabs.ts`). The app's config knows only the status service's URL
+  (`app/src/shell/config.ts`, `app/eas.json`), and `app/package.json` has no OpenAPI generator. The runner and
+  threads clients, the generator and the service URLs have no owner, and four concerns would edit those shared
+  files at once. D55 gives them one.
+- **Verified** (`loop_status.py` on main @e63f06b, 2026-10-22): every queue item is written with `gate: null` and
+  `waits_on: null`, so nothing derives an item's gate yet (D58 to D60). `fm_list` splits front-matter lists at
+  commas outside brackets and parentheses. An effect written with bare commas therefore reaches the ship brief
+  in pieces: `service-manifests`' effects read as 9 fragments. This design rewrote every effect in this loop
+  without bare commas, ending in its gate keys (per D58).
+- **Verified** (`LOOP.md` §3 on main @e63f06b): the app rows need an Expo login to read, and they have no URL, so
+  neither agents nor the status service can read what a channel serves (D57).
+- **Verified** (`services/runner/runner/github.py`, `launcher.py` and `main.py` on main @e63f06b, 2026-10-22): the
+  runner hard-codes GitHub's API URL and launches each session as a Cloud Run job. The harness therefore has to
+  make both configurable before the runner can run locally (`local-harness`, per D53). The service and its jobs
+  need a shared store locally too, so the harness comes after `runner-store`.
+- **Missing:** a local environment and a smoke test. `LOOP.md` §4's smoke test is `TODO(owner)`, and
+  `local-harness` adds both (per D53).
 - **Missing:** `LOOP.md` §3 rows for staging and production, with a `/version` URL for each service (per D8, D9).
   `environments` adds them, and the owner merges that change (per D31). (Corrected 2026-10-20: this said
   `status-service` adds them.) (Corrected 2026-10-20: PR #19 added the rows; only their URLs are missing, until
@@ -162,7 +197,7 @@ person in one terminal can push a loop forward.
 | D26 | Each service keeps its own operational store: the runner its sessions and spend, `notifications` its devices and settings. The thread store keeps only what people write. No store holds a loop's state, and G4's wipe covers every store. | Juan, 2026-10-20 | Closes Q26; refines D1, whose thread store stays the only store of what people write |
 | D27 | Each service has its own GitHub App, with only the permissions it needs. The runner's app pushes branches and opens pull requests. The status service's and threads' apps only read, and each receives its own webhooks. Each app's key and webhook secret live in that environment's Secret Manager. | Juan, 2026-10-20 | Closes Q27 |
 | D28 | The app's sign-in asks GitHub for no repository access, so its token proves who the person is and nothing more. Each service identifies a caller with `GET /user` on the caller's token, and checks collaborator access with its own app (per D27). Every repository read goes through a service. Calls between services use Cloud Run's service identity. | Juan, 2026-10-20 | Closes Q28 |
-| D29 | Each service publishes its API as an OpenAPI file in its own folder (`services/<name>/openapi.yaml`), checked by one of its claims. Each app concern generates the clients it needs inside its own `features/` folder. `app-shell` provides only the signed-in fetch and the status client. | Juan, 2026-10-20 | Closes Q29 |
+| ~~D29~~ | ~~Each service publishes its API as an OpenAPI file in its own folder (`services/<name>/openapi.yaml`), checked by one of its claims. Each app concern generates the clients it needs inside its own `features/` folder. `app-shell` provides only the signed-in fetch and the status client.~~ | Juan, 2026-10-20 | Closes Q29; superseded by D55, 2026-10-22 |
 | D30 | The services are Python 3.12, each with its own dependencies and its tests in `services/<name>/tests/`. The app and each service run their tests in their own workflow, `.github/workflows/<name>.yml`, which is in that concern's `touches`. The root `check` stays standard-library only. | Juan, 2026-10-20 | Closes Q30 |
 | D31 | A new concern, `environments`, owns the GCP projects, the deploy command and the `LOOP.md` §3 and §4 rows. The services do not need it: they build against D32 now and stay merged until staging exists. `status-service` no longer creates the projects, and no service edits `LOOP.md`. | Juan, 2026-10-20 | Closes Q31 |
 | D32 | Every service follows one convention. It runs in `us-east1`. It builds from `services/<name>/Dockerfile` with the repository root as context. It listens on `$PORT` and serves an unauthenticated `GET /version` answering `{"commit": "<sha>"}`. It reads config from environment variables and secrets from Secret Manager. The owner deploys it from a commit on `main` with one command. | Juan, 2026-10-20 | Closes Q32 |
@@ -175,14 +210,26 @@ person in one terminal can push a loop forward.
 | D39 | The three missing queue kinds and D33's options move to a new concern, `queue-items`, which needs `status-api` and works in its three paths. `status-api` keeps what PR #11 delivered (its C3); its C1 is split. The concerns that read queue items need `queue-items`: `status-derivation`, `addressed-to-people`, `status-service`, `app-shell` and `app-inbox`. | Juan, 2026-10-20 | Closes Q40 |
 | D40 | The three read-only kinds each carry the command to run and their facts. A proof names the claim, the environment, what is missing and who can supply it. A contradiction names the claim, its CONTRADICTS line, what it contradicts and whether it escalates to the loop. A refused loop-document PR names the PR and the checker's failure lines. | Juan, 2026-10-20 | Closes Q41 |
 | D41 | A question item's options are each a text with its consequence. Its recommendation names one option or is null, and its default is the table's "Default if unanswered", kept apart. A question written before the format has no options and no recommendation. `question-options`' reader returns this shape. | Juan, 2026-10-20 | Closes Q42 |
-| D42 | A concern's `needs` lists the concerns its build relies on whose work is not on `main` yet, and any concern not on `main` yet whose `touches` it shares. Once a needed concern's work is on `main`, the consumer builds against it there, and its proofs on an environment wait until that environment serves the need. Needs that are already done may stay. On 2026-10-20 this drops `session-runner`, `threads`, `question-options` and `environments` from the needs of the concerns that had them. | Juan, 2026-10-20 | Closes Q43 |
-| D43 | A concern's `ships-to` names the `LOOP.md` §3 row that serves its work: `production/<service>` for a service, `production/app` for the app (a row that `app-shell` adds, with how a build reports its commit), and `main` for scripts and skills. A claim whose Prove names staging is proven on `staging/<service>` first and then on its production row, and only the production line counts toward done. `environments` ships to `main`: its work is scripts the owner runs from `main`, and its proofs cite the commit they ran from. | Juan, 2026-10-20 | Closes Q44 |
+| ~~D42~~ | ~~A concern's `needs` lists the concerns its build relies on whose work is not on `main` yet, and any concern not on `main` yet whose `touches` it shares. Once a needed concern's work is on `main`, the consumer builds against it there, and its proofs on an environment wait until that environment serves the need. Needs that are already done may stay. On 2026-10-20 this drops `session-runner`, `threads`, `question-options` and `environments` from the needs of the concerns that had them.~~ | Juan, 2026-10-20 | Closes Q43; superseded by D50, 2026-10-22 |
+| ~~D43~~ | ~~A concern's `ships-to` names the `LOOP.md` §3 row that serves its work: `production/<service>` for a service, `production/app` for the app (a row that `app-shell` adds, with how a build reports its commit), and `main` for scripts and skills. A claim whose Prove names staging is proven on `staging/<service>` first and then on its production row, and only the production line counts toward done. `environments` ships to `main`: its work is scripts the owner runs from `main`, and its proofs cite the commit they ran from.~~ | Juan, 2026-10-20 | Closes Q44; superseded by D54, 2026-10-22 |
 | D44 | The runner's and `notifications`' operational stores are Firestore, each service in a database of its own in its environment's project (per D26). The thread store stays Cloud SQL Postgres (per D8). | Juan, 2026-10-20 | Closes Q45; refines D8 |
 | D45 | Only a `/loop-build` session's commits and PR carry `Concern:`. Every runner session's commits and PRs carry `Sponsored-by:`. This matches how design, proof and record commits are written from a terminal, so `/loop-status` never counts them as build work. | Juan, 2026-10-20 | Closes Q46; rewords `session-runner` C1 |
 | D46 | Each service's deploy config lives in a manifest in its own folder: its non-secret settings, the names of its secrets, its Cloud SQL instance, its runtime identity, its jobs and the APIs it needs. `deploy.sh` applies it on every deploy, so the config is reviewed in pull requests and rolls back with the code, and `bootstrap.sh` enables the APIs and creates what the manifests declare. `service-manifests` builds this for the runner and threads, and each later service adds its own manifest. | Juan, 2026-10-20 | Closes Q47 |
 | D47 | Every service reads the commit it runs from the environment variable `COMMIT_SHA`, which `deploy.sh` sets. | Juan, 2026-10-20 | Closes Q48; refines D32; confirms PRs #19, #20 and #21 |
 | D48 | Every service's API keys a project as `{owner}/{repo}` in its paths, as threads does (`/projects/{owner}/{repo}/...`). The status service serves `/projects/{owner}/{repo}/status`. | Juan, 2026-10-20 | Closes Q49; refines D18; confirms PR #21 |
 | D49 | `one-repository` leaves every concern's `needs`, as D42 allows: its work is on `main`, so every concern builds against it there. Its `touches` cover most of the repository, so it goes stale with almost every merge, and under the table that blocked every concern that needed it. It stays a concern with its own claims and state, and re-proving it is `/loop-prove`'s. | Juan, 2026-10-21 | Applies D42; raised by `status-derivation`'s run on this repository, which found `one-repository` stale since PR #17 |
+| D50 | A need is met when it is available and proven in at least one environment. The needed concern's work is on `main`, and each of its claims has a HOLDS line on some `LOOP.md` §3 environment, a local one included, at a commit on `main` with nothing under its `touches` changed since. A claim whose Prove names CI holds on `main` while CI is green there. The board decides this from evidence lines, not a live read, so the terminal and the status service agree (G3). A concern also needs any concern not on `main` yet whose `touches` it shares, as before. A new concern, `needs-proven`, puts the rule in the `loop-status` table and script. | Juan, 2026-10-22 | Closes Q50; supersedes D42. D49 stands: no concern needs `one-repository` |
+| D51 | A concern's `needs` lists only what its build relies on. A concern that only its proofs rely on is not a need: those proofs wait until their environment serves it. This drops `addressed-to-people` and `session-narration` from `app-inbox`'s needs, and `status-service` and `addressed-to-people` from `notifications`'. | Juan, 2026-10-22 | Closes Q51 |
+| D52 | The app's thread screens live at `/threads/loops/[loop]`, `/threads/loops/[loop]/concerns/[concern]` and `/threads/sessions/[session]`, mirroring the threads API's paths without the project, since a build serves one project (per D18). `app-threads` serves exactly these routes, and `app-inbox` and `app-loops-board` link to them, so the three can be built at once. | Juan, 2026-10-22 | Closes Q52 |
+| D53 | A local harness is an environment whose proofs count. One command runs the services from a clean checkout of a commit on `main`, with Postgres, the Firestore emulator, a fake GitHub and a fake Agent SDK. It costs nothing and crosses no gate. `LOOP.md` §3 gains `local/<service>` rows, listed first, that agents may run and read. It proves the wiring, not GitHub or the SDK. A new concern, `local-harness`, builds it, along with `LOOP.md` §4's smoke test. | Juan, 2026-10-22 | Closes Q53 |
+| D54 | Phase 1 ships to staging. A service's `ships-to` is `staging/<service>` and the app's is `staging/app`, and scripts and skills stay `main`. A concern is done when every claim holds there. Production (its bootstrap, its deploys and the goals' proofs on it) is a later loop, planned with `/loop-plan` once this one is done, and claims drop their production steps. `environments` still ships to `main`. | Juan, 2026-10-22 | Closes Q54; supersedes D43 |
+| D55 | Each service publishes its API as an OpenAPI file in its own folder (`services/<name>/openapi.yaml`), checked by one of its claims. A new concern, `app-clients`, adds the generator to the app and generates the runner and threads clients into `app/src/api/` beside the status client, with a check that fails when they no longer match their files. It also adds the runner, threads and notify URLs to the app's config and `app/eas.json`. The screens that call those services need it, and `notifications` generates its own client beside them with the same generator. | Juan, 2026-10-22 | Closes Q55; supersedes D29, restating its first half |
+| D56 | The status service reads a `LOOP.md` §3 row's served commit with a GET of the first `http(s)` URL in the row's served-commit cell, which answers `{"commit": "<sha>"}` (per D32). A row without a URL reads as `unknown`. Rows keep their format. Local rows name `localhost`, so they read as `unknown` from the cloud. | Juan, 2026-10-22 | Closes Q56; refines D9 |
+| D57 | The status service serves the commit each app channel's builds were made from at `GET /apps/{channel}/version`, answering `{"commit": "<sha>"}`. It reads EAS's build list with an Expo robot token kept in Secret Manager, and applies the same rule as `app/src/shell/release/served.js`. The `staging/app` row's served-commit command becomes `served.sh` on that URL, so agents and the service read it without credentials. A new concern, `app-served`, builds it after `status-service`. | Juan, 2026-10-22 | Closes Q57 |
+| D58 | Each gate in `LOOP.md` §2 has a short key and one holder. The keys are `merge`, `deploy`, `migration`, `release`, `store`, `money`, `spending`, `identity`, `secrets`, `legal`, `infra` (DNS, certificates, firewall and cloud IAM), `prod-data` and `send`. An effect is one phrase without bare commas, ending in a parenthesis whose last part is `gates: <key>, <key>`. `addressing.py` matches keys exactly, and a key that §2 does not define is drift. This loop's effects were rewritten to the keys on 2026-10-22, and the `loop-plan` and `loop-init` templates show the format. | Juan, 2026-10-22 | Closes Q58 |
+| D59 | A review item crosses `merge`. A ship item is split into one item for each gate its concern's effects cross other than `merge`, each waiting on that gate's holder with the manual steps on that gate, plus one item for `deploy`. Every other kind of item crosses at most one gate. | Juan, 2026-10-22 | Closes Q59; refines D38 |
+| D60 | A question can be gated: its row names the gate its answer crosses by the same key, so the item waits on that gate's holder and its card asks for a typed reason (`app-inbox` D4). `questions.py` reads the key. A question without one is ungated. | Juan, 2026-10-22 | Closes Q60 |
+| D61 | Test loops live in this repository, in a `sandbox` loop under `docs/loops/sandbox/`. Its build PRs are closed unmerged, and its design and record writes land only under `docs/loops/sandbox/`. G2's second person holds a gate that only the sandbox crosses. Claims that say "a test concern" or "a test loop" mean the sandbox. | Juan, 2026-10-22 | Closes Q61 |
 
 ## Questions
 
@@ -237,6 +284,18 @@ person in one terminal can push a loop forward.
 | ~~Q47~~ | ~~Where does each service's deploy config live? (raised by `environments`' and `threads`' builds)~~ → D46 | | |
 | ~~Q48~~ | ~~Which environment variable carries a service's commit? (raised by `environments`' build)~~ → D47 | | |
 | ~~Q49~~ | ~~How does a service's API name a project in its paths? (raised by `threads`' build)~~ → D48 | | |
+| ~~Q50~~ | ~~When is a concern's need met? (raised by this design's run of the board: under D42, nothing was ready)~~ → D50 | | |
+| ~~Q51~~ | ~~Do concerns that only a concern's proofs rely on stay in its `needs`?~~ → D51 | | |
+| ~~Q52~~ | ~~How do `app-inbox` and `app-loops-board` link to `app-threads`' screens before it merges?~~ → D52 | | |
+| ~~Q53~~ | ~~Is a local harness an environment whose proofs count, and what is in it?~~ → D53 | | |
+| ~~Q54~~ | ~~Does done still mean proven on production?~~ → D54 | | |
+| ~~Q55~~ | ~~Who adds the app's runner and threads clients, the generator and the service URLs, which no screen owns?~~ → D55 | | |
+| ~~Q56~~ | ~~How does the status service find the URL in a row that holds a command?~~ → D56 | | |
+| ~~Q57~~ | ~~How do agents and the status service read what an app channel serves?~~ → D57 | | |
+| ~~Q58~~ | ~~How does a queue item learn the gate it crosses, when effects are free text and the script writes `gate: null`?~~ → D58 | | |
+| ~~Q59~~ | ~~What happens to an item that crosses gates held by different people?~~ → D59 | | |
+| ~~Q60~~ | ~~Can a question be gated?~~ → D60 | | |
+| ~~Q61~~ | ~~Where do the test loops in staging proofs live, when staging serves this repository?~~ → D61 | | |
 
 ## Evidence
 

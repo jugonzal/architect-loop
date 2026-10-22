@@ -1,7 +1,7 @@
 ---
 needs: []
 touches: [LOOP.md, scripts/gcp/, docs/runbooks/deploy.md, scripts/check.sh, tests/test_layout.py]
-effects: [two GCP projects, staging and production, linked to the owner's billing account (spending; cloud IAM; the owner runs the scripts that create them), an Artifact Registry repository and a deploy identity in each (spending; cloud IAM), new LOOP.md §3 rows and §4 deploy and verify commands (a change to the contract; the owner merges it), every deploy (the owner runs it, per LOOP.md §2)]
+effects: [a GCP project for staging linked to the owner's billing account (production's belongs to a later loop per command-center/D54; the owner runs the script that creates it; gates: spending, infra), an Artifact Registry repository and a deploy identity in it (gates: spending, infra), new LOOP.md §3 rows and §4 deploy and verify commands (a change to the contract; the owner merges it; gates: merge), every deploy (the owner runs it per LOOP.md §2; gates: deploy)]
 ships-to: main
 ---
 # Any service can be deployed from a commit on main to staging or production with one command
@@ -10,12 +10,13 @@ ships-to: main
 
 - **C1** Staging and production are separate GCP projects in `us-east1`, each with an Artifact Registry repository,
   a deploy identity and a budget alert of its own (per D2). Idempotent `gcloud` scripts that the owner runs create
-  them, so a second run changes nothing (per D1, command-center/D8, command-center/D32). Prove: run each
-  environment's bootstrap twice and list its resources and budget after each run, on staging and production.
+  them, so a second run changes nothing (per D1, command-center/D8, command-center/D32). Prove: run staging's
+  bootstrap twice and list its resources and budget after each run, on staging. Production's run belongs to the
+  later loop (per command-center/D54).
 - **C2** One command builds a service's image from a commit on `main` and deploys it to an environment by the
   convention in command-center/D32, and its `/version` then prints that commit. It refuses a commit that is not on
   `main`. Prove: deploy the probe in `scripts/gcp/probe/` by the runbook and read its `/version`, and try a commit
-  that is only on a branch, on staging and production.
+  that is only on a branch, on staging (per command-center/D54).
 - **C3** `LOOP.md` §3 has a row for each service in each environment, whose served-commit command reads that
   service's `/version`, and §4 has the deploy and verify commands. `/loop-status` reads every row and shows
   `unknown` for a service not yet deployed. The independence check in `scripts/check.sh` also fails on the
@@ -64,7 +65,9 @@ Per command-center/D31 and D32, and D1 here:
 
 Per command-center/D43 this concern ships to `main`: its work is scripts the owner runs from `main`. C1 and C2 are
 proven by running them from a commit on `main` against staging's and then production's project, and their
-evidence lines cite that commit as `main @<sha>`, with the projects named in the line. Per command-center/D46,
+evidence lines cite that commit as `main @<sha>`, with the projects named in the line. Per command-center/D54,
+phase 1 proves them on staging only. Staging's bootstrap ran on 2026-10-22 (project `loops-512401`, per PR #30's
+body), which is evidence C1 can be proven from. Per command-center/D46,
 `service-manifests` extends `deploy.sh` and `bootstrap.sh` to apply each service's manifest.
 
 Rollback: Cloud Run keeps earlier revisions, so redeploying the previous SHA with the same command restores it.

@@ -1,7 +1,7 @@
 ---
 needs: []
 touches: [architect-loop:plugin/, architect-loop:skills/, architect-loop:.claude-plugin/marketplace.json, architect-loop:scripts/install.sh, architect-loop:scripts/check.sh, architect-loop:tests/, architect-loop:README.md, architect-loop:docs/adopting.md, architect-loop:docs/upgrading.md, architect-loop:LOOP.md, architect-loop:docs/proposals/command-center.md, architect-loop:.github/workflows/check.yml]
-effects: [a new LOOP.md in architect-loop, carrying this project's contract with D14 and D17 as rules (a change to the contract; the owner merges it), the plugin marketplace source moving to ./plugin, which changes how everyone installs (released by the owner as a new version, per D17), archiving jugonzal/loops once the loop has moved (the owner does it)]
+effects: [a new LOOP.md in architect-loop carrying this project's contract with D14 and D17 as rules (a change to the contract; the owner merges it; gates: merge), the plugin marketplace source moving to ./plugin which changes how everyone installs (released by the owner as a new version per D17; gates: release), archiving jugonzal/loops once the loop has moved (the owner does it)]
 ships-to: main
 ---
 # The skills and the command center share one repository, and installing the plugin still ships only the skills
