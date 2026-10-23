@@ -42,8 +42,7 @@ ships-to: main
   `gcloud` command has been run against the owner's account. (Superseded in part, 2026-10-22, main @18b866b:
   `projects.txt` names staging `loops-512401` and production `loops-512402`. Staging's bootstrap ran on
   2026-10-22 (project number 665570365697), and §3 holds staging's four URLs since PR #30 (9f57ff2). Production
-  has not been bootstrapped. No service is deployed to staging: all four answer 404. `docs/runbooks/deploy.md`
-  still reads "not yet run".)
+  has not been bootstrapped. No service is deployed to staging: all four answer 404.)
 - Verified 2026-10-20 (`gh repo view jugonzal/architect-loop`): the repository is public, so an unauthenticated
   `/version` shows only a commit anyone can already see (command-center/D24, D32). (Corrected 2026-10-20: this
   said the repository was private.)
