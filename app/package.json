@@ -9,7 +9,9 @@
     "test": "jest",
     "typecheck": "tsc --noEmit",
     "generate:status": "node src/api/generate-status-types.js",
-    "check:status": "node src/api/generate-status-types.js --check"
+    "check:status": "node src/api/generate-status-types.js --check",
+    "generate:clients": "node src/api/generate-clients.js",
+    "check:clients": "node src/api/generate-clients.js --check"
   },
   "dependencies": {
     "@expo-google-fonts/ibm-plex-mono": "0.4.1",
@@ -42,7 +44,8 @@
     "jest-expo": "~57.0.6",
     "json-schema-to-typescript": "16.0.0",
     "react-test-renderer": "19.2.3",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "yaml": "2.9.1"
   },
   "jest": {
     "preset": "jest-expo",
