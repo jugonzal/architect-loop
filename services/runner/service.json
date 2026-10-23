@@ -4,9 +4,9 @@
   "settings": {
     "RUNNER_GCP_PROJECT": "{project}",
     "RUNNER_STORE": "firestore:runner",
-    "RUNNER_APP_ID": "TODO(owner)",
-    "RUNNER_APP_INSTALLATION_ID": "TODO(owner)",
-    "RUNNER_APP_SLUG": "TODO(owner)"
+    "RUNNER_APP_ID": {"staging": "5447264", "production": "TODO(owner)"},
+    "RUNNER_APP_INSTALLATION_ID": {"staging": "174629085", "production": "TODO(owner)"},
+    "RUNNER_APP_SLUG": {"staging": "architect-loop-runner", "production": "TODO(owner)"}
   },
   "secrets": {
     "RUNNER_APP_PRIVATE_KEY": "runner-app-private-key"

@@ -691,15 +691,15 @@ class RepositoryManifestsTest(GcpHarness):
         self.assertEqual(self.changes(), [])
         self.assertIn("staging: 0 changes.", result.stdout)
 
-    def test_they_are_refused_until_the_owner_names_their_github_apps(self):
-        self.root = self.make_repository_root(fill_todos=False)
-        sha = self.init_repo()
-        for service, setting in (("runner", "settings.RUNNER_APP_ID"), ("threads", "settings.THREADS_GITHUB_APP_ID")):
-            result = self.deploy(service, sha)
-            self.assertEqual(result.returncode, 1, result.stdout)
-            self.assertIn(setting, result.stderr)
-            self.assertIn("TODO(owner) for staging", result.stderr)
-        self.assertEqual(self.calls(), [])
+    def test_staging_names_their_github_apps_and_production_waits_for_its_own(self):
+        # The owner named staging's apps (deploy.md step 11); production's belong to a later loop (command-center/D54),
+        # so a production deploy is refused until they are named too. The refusal itself is tested above.
+        wanted = {"runner": ["settings.RUNNER_APP_ID", "settings.RUNNER_APP_INSTALLATION_ID", "settings.RUNNER_APP_SLUG"],
+                  "threads": ["settings.THREADS_GITHUB_APP_ID"], "status": ["settings.STATUS_GITHUB_APP_ID"]}
+        for service, settings in wanted.items():
+            m = manifest.load(os.path.join(ROOT, "services", service, "service.json"))
+            self.assertEqual(manifest.todos(m, "staging"), [], service)
+            self.assertEqual(manifest.todos(m, "production"), settings, service)
 
     def test_once_named_they_deploy_with_their_manifests(self):
         self.root = self.make_repository_root(fill_todos=True)
