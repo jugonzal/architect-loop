@@ -245,6 +245,10 @@ person in one terminal can push a loop forward.
 | D59 | A review item crosses `merge`. A ship item is split into one item for each gate its concern's effects cross other than `merge`, each waiting on that gate's holder with the manual steps on that gate, plus one item for `deploy`. Every other kind of item crosses at most one gate. | Juan, 2026-10-22 | Closes Q59; refines D38 |
 | D60 | A question can be gated: its row names the gate its answer crosses by the same key, so the item waits on that gate's holder and its card asks for a typed reason (`app-inbox` D4). `questions.py` reads the key. A question without one is ungated. | Juan, 2026-10-22 | Closes Q60 |
 | D61 | Test loops live in this repository, in a `sandbox` loop under `docs/loops/sandbox/`. Its build PRs are closed unmerged, and its design and record writes land only under `docs/loops/sandbox/`. G2's second person holds a gate that only the sandbox crosses. Claims that say "a test concern" or "a test loop" mean the sandbox. | Juan, 2026-10-22 | Closes Q61 |
+| D62 | A person is their GitHub login: in `waits_on` and `visible_to`, in a loop's `owner:` and `members:`, and as each gate's holder in `LOOP.md` §2. A loop with no `owner:` falls back to the login `LOOP.md` §1 gives in parentheses after the owner's name, as in "Juan (jugonzal on GitHub)". The app matches a person's items to the signed-in GitHub account. | Juan, 2026-10-23 | Closes Q62 |
+| D63 | A refused loop-document PR crosses `merge` and waits on that gate's holder. Record, proof and contradiction items cross no gate and wait on the loop's owner: a record's merge is delegated under `LOOP.md` §2.1, and what a proof or a contradiction needs is a design call. | Juan, 2026-10-23 | Closes Q63; refines D59 |
+| D64 | A gated question ends its Question cell with `(gates: <key>)`, the form an effect ends with. The Questions table keeps its four columns, so every file written before still reads, and `questions.py` reads the key from there. | Juan, 2026-10-23 | Closes Q64; refines D60 |
+| D65 | While `LOOP.md` §2 names no gate keys, an item's `gate` still comes from its effect's or question's key when that key is one of D58's thirteen, and the item waits on the loop's owner, since §1 says the owner holds every gate. The board shows one drift line saying §2 names no keys. Once §2 names keys, D58 applies as written: an item waits on its gate's holder, a key §2 does not define is drift, and a key §2 defines with no holder waits on the loop's owner. | Juan, 2026-10-23 | Closes Q65; refines D58 |
 
 ## Questions
 
@@ -311,6 +315,36 @@ person in one terminal can push a loop forward.
 | ~~Q59~~ | ~~What happens to an item that crosses gates held by different people?~~ → D59 | | |
 | ~~Q60~~ | ~~Can a question be gated?~~ → D60 | | |
 | ~~Q61~~ | ~~Where do the test loops in staging proofs live, when staging serves this repository?~~ → D61 | | |
+| ~~Q62~~ | ~~Who is a person in `waits_on`, `owner:`, `members:` and §2's holders? (raised by `addressed-to-people`'s build)~~ → D62 | | |
+| ~~Q63~~ | ~~Which gate do record, proof, contradiction and refused-PR items cross? (raised by `addressed-to-people`'s build)~~ → D63 | | |
+| ~~Q64~~ | ~~Where in a Questions row does a gated question name its key? (raised by `addressed-to-people`'s build)~~ → D64 | | |
+| ~~Q65~~ | ~~What do `gate` and `waits_on` read while `LOOP.md` §2 names no keys or holders? (raised by `addressed-to-people`'s build)~~ → D65 | | |
+
+**Q62 options**
+- **GitHub login**: the app can match items to the signed-in account, and `LOOP.md` §1 already gives it. (recommended)
+- **Display name**: reads better on the board, but the app then needs a name-to-login map kept somewhere.
+
+**Q63 options**
+- **Refused PR crosses merge**: a refused loop-document PR waits on merge's holder; record, proof and
+  contradiction cross none and wait on the loop's owner. (recommended)
+- **None of them**: all four wait on the loop's owner, even a PR only the merge holder can merge.
+- **Record and refused PR cross merge**: a record waits on merge's holder although §2.1 lets the agent merge it.
+
+**Q64 options**
+- **Suffix in the Question cell**: `(gates: <key>)`, as effects end; four columns kept, so every file still
+  reads. (recommended)
+- **A Gate column**: explicit, but every Questions table and template changes shape, and `questions.py` must read
+  both widths.
+- **A line under the table**: `**Q<n> gate:** <key>` beside the options; the table is untouched, but the gate sits
+  apart from its question.
+
+**Q65 options**
+- **Fall back to the owner**: the gate still shows, the item waits on the loop's owner, and one drift line says §2
+  names no keys. (recommended)
+- **Addressing off**: gate null and the loop's owner, with no drift; quiet, but the board hides which gate each
+  item crosses.
+- **Strict per D58**: every key §2 does not define is drift, item by item; correct to the letter, but noisy on
+  every project today.
 
 ## Evidence
 
