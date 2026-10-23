@@ -20,8 +20,12 @@ ships-to: production
                What only this concern's proofs rely on is not a need: those proofs wait until their
                environment serves it.
      touches   paths or globs this concern may change; `<repo>:<path>` for another repository.
-     effects   the gates from LOOP.md §2 this concern crosses, in plain words ("migration on shared data");
-               [] if none. The owner sees them before work starts, and the ship brief lists them.
+     effects   what someone must do by hand for this concern, at the gates of LOOP.md §2; [] if none. Each
+               is one phrase without bare commas, ending with a parenthesis whose last part names the gates it
+               crosses by key, as in
+               `[the orders table migrated on shared data (the owner runs it; gates: migration)]`.
+               The owner sees them before work starts, the ship brief lists them, and /loop-status sends each
+               to its gate's holder: one ship item per gate, plus one for deploy.
      ships-to  the environment where every claim must hold: main, staging, production, …
                `main` means the claims are proven on the main branch itself (tests, CI).
      prs       optional: pull requests that belong here but carry no `Concern:` trailer, as numbers or
@@ -59,12 +63,15 @@ ships-to: production
      Under the table, each open question gets a **Q<n> options** list of 2 to 4 options, each a bold text, a colon
      and its main consequence, with (recommended) at the end of the one you recommend. The default is what
      happens if nobody answers, so it may differ from the recommendation. An answered question is struck through
-     with → D# and keeps its list. loop-status's scripts/questions.py reads this format. For example:
+     with → D# and keeps its list. A question whose answer crosses a gate in LOOP.md §2 ends its Question cell
+     with (gates: <key>), and waits on that gate's holder. loop-status's scripts/questions.py reads this format.
+     For example:
 
 | # | Question | Blocks | Default if unanswered |
 | --- | --- | --- | --- |
 | Q1 | Where does the export run? | C2 | In the web process, behind a 30-second timeout |
 | ~~Q2~~ | ~~CSV or JSON?~~ → D1 | | |
+| Q3 | Delete exports after 30 days? (gates: prod-data) | C3 | Keep every export until this is answered |
 
 **Q1 options**
 - **In the web process**: nothing new to deploy, but a large export times out.
@@ -73,6 +80,10 @@ ships-to: production
 **Q2 options**
 - **CSV**: opens in any spreadsheet, but nested fields are flattened. (recommended)
 - **JSON**: keeps nested fields, but most readers need a converter.
+
+**Q3 options**
+- **After 30 days**: storage stays small, but an export older than a month is gone for good. (recommended)
+- **Never**: nothing is lost, but storage grows every month.
 -->
 
 | # | Question | Blocks | Default if unanswered |

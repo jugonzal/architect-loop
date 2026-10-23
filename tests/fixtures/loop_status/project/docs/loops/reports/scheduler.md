@@ -1,13 +1,13 @@
 ---
 needs: [queue]
 touches: [src/scheduler/]
-effects: [the SMTP password in production's secret store (secrets)]
+effects: [the SMTP password in production's secret store (the owner sets it; gates: secrets)]
 ships-to: production
 ---
 # Reports scheduled for a time are queued at that time
 
-Row: merged. Its work is on main, and production serves an older commit, so a ship item with its effect as the
-manual step.
+Row: merged. Its work is on main, and production serves an older commit, so a ship item for deploy, and one for
+the secrets gate its effect crosses, with the effect as its manual step.
 
 ## Done when
 
