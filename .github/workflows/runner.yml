@@ -1,5 +1,11 @@
 # The runner's own tests, with its own dependencies (command-center/D30). It runs on every push and pull request,
 # so CI on main's head always says whether the runner's API still matches services/runner/openapi.yaml (C1).
+#
+# Then the store's tests again, against the Firestore emulator (runner-store C1, per command-center/D44): the store
+# the service and its jobs share on Cloud Run. The first run skips them, having no emulator; the second sets
+# RUNNER_FIRESTORE_TESTS=required, so a missing emulator fails the job instead of skipping them. The emulator is
+# firebase-tools' (Java 21 or later), on a demo project, which reaches nothing outside this machine and needs no
+# credentials.
 name: runner
 on: [push, pull_request]
 permissions:
@@ -17,3 +23,18 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install -r requirements-dev.txt
       - run: python -m unittest discover -s tests -t . -v
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: The store's tests against the Firestore emulator
+        env:
+          RUNNER_FIRESTORE_TESTS: required
+        run: |
+          printf '{"emulators": {"firestore": {"host": "127.0.0.1", "port": 8686}, "ui": {"enabled": false}}}\n' \
+            > "$RUNNER_TEMP/firebase.json"
+          npx --yes firebase-tools@15.33.0 emulators:exec --config "$RUNNER_TEMP/firebase.json" --only firestore \
+            --project demo-runner "python -m unittest tests.test_firestore_store -v"

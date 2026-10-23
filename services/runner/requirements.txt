@@ -2,3 +2,5 @@
 claude-agent-sdk==0.2.168
 PyJWT[crypto]==2.15.1
 gunicorn==26.2.0
+# The store the service and its jobs share on Cloud Run (runner-store C1, per command-center/D44).
+google-cloud-firestore==2.34.1
