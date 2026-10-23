@@ -66,10 +66,12 @@ If the script cannot run, gather the same facts with the commands below and appl
    A fact that cannot be read is kept with its error, so whatever depends on it derives as `unknown`.
 
 2. **Read every loop.** Each folder in `docs/loops/` is a loop: `README.md` plus one file per concern. Parse
-   each concern's front matter (`needs`, `touches`, `effects`, `ships-to`, `prs`, `parked`), its claims
-   (`C#` under Done when), its decisions and questions, and its evidence lines. Questions are read by
-   [scripts/questions.py](scripts/questions.py), with their options, recommendation and default. A `ships-to`
-   names a row of `LOOP.md` §3, such as `main`, `staging` or `production/<service>`, and is looked up by that name.
+   each README's front matter (`owner:`, the loop's one owner, and `members:`, the others who see its items, each
+   a GitHub login; `parked`), each concern's front matter (`needs`, `touches`, `effects`, `ships-to`, `prs`,
+   `parked`), its claims (`C#` under Done when), its decisions and questions, and its evidence lines. Questions
+   are read by [scripts/questions.py](scripts/questions.py), with their options, recommendation and default. A
+   `ships-to` names a row of `LOOP.md` §3, such as `main`, `staging` or `production/<service>`, and is looked up
+   by that name.
 
 3. **Link work to each concern.** Its work is the union of: pull requests whose head branch is
    `<loop>/<concern>`, or whose body carries `Concern: <loop>/<concern>`; commits on main with that trailer; and
@@ -138,17 +140,46 @@ If the script cannot run, gather the same facts with the commands below and appl
    below, with the facts it rests on and, for the last three kinds, the command to run:
    - open questions, each with its recommendation and what it blocks;
    - PRs that are ready for review, with CI green and the proof in their body;
-   - concerns that are merged and waiting to ship, with their declared `effects` as manual steps;
+   - concerns that are merged and waiting to ship, with their declared `effects` as manual steps (one item per
+     gate they cross, below);
    - UNPROVEN claims that need something only the owner has: a device, an account, a production read;
    - contradictions that need a call (redesign, or roll back), and any evidence line that says it contradicts a
      shared decision, which escalates to the loop as a question;
    - loop-document PRs that `scripts/check_loop_pr.sh` refused.
 
+   Then [scripts/addressing.py](scripts/addressing.py) addresses each item: the gate it crosses (`gate`), the one
+   person it waits on (`waits_on`) and who else sees it (`visible_to`). A person is their GitHub login.
+
+   **Keys and holders.** Each gate line in `LOOP.md` §2 names its key and its one holder, as in
+   `**Secrets** (key: secrets; holder: <login>): creating, rotating, reading production values`. The keys are
+   `merge`, `deploy`, `migration`, `release`, `store`, `money`, `spending`, `identity`, `secrets`, `legal`,
+   `infra` (DNS, certificates, firewall and cloud IAM), `prod-data` and `send`, plus any a project adds. An effect
+   is one phrase without bare commas, ending with a parenthesis whose last part names the gates it crosses:
+   `(the owner rotates it; gates: secrets, infra)`. Keys match exactly.
+
+   **gate.** A review and a refused loop-document PR cross `merge`. A ship is split by gate: one item,
+   `ship/<environment>/<key>`, for each key other than `merge` and `deploy` that its concerns' effects name, with
+   the effects that name that key as its manual steps; plus one, `ship/<environment>`, that crosses `deploy`, with
+   the effects that name `deploy` or no other gate. A question crosses the key its Question cell ends with,
+   `(gates: <key>)`, when it names exactly one. A record, a proof and a contradiction cross none.
+
+   **waits_on.** The holder §2 names for the item's gate. An item that crosses no gate, or a gate §2 names no
+   holder for, waits on its loop's owner: `owner:` in the loop README's front matter, or else the login `LOOP.md`
+   §1 gives in parentheses after the owner's name, as in "Ana (ana on GitHub)". An item that spans loops with
+   different owners waits on §1's. When no one is named, it is null: never guessed.
+
+   **visible_to.** The `members:` of the item's loop, who see it but do not act on it.
+
+   **A key §2 does not define is not a gate.** It is drift, and the item crosses no gate by it (an effect that
+   names only such keys is a step of the deploy item). While §2 names no keys at all, the keys above stand in: an
+   item still crosses the gate its key names when the key is one of them, it waits on its loop's owner, and one
+   drift line says §2 names no keys.
+
 7. **Find what agents can start now**: `ready` concerns (build), `shipped` and `stale` ones (prove), the proofs
    that would meet a blocked concern's needs (prove), and concerns with an incomplete contract (design can draft and gather questions). Several of these can run at
    once, one agent and one worktree each.
 
-8. **Look for drift**, cheaply. The script flags the four checks in the middle of this list, and evidence lines and
+8. **Look for drift**, cheaply. The script flags the five checks in the middle of this list, and evidence lines and
    questions it cannot read; the first and the last need reading, so do those yourself. Flag:
    - "Where we are" text in a loop or concern that the code under its `touches` now contradicts;
    - two concerns that are both not yet merged (open, blocked, ready or building), in this loop or across active
@@ -157,6 +188,10 @@ If the script cannot run, gather the same facts with the commands below and appl
    - a concern built against a contract that changed after its branch started;
    - a built concern whose contract lacks `touches` (staleness and overlap cannot be checked) or `ships-to`, or
      that is being built while a concern it `needs` is not met;
+   - addressing step 6 cannot do as written: `LOOP.md` §2 naming no gate keys (one line); once it names keys, a
+     key it defines twice, or an effect or an open question naming a key it does not define; a question naming
+     more than one key; an `owner:` or `members:` entry that is not a GitHub login; and loops whose items wait on
+     no one, because they have no `owner:` and `LOOP.md` §1 gives the owner no login;
    - memory facts and runbooks that cite a file changed since their `verified` or `Last run` date.
 
 9. **Report**, leading with the board:
@@ -170,7 +205,7 @@ If the script cannot run, gather the same facts with the commands below and appl
    worker         contradicted  C2 CONTRADICTS rung 1: p95 41 s, needs ≤ 30 s   /loop-design report-pipeline/worker
 
    Needs you (n), most unblocking first
-     1. …
+     1. <kind> · <title> · <why> · unblocks <n> · waits on <login> (gate: <key>)
    Agents can start now (n)
      /loop-…
    Drift (n)

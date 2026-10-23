@@ -5,7 +5,8 @@ Architect Loop, generation 2. Last reviewed: YYYY-MM-DD by <owner>.
 
 ## 1. Roles
 
-- **Owner:** <name>. Sets goals, answers questions, merges code, ships, and holds every gate in §2.
+- **Owner:** <name> (<GitHub login> on GitHub). Sets goals, answers questions, merges code, ships, and holds
+  every gate in §2 that names no other holder.
 - **Agents:** plan, design, build, prove and record. They build each concern on its own branch, in its own
   worktree, and open pull requests (§6). They never merge code to `<main>` and never deploy to a shared
   environment, unless §2.1 delegates that specific action.
@@ -13,22 +14,31 @@ Architect Loop, generation 2. Last reviewed: YYYY-MM-DD by <owner>.
 ## 2. Gates: always stop for the owner
 
 An agent that reaches one of these stops, says exactly what it would do and why, and waits for an
-explicit yes in the conversation.
+explicit yes in the conversation. Each gate has a short key and one holder, by GitHub login: the person an item
+that crosses it waits on. A gate with no holder waits on the loop's owner.
 
-- **Never done by an agent, even after a yes** (the owner performs them), unless listed in §2.1:
-  merging to `<main>`; deploying or promoting to any shared environment; running migrations against
-  shared data.
+- **Never done by an agent, even after a yes** (the holder performs them), unless listed in §2.1:
+  - **Merge** (key: merge; holder: <login>): merging to `<main>`
+  - **Deploy** (key: deploy; holder: <login>): deploying or promoting to any shared environment
+  - **Migration** (key: migration; holder: <login>): running migrations against shared data
+  - **Release** (key: release; holder: <login>): releasing a version: a version bump, a tag, a package publish
+  - **Store** (key: store; holder: <login>): submitting a build to an app store or a beta channel
 - **Done by an agent only after a per-action yes** (approval covers that one action, not the next one of its kind):
-  - Money: prices, billing, tax, payment-provider settings
-  - Identity and access: auth providers, roles, admin grants, OAuth/SSO apps
-  - Secrets: creating, rotating, reading production values
-  - Legal and public text: privacy policy, terms, published pricing, store listings
-  - DNS, certificates, firewall, cloud IAM
-  - Deleting or rewriting production data; expiring user content
-  - Sending anything to real users
-  - <project-specific additions>
+  - **Money** (key: money; holder: <login>): prices, billing, tax, payment-provider settings
+  - **Spending** (key: spending; holder: <login>): provisioning paid resources or starting paid sessions beyond
+    what was already approved
+  - **Identity** (key: identity; holder: <login>): auth providers, roles, admin grants, OAuth/SSO apps
+  - **Secrets** (key: secrets; holder: <login>): creating, rotating, reading production values
+  - **Legal** (key: legal; holder: <login>): privacy policy, terms, published pricing, store listings
+  - **Infra** (key: infra; holder: <login>): DNS, certificates, firewall, cloud IAM
+  - **Production data** (key: prod-data; holder: <login>): deleting or rewriting production data; expiring user
+    content
+  - **Send** (key: send; holder: <login>): sending anything to real users
+  - <project-specific additions, each with its own key and holder>
 
-A concern declares the gates it crosses in its `effects`, so they are visible before any work starts.
+A concern declares the gates it crosses in its `effects`, so they are visible before any work starts. Each effect
+ends with the keys it crosses, as in `the API key rotated (the owner rotates it; gates: secrets)`, and a question
+whose answer crosses a gate ends with `(gates: <key>)`. `/loop-status` sends each item to its gate's holder.
 
 ### 2.1 Delegated actions
 
