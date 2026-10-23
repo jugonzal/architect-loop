@@ -1,0 +1,218 @@
+openapi: 3.1.0
+info:
+  title: Status
+  version: 1.0.0
+  summary: What is true right now for every loop and concern of a project, derived the way /loop-status derives it.
+  description: |
+    The command center's status service (command-center/status-service). It answers a project's status document,
+    the one `plugin/skills/loop-status/scripts/loop_status.py --json` writes and `status.schema.json` describes,
+    derived by that script from the same commit the service was built from (command-center/D13, D15).
+
+    **Facts.** The service gathers the facts itself, and the derivation never reads a document's word for a fact:
+
+    - git, from its own clone of the project's repository, fetched with its own read-only GitHub App: the loop
+      documents and `LOOP.md` as they are on main, main's head, the branches, the commits with a `Concern:`
+      trailer, the merge commits, and the answers to the derivation's git questions.
+    - GitHub's API, with the same app: pull requests, and the workflow runs on main's head.
+    - What each environment serves: an HTTP GET of the first `http(s)` URL in its `LOOP.md` §3 served-commit cell,
+      which answers `{"commit": "<sha>"}` (command-center/D9, D32, D56). A row without one is `unknown`. The `main`
+      row is main's head, from the service's own fetch. The service runs no command taken from the repository.
+
+    A fact that cannot be read is `unknown` in the document, with its error in `missing`, and is never filled in
+    from an earlier answer. If main itself cannot be read (git cannot fetch, or the app cannot get a token), there
+    is no document to give, and the answer is 503.
+
+    **Freshness.** A document is reused for at most `STATUS_MAX_AGE_SECONDS` (20 by default), and never after a
+    signed delivery from GitHub about the project: push, pull request, branch and workflow events each make the
+    next read gather again. So an answer reflects a push, a pull request event or a deploy within a minute
+    (C1). `as_of` says when its facts were gathered, and `main.sha` and `environments[].served` name the commits
+    it read.
+
+    **State.** The service keeps no state a person typed: its only store is its clone of the repository, which
+    is a cache. Deleting it and restarting gives the same answer (C3).
+
+    **Callers.** A person sends `Authorization: Bearer <token>`, the GitHub token from the app's sign-in, which
+    asks for no repository access. The service identifies them with `GET /user` on that token, and answers only a
+    collaborator on the project's repository, checked with its own read-only GitHub App (command-center/D27, D28).
+  license:
+    name: MIT
+paths:
+  /version:
+    get:
+      operationId: getVersion
+      summary: The commit this deployment was built from (command-center/D32).
+      security: []
+      responses:
+        "200":
+          description: The commit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Version"
+
+  /projects/{owner}/{repo}/status:
+    parameters:
+      - $ref: "#/components/parameters/owner"
+      - $ref: "#/components/parameters/repo"
+    get:
+      operationId: getStatus
+      summary: The project's status document, gathered at most a minute ago (command-center/D48).
+      security:
+        - person: []
+      responses:
+        "200":
+          description: >-
+            The status document, exactly as `loop_status.py --json` writes it for the facts the service gathered.
+          headers:
+            Cache-Control:
+              description: Always `no-store`; the document is only as fresh as its `as_of`.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "../../plugin/skills/loop-status/scripts/status.schema.json"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+  /webhooks/github:
+    post:
+      operationId: receiveGitHubDelivery
+      summary: A delivery from the status service's own GitHub App, which only makes the next read gather again.
+      description: |
+        GitHub signs each delivery with the app's webhook secret (`X-Hub-Signature-256`). A signed delivery about a
+        project this service serves marks that project's document stale, whatever the event; nothing in a
+        delivery's payload is ever used as a fact. The app subscribes to push, pull request, create, delete,
+        workflow run, check suite and status events.
+      security: []
+      parameters:
+        - name: X-GitHub-Event
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-Hub-Signature-256
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-GitHub-Delivery
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: The delivery was accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Delivery"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+components:
+  securitySchemes:
+    person:
+      type: http
+      scheme: bearer
+      description: The GitHub token from the app's sign-in. The service asks GitHub who it belongs to.
+  parameters:
+    owner:
+      name: owner
+      in: path
+      required: true
+      description: The project's owner on GitHub.
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$"
+    repo:
+      name: repo
+      in: path
+      required: true
+      description: The project's repository name.
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9._-]{1,100}$"
+  schemas:
+    Version:
+      type: object
+      required: [commit]
+      additionalProperties: false
+      properties:
+        commit:
+          description: The commit this deployment was built from, or `unknown` when the build did not say.
+          type: string
+    Delivery:
+      type: object
+      required: [project, stale]
+      additionalProperties: false
+      properties:
+        project:
+          description: The repository the delivery is about, or null when it names none.
+          type: [string, "null"]
+        stale:
+          description: Whether this marked a project's document stale; false for a project not served here.
+          type: boolean
+    Error:
+      type: object
+      required: [error, message]
+      additionalProperties: false
+      properties:
+        error:
+          type: string
+          enum: [bad_request, unauthorized, forbidden, not_found, unavailable, internal]
+        message:
+          description: What went wrong, for people.
+          type: string
+  responses:
+    BadRequest:
+      description: The request is malformed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: No token, a token GitHub does not accept, or a delivery whose signature does not match.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: The caller is not a collaborator on the project's repository.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: The project is not served here, or there is no such path.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unavailable:
+      description: >-
+        GitHub cannot be reached, the service's app cannot get a token, or the service is not configured. Nothing
+        older is served instead.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

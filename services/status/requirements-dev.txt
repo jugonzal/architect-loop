@@ -1,0 +1,4 @@
+# What the tests need on top of the service's own dependencies.
+-r requirements.txt
+openapi-core==0.23.1
+PyYAML==6.0.3

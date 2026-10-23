@@ -15,6 +15,21 @@ from .store import SqliteStore
 from .workspace import Workspace
 
 PRIVATE_KEY = "RUNNER_APP_PRIVATE_KEY"  # the runner app's key, mounted from Secret Manager (D27)
+FIRESTORE = "firestore:"  # RUNNER_STORE=firestore:<database>, as services/runner/service.json sets it
+
+
+def store_from(config):
+    """The store RUNNER_STORE names. `firestore:<database>` is that Firestore database in the runner's project, which
+    the service and every session's job share across containers (runner-store C1, per command-center/D44). Anything
+    else is the path of a SQLite file, which only one machine can share, for local runs and tests."""
+    if config.store_path.startswith(FIRESTORE):
+        database = config.store_path[len(FIRESTORE):]
+        if not database:
+            raise ValueError(f"RUNNER_STORE={config.store_path} names no database: write firestore:<database>")
+        from .firestore_store import FirestoreStore  # only a store on Firestore needs Firestore's client
+
+        return FirestoreStore(database, project=config.gcp_project or None, seeds=config.seeds)
+    return SqliteStore(config.store_path, seeds=config.seeds)
 
 
 def github_from(config, private_key):
@@ -24,7 +39,7 @@ def github_from(config, private_key):
 
 def service_from_env(env):
     config = Config.from_env(env)
-    store = SqliteStore(config.store_path, seeds=config.seeds)
+    store = store_from(config)
     launcher = CloudRunJobs(config.gcp_project, config.region, config.job)
     return Api(Dispatcher(config, store, github_from(config, env.get(PRIVATE_KEY, "")), launcher))
 
@@ -55,8 +70,7 @@ def job_from_env(env):
     identity = (login, f"{github.bot_user_id()}+{login}@users.noreply.github.com")
     workspace = Workspace(config.clone_url, config.workdir, identity, main_branch=config.main_branch,
                           credential_helper="!gh auth git-credential")
-    store = SqliteStore(config.store_path, seeds=config.seeds)
-    return SessionJob(config, store, github, workspace), session_id
+    return SessionJob(config, store_from(config), github, workspace), session_id
 
 
 def run_job():
