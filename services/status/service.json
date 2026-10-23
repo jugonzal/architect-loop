@@ -1,0 +1,11 @@
+{
+  "identity": {"name": "status", "roles": []},
+  "settings": {
+    "STATUS_PROJECTS": "jugonzal/architect-loop",
+    "STATUS_GITHUB_APP_ID": "TODO(owner)"
+  },
+  "secrets": {
+    "STATUS_GITHUB_APP_PRIVATE_KEY": "status-github-app-private-key",
+    "STATUS_GITHUB_WEBHOOK_SECRET": "status-github-webhook-secret"
+  }
+}
