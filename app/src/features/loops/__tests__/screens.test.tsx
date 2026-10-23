@@ -32,7 +32,15 @@ const STATUS_URL = 'https://status-123456789012.us-east1.run.app';
 const SIGNED_IN = { token: 'gho_stored', user: { login: 'octocat', name: 'Mona Lisa Octocat' } };
 
 function configFor(project: string, statusUrl: string | null = STATUS_URL): AppConfig {
-  return { githubClientId: 'Iv1.test-client', statusUrl, project: project as AppConfig['project'], environment: 'staging/app' };
+  return {
+    githubClientId: 'Iv1.test-client',
+    statusUrl,
+    runnerUrl: null,
+    threadsUrl: null,
+    notifyUrl: null,
+    project: project as AppConfig['project'],
+    environment: 'staging/app',
+  };
 }
 
 /** A fake status service that answers each GET with the next of its answers (the last one repeats). */

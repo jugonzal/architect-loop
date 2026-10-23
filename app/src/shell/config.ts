@@ -13,15 +13,12 @@ export type AppConfig = {
   githubClientId: string | null;
   /** The status service's URL for this build's environment, or null when the build has none yet. */
   statusUrl: string | null;
-  // app-clients D1 makes these three `string | null` like statusUrl. They stay optional only until the AppConfig
-  // literals in src/features/environments/__tests__/route.test.tsx and src/features/loops/__tests__/screens.test.tsx,
-  // outside app-clients' touches, list them; readConfig always sets them. Read a missing one as null.
   /** The runner's URL for this build's environment, or null when the build has none yet. */
-  runnerUrl?: string | null;
+  runnerUrl: string | null;
   /** The threads service's URL for this build's environment, or null when the build has none yet. */
-  threadsUrl?: string | null;
+  threadsUrl: string | null;
   /** The notify service's URL for this build's environment, or null when the build has none yet. */
-  notifyUrl?: string | null;
+  notifyUrl: string | null;
   project: ProjectKey;
   /** The LOOP.md §3 environment the build serves: staging/app, production/app, or development. */
   environment: string;
@@ -46,7 +43,7 @@ function present(raw: string | undefined): string | null {
   return value && !value.startsWith('TODO') ? value : null;
 }
 
-export function readConfig(env: Env): AppConfig & Required<Pick<AppConfig, 'runnerUrl' | 'threadsUrl' | 'notifyUrl'>> {
+export function readConfig(env: Env): AppConfig {
   const project = present(env.EXPO_PUBLIC_PROJECT) ?? DEFAULT_PROJECT;
   if (!/^[^/\s]+\/[^/\s]+$/.test(project)) throw new Error(`EXPO_PUBLIC_PROJECT must be owner/repo, not ${project}`);
   return {

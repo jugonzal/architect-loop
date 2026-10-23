@@ -32,6 +32,9 @@ import { SHELL_TABS } from '../../../shell/tabs';
 const CONFIG: AppConfig = {
   githubClientId: 'Iv1.test-client',
   statusUrl: 'https://status-123456789012.us-east1.run.app',
+  runnerUrl: null,
+  threadsUrl: null,
+  notifyUrl: null,
   // The fixtures describe example/reports, and the client refuses a document for another project.
   project: 'example/reports',
   environment: 'staging/app',
