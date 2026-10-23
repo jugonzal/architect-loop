@@ -28,6 +28,8 @@
     "reports/stacked": "building",
     "reports/tools-sync": "done",
     "reports/worker": "contradicted",
+    "search/alerts": "ready",
+    "search/feeds": "blocked",
     "search/indexer": "ready"
   },
   "queue": [
@@ -44,6 +46,7 @@
   ],
   "agents_can_start": [
     {"concern": "reports/exporter", "action": "build", "command": "/loop-build reports/exporter"},
+    {"concern": "search/alerts", "action": "build", "command": "/loop-build search/alerts"},
     {"concern": "search/indexer", "action": "build", "command": "/loop-build search/indexer"},
     {"concern": "reports/legacy", "action": "prove", "command": "/loop-prove reports/legacy main"},
     {"concern": "reports/metrics", "action": "prove", "command": "/loop-prove reports/metrics staging"},

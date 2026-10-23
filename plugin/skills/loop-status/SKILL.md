@@ -91,7 +91,7 @@ If the script cannot run, gather the same facts with the commands below and appl
    | parked | Front matter has `parked: D<n>` | Nothing. Show what the decision says would unpark it |
    | contradicted | A claim's latest verdict is CONTRADICTS, and no decision is dated after it | `/loop-design <loop>/<concern>` (or `/loop-diagnose` when the cause is unknown) |
    | open | A question that blocks a claim is unanswered, or a decision in `needs` has been superseded; or nothing is built yet and the contract lacks Done when, `touches` or `ships-to` | `/loop-design`. The owner answers |
-   | blocked | Nothing is built yet, and a concern in `needs` is not done | That concern's next action |
+   | blocked | Nothing is built yet, and a concern in `needs` is not met | `/loop-prove` on that concern, on the lowest environment that serves it, when its work is on main; otherwise its next action |
    | ready | Nothing is built yet: no linked PR, no `<loop>/<concern>` branch, no commit with its trailer | `/loop-build <loop>/<concern>` |
    | building | A linked PR is open, or the branch exists, and none of its work is on main | The PR's next step: build, review, or the owner merges once the proof in its body holds and CI is green |
    | merged | Its work is on main, and its `ships-to` environment does not serve it yet | Prove on any lower environment that serves it, then `/loop-ship <env>` |
@@ -109,6 +109,12 @@ If the script cannot run, gather the same facts with the commands below and appl
    - **Current HOLDS for a claim on an environment:** its latest evidence line is HOLDS there, its commit is an
      ancestor of the served commit, and `git log --format=%h <proof>..<served> -- <touches>` prints nothing.
      A claim whose Prove says CI holds at rung 5 when CI is green on the main branch's head, with no line needed.
+   - **Met, for a concern in `needs`:** it is done, or its work is on main and each of its claims holds on some
+     environment of `LOOP.md` §3: its latest line there is HOLDS, its commit is on main, and
+     `git log --format=%h <proof>..<main> -- <touches>` prints nothing. A claim whose Prove names CI holds this
+     way while CI is green on the main branch's head. A contradicted need is never met. This is decided from
+     evidence, not from what an environment serves now, so a need proven on a lower or a local environment
+     unblocks what needs it, while done still waits for its `ships-to`.
    - A line marked `@?` (migrated without a commit) never counts as a HOLDS, but a CONTRADICTS still counts,
      with or without a commit: a contradiction is a reason to stop, wherever it was seen. A claim with only
      UNPROVEN lines is not proven.
@@ -138,8 +144,8 @@ If the script cannot run, gather the same facts with the commands below and appl
      shared decision, which escalates to the loop as a question;
    - loop-document PRs that `scripts/check_loop_pr.sh` refused.
 
-7. **Find what agents can start now**: `ready` concerns (build), `shipped` and `stale` ones (prove), and
-   concerns with an incomplete contract (design can draft and gather questions). Several of these can run at
+7. **Find what agents can start now**: `ready` concerns (build), `shipped` and `stale` ones (prove), the proofs
+   that would meet a blocked concern's needs (prove), and concerns with an incomplete contract (design can draft and gather questions). Several of these can run at
    once, one agent and one worktree each.
 
 8. **Look for drift**, cheaply. The script flags the four checks in the middle of this list, and evidence lines and
@@ -150,7 +156,7 @@ If the script cannot run, gather the same facts with the commands below and appl
    - a linked PR that changes files outside its concern's `touches`;
    - a concern built against a contract that changed after its branch started;
    - a built concern whose contract lacks `touches` (staleness and overlap cannot be checked) or `ships-to`, or
-     that was built ahead of a concern it `needs`;
+     that is being built while a concern it `needs` is not met;
    - memory facts and runbooks that cite a file changed since their `verified` or `Last run` date.
 
 9. **Report**, leading with the board:
