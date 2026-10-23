@@ -22,7 +22,7 @@ info:
     from an earlier answer. If main itself cannot be read (git cannot fetch, or the app cannot get a token), there
     is no document to give, and the answer is 503.
 
-    **Freshness.** A document is reused for at most `STATUS_MAX_AGE_SECONDS` (30 by default), and never after a
+    **Freshness.** A document is reused for at most `STATUS_MAX_AGE_SECONDS` (20 by default), and never after a
     signed delivery from GitHub about the project: push, pull request, branch and workflow events each make the
     next read gather again. So an answer reflects a push, a pull request event or a deploy within a minute
     (C1). `as_of` says when its facts were gathered, and `main.sha` and `environments[].served` name the commits

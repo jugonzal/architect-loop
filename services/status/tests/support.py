@@ -492,7 +492,7 @@ class ServiceTestCase(unittest.TestCase):
     """A project with a real origin, a fake GitHub that knows alice (a collaborator) and carol (not one), each
     environment's /version, and the service wired to them, with a clock the test moves."""
 
-    max_age_seconds = 30.0
+    max_age_seconds = 20.0
     cache_seconds = 0.0
 
     def setUp(self):

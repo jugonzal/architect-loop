@@ -1,7 +1,7 @@
 """C1: after a push, a pull request event or a change in an environment's served commit, the answer reflects it
 within 60 seconds and names the commits it read.
 
-The service reuses a document for at most STATUS_MAX_AGE_SECONDS (30), and never after a signed delivery from
+The service reuses a document for at most STATUS_MAX_AGE_SECONDS (20), and never after a signed delivery from
 GitHub about the project. So a push or a pull request event is in the very next answer once GitHub has delivered
 it, and any change, delivered or not (a deploy has no delivery), is in every answer gathered after
 STATUS_MAX_AGE_SECONDS. How long GitHub takes to deliver, and a whole refresh on the real repository, are for
@@ -117,6 +117,24 @@ class DeployTest(ServiceTestCase):
         self.assertEqual(alpha["state"], "shipped")
         self.assertEqual(alpha["inputs"]["served"], {"environment": "staging/web", "commit": merge, "error": None,
                                                      "serves": True})
+
+    def test_a_deploy_is_in_the_answer_within_a_minute_even_if_one_regather_cannot_read_it(self):
+        # What a local run of the image showed once (60.8 s with a 30 s max age): the first regather after the
+        # deploy reads the environment as unknown, and that answer is reused for a whole max age.
+        files = {"src/alpha/a.py": "x = 1\n"}
+        self.open_pr(1, "sandbox/alpha", files)
+        merge = self.merge_pr(1, "sandbox/alpha", files)
+        self.status()
+        deployed = self.clock.now
+        self.version.answer("/staging/version", 503, "")  # the new revision is still starting
+        self.clock.now += self.max_age_seconds + 0.5
+        self.assertIsNone(environment(self.status(), "staging/web")["served"])
+        self.version.serve("/staging/version", merge)
+        self.clock.now += self.max_age_seconds
+        self.assertIsNone(environment(self.status(), "staging/web")["served"])  # the unknown is reused, not older
+        self.clock.now += 0.5
+        self.assertEqual(environment(self.status(), "staging/web")["served"], merge)
+        self.assertLess(self.clock.now - deployed, 60)
 
 
 class BoardTest(unittest.TestCase):

@@ -11,7 +11,7 @@
 | `STATUS_GITHUB_API_URL` | GitHub's REST API; GraphQL is at `<it>/graphql`. Default `https://api.github.com`. |
 | `STATUS_GITHUB_GIT_URL` | Where the repositories are cloned from, as `<it>/<owner>/<repo>.git`. Default `https://github.com`. |
 | `STATUS_CACHE_DIR` | Where the service keeps its clone of each project's repository: a cache. Default `/tmp/status`. |
-| `STATUS_MAX_AGE_SECONDS` | How long a document is reused when GitHub delivers nothing. Default 30; under 60 (C1). |
+| `STATUS_MAX_AGE_SECONDS` | How long a document is reused when GitHub delivers nothing. Default 20; under 30 (C1): a regather that cannot read an environment answers it unknown, and that answer is reused as long again, so even then a change is in the answer within a minute. |
 | `STATUS_CACHE_SECONDS` | How long a caller's login and membership are reused before GitHub is asked again. Default 60. |
 | `STATUS_SERVED_TIMEOUT_SECONDS` | How long a GET of an environment's `/version` may take before it reads as unknown. Default 5. |
 
@@ -57,7 +57,7 @@ class Settings:
     github_api_url: str = "https://api.github.com"
     github_git_url: str = "https://github.com"
     cache_dir: str = "/tmp/status"
-    max_age_seconds: float = 30.0
+    max_age_seconds: float = 20.0
     cache_seconds: float = 60.0
     served_timeout_seconds: float = 5.0
 
@@ -74,7 +74,7 @@ class Settings:
             github_api_url=(env.get("STATUS_GITHUB_API_URL") or "https://api.github.com").rstrip("/"),
             github_git_url=(env.get("STATUS_GITHUB_GIT_URL") or "https://github.com").rstrip("/"),
             cache_dir=env.get("STATUS_CACHE_DIR") or "/tmp/status",
-            max_age_seconds=float(env.get("STATUS_MAX_AGE_SECONDS") or 30),
+            max_age_seconds=float(env.get("STATUS_MAX_AGE_SECONDS") or 20),
             cache_seconds=float(env.get("STATUS_CACHE_SECONDS") or 60),
             served_timeout_seconds=float(env.get("STATUS_SERVED_TIMEOUT_SECONDS") or 5),
         )
@@ -92,6 +92,7 @@ class Settings:
             found.append("STATUS_GITHUB_APP_ID is not set")
         if not self.github_private_key:
             found.append("STATUS_GITHUB_APP_PRIVATE_KEY is not set")
-        if not 0 <= self.max_age_seconds < 60:
-            found.append("STATUS_MAX_AGE_SECONDS must be under 60, so an answer is never a minute behind (C1)")
+        if not 0 <= self.max_age_seconds < 30:
+            found.append("STATUS_MAX_AGE_SECONDS must be under 30, so that even after a regather that cannot read an "
+                         "environment, an answer is never a minute behind (C1)")
         return found

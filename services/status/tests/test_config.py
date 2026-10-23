@@ -45,15 +45,16 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(settings.served_timeout_seconds, 3.0)
         self.assertEqual(settings.problems(), [])
 
-    def test_defaults_are_githubs_and_a_half_minute(self):
+    def test_defaults_are_githubs_and_twenty_seconds(self):
         settings = Settings.from_env({"STATUS_PROJECTS": "a/b"})
         self.assertEqual(settings.commit, "unknown")
         self.assertIsNone(settings.webhook_secret)
         self.assertEqual(settings.github_api_url, "https://api.github.com")
         self.assertEqual(settings.github_git_url, "https://github.com")
-        # C1: a document is reused for at most this long, so an answer is never more than a minute behind.
-        self.assertEqual(settings.max_age_seconds, 30.0)
-        self.assertLess(settings.max_age_seconds, 60)
+        # C1: a document is reused for at most this long. A regather that cannot read an environment answers it
+        # unknown, and that answer is reused as long again, so twice this, and two gathers, must fit in a minute.
+        self.assertEqual(settings.max_age_seconds, 20.0)
+        self.assertLess(2 * settings.max_age_seconds, 60)
 
     def test_a_project_and_the_app_must_be_named(self):
         for value in (None, "", "architect-loop", "a/b/c", "/x"):
@@ -65,10 +66,12 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(Settings.from_env({"STATUS_PROJECTS": "a/b"}).problems(),
                          ["STATUS_GITHUB_APP_ID is not set", "STATUS_GITHUB_APP_PRIVATE_KEY is not set"])
 
-    def test_a_max_age_of_a_minute_or_more_is_refused(self):
+    def test_a_max_age_of_half_a_minute_or_more_is_refused(self):
         env = {"STATUS_PROJECTS": "a/b", "STATUS_GITHUB_APP_ID": "1", "STATUS_GITHUB_APP_PRIVATE_KEY": "k"}
-        self.assertEqual(Settings.from_env(dict(env, STATUS_MAX_AGE_SECONDS="59")).problems(), [])
-        self.assertTrue(Settings.from_env(dict(env, STATUS_MAX_AGE_SECONDS="60")).problems())
+        self.assertEqual(Settings.from_env(dict(env, STATUS_MAX_AGE_SECONDS="29")).problems(), [])
+        for value in ("30", "60", "-1"):
+            with self.subTest(value=value):
+                self.assertTrue(Settings.from_env(dict(env, STATUS_MAX_AGE_SECONDS=value)).problems())
 
     def test_an_unconfigured_service_answers_version_and_refuses_the_rest(self):
         # What a first deploy by scripts/gcp/deploy.sh would start if the manifest were not applied.

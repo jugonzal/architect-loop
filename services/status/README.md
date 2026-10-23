@@ -12,7 +12,7 @@ Serves each project's status document, fresh within a minute of a push, a pull r
   shape) and the runs on main from GitHub's API, and each `LOOP.md` §3 row's served commit with a GET of the first
   `http(s)` URL in its served-commit cell (command-center/D9, D56). It runs no command taken from the repository.
   The `main` row is main's head, from the service's own fetch.
-- **Freshness.** A document is reused for at most `STATUS_MAX_AGE_SECONDS` (30), and never after a signed delivery
+- **Freshness.** A document is reused for at most `STATUS_MAX_AGE_SECONDS` (20), and never after a signed delivery
   about the project to **`POST /webhooks/github`**. A fact that cannot be read is `unknown`; if main itself cannot
   be fetched, the answer is 503, never an earlier document.
 - **State.** Its only store is its clone under `STATUS_CACHE_DIR`, a cache: deleting it and restarting gives the
