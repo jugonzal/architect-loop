@@ -43,7 +43,10 @@ ships-to: staging/app
   `loop-build`, `loop-prove` and `loop-status`, so neither `/loop-ship` on an environment nor a loop's record step
   can be dispatched yet, and the runner keeps no session's final message. `runner-dispatch` C3 adds both (per D1,
   D2). Nothing in the runner posts to a thread yet; `session-narration` adds that and the relay of a member's
-  reply into a running session (per D3).
+  reply into a running session (per D3). (Superseded in part, 2026-10-22, main @18b866b: PR #24 (900dc5a) built
+  `runner-dispatch` C3, so `/loop-ship <environment>` and `/loop-status <loop>` can be dispatched, and the runner
+  keeps each session's `final_message` and serves it with the session. Nothing in the runner posts to a thread
+  yet.)
 - Verified 2026-10-20 (`status.schema.json` on main @a9fde89): a record item carries the proposed text and its
   path (`record_detail`), which is what the record card shows (per D2).
 

@@ -72,7 +72,8 @@ person in one terminal can push a loop forward.
   `production`, so `ships-to: production` matched no row (D43 fixes it). Every row's URL, and both project IDs in
   `scripts/gcp/projects.txt`, are `TODO(owner)` until the owner runs the bootstrap. The smoke test in §4 is still
   `TODO(owner)`. Each service reads its commit from `COMMIT_SHA`, which `deploy.sh` sets (per D47), and
-  `deploy.sh` changes nothing else in a service's config (D46 changes that).
+  `deploy.sh` changes nothing else in a service's config (D46 changes that). (Superseded in part, 2026-10-22:
+  both project IDs are set, and staging's four rows have their URLs, per the bullet on staging's project below.)
 - **Verified** (`plugin/skills/loop-status/SKILL.md`, steps 1 to 6): the derivation exists only as a table in
   prose. Its facts are git, `gh pr list`, served-commit commands and evidence lines. Its states are parked,
   contradicted, open, blocked, ready, building, merged, shipped, stale and done, plus unknown. Its queue is
@@ -80,7 +81,9 @@ person in one terminal can push a loop forward.
   scripts in Python (`test_check_loop_pr.py`, `test_migrate_gen1.py`), which is where the new script's tests go
   (per D15). The table has no rule for a pull request merged in another repository, and runs on the same facts
   returned different boards (`one-repository` C3, 2026-10-20). D19 adds the rule. (Paths corrected 2026-10-20 for
-  the move.)
+  the move.) (Superseded 2026-10-22, main @18b866b: PR #27 (964d370) implements the table as
+  `plugin/skills/loop-status/scripts/loop_status.py`, tested in `tests/test_loop_status.py`, and the table has
+  D19's rule. See `status-derivation`.)
 - **Verified** (the screen design canvas, https://claude.ai/artifact/2zWJ13odFUV1yNXkYR6urn, read 2026-10-20):
   eight 390×844 phone screens: Inbox, Question, Review, Concern, Loops, Session thread, Agents, Environments.
   There are five tabs: Needs you, Loops, Agents, Environments, More. The type is IBM Plex Sans and Mono. The
@@ -110,7 +113,9 @@ person in one terminal can push a loop forward.
 - **Verified** (`git tag -l`, `plugin/.claude-plugin/plugin.json`, and `gh repo view jugonzal/loops`,
   2026-10-20): release v0.3.0 is tagged at fbd6d0b, the plugin is 0.3.0, and `jugonzal/loops` is archived, so
   `one-repository`'s remaining effects are done. `session-runner`'s job can install v0.3.0. (Corrected 2026-10-20:
-  this said no release was tagged, the plugin was 0.2.0, and `jugonzal/loops` was not archived.)
+  this said no release was tagged, the plugin was 0.2.0, and `jugonzal/loops` was not archived.) (Corrected
+  2026-10-22: v0.4.0 is tagged at 18b866b and the plugin is 0.4.0, read with `git tag -l` and `plugin.json` on
+  main @18b866b. Each dispatch names the release its job installs, in `plugin_release`.)
 - **Verified** (`one-repository`'s evidence, main @4e7bf9a, 2026-10-20): the marketplace serves `./plugin`, and a
   real install from `main` ships only `plugin/` (C1). CI fails on any reference to `app/` or `services/` under
   `plugin/` (C2). Adding the marketplace clones the whole repository into the user's plugin config, but nothing
@@ -132,16 +137,25 @@ person in one terminal can push a loop forward.
   An open PR or a running session refuses every skill on its concern. Any positive budget is accepted. The only
   store is SQLite, which the service and its jobs, in separate containers, cannot share (D44). The job holds the
   app's private key. Nothing in the job posts to a thread. `runner-dispatch` and `runner-store` build the changes,
-  and `session-narration` the threads.
+  and `session-narration` the threads. (Superseded in part, 2026-10-22, main @18b866b: since PR #24 (900dc5a),
+  only a `/loop-build` session adds `Concern:`, and every session adds `Sponsored-by:` (D45). `/loop-ship
+  <environment>`, `/loop-status <loop>` and `/loop-design <loop>` can be dispatched. Only `/loop-build` and
+  `/loop-design` hold a concern, a budget above the $10 ceiling is refused, and a session's final message is kept
+  (`config.py`, `session.py`, `dispatch.py`, `openapi.yaml`). The store is still SQLite only, and nothing in the
+  job posts to a thread.)
 - **Verified** (`scripts/gcp/projects.txt` on main @e63f06b, PR #30's body, and `curl` of each staging `/version`,
   2026-10-22): staging's project is `loops-512401` (number 665570365697) and its bootstrap ran on 2026-10-22.
   Production's ID is `loops-512402`, but production has not been bootstrapped. All four staging services answer
   404 at `https://<service>-665570365697.us-east1.run.app/version`, so nothing is deployed there. PR #30, which
-  is open, fills in staging's four rows in §3 with those URLs.
+  is open, fills in staging's four rows in §3 with those URLs. (Corrected 2026-10-22: PR #30 merged as 9f57ff2,
+  so §3's staging rows hold those URLs, read with `gh pr view 30`. Checked again on main @18b866b: all four still
+  answer 404 with an empty body, the same answer as a service name that was never deployed.)
 - **Verified** (`loop_status.py` on main @e63f06b, 2026-10-22): under D42 and the derivation table, six of the
   unbuilt concerns read `unknown` and three read `blocked`, and none is ready. The unknowns are there because
   their `needs` listed `app-shell`, whose `ships-to` row (`production/app`) no one can read. The blocked ones are
   there because `service-manifests` is not done on its row. D50 replaces the rule, and `needs-proven` builds it.
+  (Superseded 2026-10-22, main @18b866b: PR #32 (6894ad2) builds D50. Of the 13 unbuilt concerns, `loop_status.py`
+  now reads six as ready and seven as blocked behind them, and none as unknown.)
 - **Verified** (`app/` on main @e63f06b, 2026-10-22): each screen adds its own folder under `app/src/app/(tabs)/`
   without editing the shell (`app/src/shell/tabs.ts`). The app's config knows only the status service's URL
   (`app/src/shell/config.ts`, `app/eas.json`), and `app/package.json` has no OpenAPI generator. The runner and
@@ -163,7 +177,8 @@ person in one terminal can push a loop forward.
 - **Missing:** `LOOP.md` §3 rows for staging and production, with a `/version` URL for each service (per D8, D9).
   `environments` adds them, and the owner merges that change (per D31). (Corrected 2026-10-20: this said
   `status-service` adds them.) (Corrected 2026-10-20: PR #19 added the rows; only their URLs are missing, until
-  the owner runs the bootstrap.)
+  the owner runs the bootstrap.) (Corrected 2026-10-22: staging's four URLs are in §3 since PR #30 (9f57ff2).
+  Only production's are missing, until its bootstrap, which belongs to a later loop per D54.)
 
 ## Shared decisions
 

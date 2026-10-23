@@ -31,7 +31,9 @@ ships-to: main
   need a call, and loop-document PRs the checker refused. The Record step offers records. Together those are D34's
   seven kinds.
 - Verified 2026-10-20: nothing produces or reads status documents yet. `status-derivation`, `status-service` and
-  the app are not built, so changing a question's options breaks no consumer.
+  the app are not built, so changing a question's options breaks no consumer. (Superseded 2026-10-22, main
+  @18b866b: `loop_status.py` writes status documents since PR #27 (964d370), and the app's status client
+  generates its types from the schema in `app/src/api/`, so a change to the schema now has two consumers.)
 
 ### Approach
 
@@ -71,3 +73,22 @@ Per D39: this concern works in `status-api`'s three paths, whose work is already
 - 2026-10-20 · C2 · HOLDS · rung 5 · main @5fd6435 · Same run and tree. The fixtures hold a question with 2 options as `{text, consequence}`, a recommendation that names one of them and a separate default, and two questions written before the format (no options, null recommendation), one with a default and one with none. An option without a consequence is rejected, and the tests' recommendation check refuses 4 documents the schema accepts, among them a recommendation that names no option. Breaking each rule in a copy fails the suite: `consequence` not required (2 failures); `default` not required (2); a fixture recommendation that names no option (1)
 
 ## Shipped
+
+2026-10-20, to `main`, its `ships-to`.
+
+- **What shipped.** PR #17 (merge 5fd6435) gave the status schema all seven kinds of queue item (per D34). Beside
+  question, review, ship and record it added `proof`, `contradiction` and `refused_pr`, each with its own facts
+  and the `command` to run (per D40). A question item keeps its options as `{text, consequence}`, a
+  recommendation that names one of them or is null, and its default, apart (per D33, D41). A question written
+  before the format still validates. The fixtures hold an item of every kind and both sorts of question, and
+  `tests/test_status_schema.py` has 47 tests, 17 of them new. `schema_version` stayed 1 (D1).
+- **Departures from the design.** None in what the claims ask. Three readings were left to the reviewer, not
+  recorded as decisions: a refused PR carries the whole `pr` object, not only its number and URL; a proof's or
+  contradiction's claim is one `<loop>/<concern>/C<n>` ref, not a concern plus a `C#`; and a question's `ref` must
+  be a `Q#`, since contradictions now have a kind of their own. JSON Schema cannot tie a recommendation to an
+  option, so a test does (`recommendation_problems`), as the Approach planned.
+- **Learned.** Reading the kinds from `loop-status`'s own step 6 and Record step keeps the schema and the skill
+  from drifting, as `status-api` C2 does for the states: an eighth bullet in step 6 fails the suite. The small
+  validator stayed trustworthy by being checked against the real one. It agreed with `jsonschema` 4.23 on all
+  34,550 single-edit mutations of the fixtures. Changing the schema was free only while nothing read it. Since
+  `status-derivation` and the app's status client, it has two consumers.

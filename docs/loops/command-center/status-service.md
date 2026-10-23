@@ -29,6 +29,8 @@ ships-to: staging/status
 - No services, no GCP project and no GitHub App exist yet (2026-10-20). The projects and the `LOOP.md` §3 rows
   come from `environments` now, not from this concern (per D31). (Corrected 2026-10-20, main @a9fde89: the runner
   and threads services exist, `environments` added one §3 row per service, and no project exists yet.)
+  (Superseded by the bullet above, 2026-10-22: staging's project, `loops-512401`, exists. This bullet's "no project
+  exists yet" contradicted it.)
 
 ### Approach
 
