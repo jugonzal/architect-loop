@@ -29,6 +29,9 @@ import { SHELL_TABS } from '../tabs';
 const CONFIG: AppConfig = {
   githubClientId: 'Iv1.test-client',
   statusUrl: 'https://status-123456789012.us-east1.run.app',
+  runnerUrl: 'https://runner-123456789012.us-east1.run.app',
+  threadsUrl: 'https://threads-123456789012.us-east1.run.app',
+  notifyUrl: 'https://notify-123456789012.us-east1.run.app',
   project: 'jugonzal/architect-loop',
   environment: 'staging/app',
 };

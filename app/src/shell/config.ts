@@ -13,8 +13,9 @@ export type AppConfig = {
   githubClientId: string | null;
   /** The status service's URL for this build's environment, or null when the build has none yet. */
   statusUrl: string | null;
-  // The other services' URLs are optional only so that an AppConfig written out before they existed still
-  // type-checks; readConfig always sets them. Read a missing one as null: the build has none yet.
+  // app-clients D1 makes these three `string | null` like statusUrl. They stay optional only until the AppConfig
+  // literals in src/features/environments/__tests__/route.test.tsx and src/features/loops/__tests__/screens.test.tsx,
+  // outside app-clients' touches, list them; readConfig always sets them. Read a missing one as null.
   /** The runner's URL for this build's environment, or null when the build has none yet. */
   runnerUrl?: string | null;
   /** The threads service's URL for this build's environment, or null when the build has none yet. */

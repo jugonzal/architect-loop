@@ -67,12 +67,21 @@ describe("each service's URL (app-clients C2)", () => {
     expect(Object.keys(SERVICE_URLS)).toEqual(['status', 'runner', 'threads', 'notify']);
   });
 
-  it("names staging's status service in the staging build profile (project number 665570365697)", () => {
-    expect(readConfig(EAS.build.staging.env).statusUrl).toBe('https://status-665570365697.us-east1.run.app');
-  });
+  it.each(Object.entries(SERVICE_URLS))(
+    "names staging's %s service in the staging build profile (project number 665570365697)",
+    (service, field) => {
+      expect(EAS.build.staging.env[serviceUrlVariable(service)]).toBe(`https://${service}-665570365697.us-east1.run.app`);
+      expect(readConfig(EAS.build.staging.env)[field]).toBe(`https://${service}-665570365697.us-east1.run.app`);
+    },
+  );
 
-  it('leaves every production URL to the owner until production has a project (command-center/D54)', () => {
-    const production = readConfig(EAS.build.production.env);
-    for (const field of Object.values(SERVICE_URLS)) expect(production[field]).toBeNull();
-  });
+  it.each(Object.entries(SERVICE_URLS))(
+    "leaves production's %s URL to the owner until production has a project (command-center/D54)",
+    (service, field) => {
+      expect(EAS.build.production.env[serviceUrlVariable(service)]).toMatch(
+        new RegExp(`^TODO\\(owner\\): production's ${service} service, https://${service}-<production project number>`),
+      );
+      expect(readConfig(EAS.build.production.env)[field]).toBeNull();
+    },
+  );
 });
