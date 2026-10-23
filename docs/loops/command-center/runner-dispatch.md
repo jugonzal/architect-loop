@@ -2,7 +2,7 @@
 needs: []
 touches: [services/runner/runner/, services/runner/openapi.yaml, services/runner/tests/]
 effects: []
-ships-to: production/runner
+ships-to: staging/runner
 ---
 # A runner dispatch holds a concern only when its skill changes it
 
@@ -11,18 +11,19 @@ ships-to: production/runner
 - **C1** Only a `/loop-build` session's commits and PR body carry `Concern: <loop>/<concern>`. Every session's
   commits and PRs carry `Sponsored-by: <person>`, whatever its skill (per command-center/D45). Prove: the job's
   tests for each skill it can run, in CI on main, then a dispatched `/loop-build` and a dispatched `/loop-design`
-  on a test concern, with their commits' trailers listed, on staging/runner and then production/runner.
+  on a test concern in the sandbox loop (per command-center/D61), with their commits' trailers listed, on
+  staging/runner (per command-center/D54).
 - **C2** A `/loop-build` or `/loop-design` dispatch on a concern that has an open PR, or a running session of
   either skill, is refused, naming the PR or the session. `/loop-prove` and `/loop-status` on that concern are
   admitted (per `session-runner` D6). A dispatch past its sponsor's cap of running sessions (per command-center/D22),
   or with a budget above the ceiling in the runner's config, $10 (per `session-runner` D8), is refused, naming
   the cap or the ceiling. Prove: API tests against `services/runner/openapi.yaml` for each case, in CI on main,
-  then the same dispatches on staging/runner and then production/runner.
+  then the same dispatches on staging/runner (per command-center/D54).
 - **C3** A dispatch may name a loop or an environment instead of a concern: `/loop-ship <environment>`,
   `/loop-status <loop>` and `/loop-design <loop>`, and such a dispatch holds no concern. Each session's final
   message is kept and served with the session (per `app-inbox` D1, D2, D3). Prove: API and job tests, in CI on
-  main, then a dispatched `/loop-ship` whose brief is read back from the runner, on staging/runner and then
-  production/runner.
+  main, then a dispatched `/loop-ship` whose brief is read back from the runner, on staging/runner (per
+  command-center/D54).
 
 ## Design
 

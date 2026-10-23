@@ -1,7 +1,7 @@
 ---
 needs: []
 touches: [scripts/gcp/, docs/runbooks/deploy.md, tests/test_layout.py, tests/test_service_manifests.py, services/runner/service.json, services/threads/service.json]
-effects: [each service's settings, secret references, Cloud SQL attachment, runtime identity and jobs, applied on every deploy (the owner runs each deploy, per LOOP.md §2), the APIs and Firestore databases the manifests declare, created by the bootstrap (spending; cloud IAM; the owner runs it), the runtime identities and their IAM roles (cloud IAM), the secrets' values in Secret Manager (secrets; the owner creates them, and the manifests hold only their names)]
+effects: [each service's whole config from its manifest applied on every deploy (settings; secret references; Cloud SQL; runtime identity; jobs; the owner runs each deploy per LOOP.md §2; gates: deploy), the APIs and Firestore databases the manifests declare created by the bootstrap (the owner runs it; gates: spending, infra), the runtime identities and their IAM roles (gates: infra), the secrets' values in Secret Manager (the owner creates them and the manifests hold only their names; gates: secrets)]
 ships-to: main
 ---
 # Each service deploys with exactly the config its folder declares
@@ -13,10 +13,10 @@ ships-to: main
   deploy leaves the service configured exactly as its commit's manifest says, and deploying an earlier commit
   restores that commit's config. A manifest that does not fit the format is refused before any `gcloud` call.
   Prove: tests with a fake `gcloud`, in CI on main, then deploying the runner and threads from a commit on main
-  and reading their config back, on staging and then production.
+  and reading their config back, on staging (per command-center/D54).
 - **C2** `bootstrap.sh <env>` enables the APIs every manifest lists and creates the Firestore databases they
   declare, and a second run changes nothing (per `environments` D1). Prove: fake-`gcloud` tests, in CI on main,
-  then two runs from a commit on main, on staging and then production.
+  then two runs from a commit on main, on staging (per command-center/D54).
 - **C3** The runner's and threads' manifests declare every setting and secret their code requires without a
   default, and no secret's value. Prove: a test that compares each manifest with the variables its service's
   config reads, in CI on main.

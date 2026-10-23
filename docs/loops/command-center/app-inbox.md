@@ -1,8 +1,8 @@
 ---
-needs: [app-shell, status-api, queue-items, addressed-to-people, runner-dispatch, session-narration]
+needs: [app-shell, status-api, queue-items, app-clients]
 touches: [app/src/app/(tabs)/inbox/, app/src/features/inbox/]
-effects: [starting sessions that cost money, each card's dispatch naming the person as sponsor with its budget shown before it starts (spending)]
-ships-to: production/app
+effects: [starting sessions that cost money; each card's dispatch names the person as sponsor and shows its budget before it starts (gates: spending)]
+ships-to: staging/app
 ---
 # The owner can finish a question, review, ship or record card from the phone's inbox
 
@@ -18,7 +18,7 @@ ships-to: production/app
   write lands in `docs/loops/`. Answering a question records a `D#` through `/loop-design`. "Deployed" runs
   `/loop-ship` verification. Approving a record runs `/loop-status`'s record step. The person answers a question
   in the dispatched session's thread (per D3). Prove: one card of each kind on
-  a test loop, with the resulting commits, on staging.
+  the sandbox loop (per command-center/D61), with the resulting commits, on staging.
 - ~~**C3** A push notification goes out only for blocking items waiting on that person, and everything else waits
   for the digest. Prove: two accounts with one blocking and one non-blocking item, on staging.~~ Moved to
   `notifications` C2 (per command-center/D35).
@@ -61,7 +61,18 @@ the decision records who tapped it.
   session's thread, where the skill asks the question and the person answers. The decision is the person's because
   they gave it in the session's conversation, which reaches the session through `session-narration`'s relay.
 - **Gated questions** (per D4): when a question item's `gate` is set, the card asks for a typed reason before it
-  sends the answer, and the reason goes into the decision's notes.
+  sends the answer, and the reason goes into the decision's notes. A question's gate comes from the key its row
+  names (per command-center/D60).
+- **Ship items per gate** (per command-center/D59): a concern that crosses several gates has one ship item per
+  gate, each waiting on that gate's holder with its own manual steps, plus one for `deploy`. The inbox shows each
+  as its own card.
+- **Threads and clients:** the question card opens the session thread at `/threads/sessions/[session]`, which
+  `app-threads` serves (per command-center/D52). The runner's and threads' clients come from `app/src/api/` (per
+  command-center/D55).
+
+Per command-center/D51, this concern builds against the status schema's `waits_on`, `visible_to` and `gate` and the
+runner and threads APIs, all on `main`. `addressed-to-people` and `session-narration` are not in `needs`, because
+only C1's and C2's staging proofs rely on them, and those proofs wait until staging serves both.
 
 ## Decisions
 

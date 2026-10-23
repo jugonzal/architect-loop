@@ -1,8 +1,8 @@
 ---
 needs: []
 touches: [services/runner/, .github/workflows/trailers.yml, .github/workflows/runner.yml]
-effects: [Agent SDK sessions that cost money, each with a budget shown to its sponsor before it starts (spending), Cloud Run jobs in the staging and production GCP projects (spending; cloud IAM), the runner's own Firestore database for sessions and spend in each project (spending; cloud IAM; per command-center/D26, D44), the Anthropic API key and the runner's own GitHub App that pushes branches and opens PRs on jugonzal/architect-loop (secrets; identity and access; per command-center/D27), the repository made public and main protected so that nothing reaches it except through a PR (publishing and a repository setting; the owner does both, per command-center/D24), the trailer check made a required status check on main (a repository setting; the owner sets it, per D4)]
-ships-to: production/runner
+effects: [Agent SDK sessions that cost money with a budget shown to each sponsor before it starts (gates: spending), Cloud Run jobs in staging's GCP project (gates: spending, infra), the runner's own Firestore database for sessions and spend (per command-center/D26 and D44; gates: spending, infra), the Anthropic API key and the runner's own GitHub App that pushes branches and opens PRs on jugonzal/architect-loop (per command-center/D27; gates: secrets, identity), the repository made public and main protected so that nothing reaches it except through a PR (the owner does both per command-center/D24; gates: identity), the trailer check made a required status check on main (a repository setting the owner sets per D4; gates: identity)]
+ships-to: staging/runner
 ---
 # A person can start a loop skill on a concern as a session that names them as its sponsor and stops at a budget
 
@@ -32,15 +32,15 @@ ships-to: production/runner
   worktree. Every commit and PR it produces carries `Sponsored-by: <person>`, and a `/loop-build` session's also
   carry `Concern:` (per command-center/D45). A PR with a runner commit that lacks `Sponsored-by:` fails the
   required trailer check (per D4). Prove: the runner's API tests against `openapi.yaml`, in CI on main, then a
-  dispatched `/loop-build` and a dispatched `/loop-design` on a test concern, with their PRs and commits shown,
-  plus a runner commit made with `--no-verify` on a test branch, on staging/runner and then production/runner
-  (per command-center/D43).
+  dispatched `/loop-build` and a dispatched `/loop-design` on a test concern in the sandbox loop (per
+  command-center/D61), with their PRs and commits shown, plus a runner commit made with `--no-verify` on a test
+  branch, on staging/runner (per command-center/D54).
 - **C6** While a concern has an open PR, or a `/loop-build` or `/loop-design` session is running on it, a
   dispatch of either of those two skills on it is refused, naming the PR or the session. `/loop-prove` and
   `/loop-status` are admitted beside them (per D6). A dispatch that would take its sponsor past their cap of
   running sessions (per D22), or whose budget is above the ceiling (per D8), is refused, naming the cap or the
   ceiling. Prove: a double `/loop-build`, a `/loop-prove` beside it, one dispatch over a cap lowered to 1, and one
-  over the ceiling, on staging/runner and then production/runner.
+  over the ceiling, on staging/runner (per command-center/D54).
 
 ## Design
 

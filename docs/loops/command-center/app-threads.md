@@ -1,8 +1,8 @@
 ---
-needs: [app-shell]
+needs: [app-shell, app-clients]
 touches: [app/src/app/threads/, app/src/features/threads/]
 effects: []
-ships-to: production/app
+ships-to: staging/app
 ---
 # A project member can read and post in a concern's or a session's thread from the phone
 
@@ -12,17 +12,18 @@ ships-to: production/app
   can post as themselves, and the session thread collapses narration to milestones. Prove: app tests against
   the threads API on staging, and a device check.
 - **C2** Marking a message "record this?" and accepting it dispatches `/loop-design` through the runner, with the
-  person as sponsor, and the `D#` lands in the loop's files (per D36). Prove: one recorded decision on a test
-  loop, on staging.
+  person as sponsor, and the `D#` lands in the loop's files (per D36). Prove: one recorded decision in the sandbox
+  loop (per D61), on staging.
 
 ## Design
 
 ### Approach
 
 Follow the Session thread artboard (per D4), without its objection block, which belongs to a later loop. The
-threads and runner clients are generated inside `app/src/features/threads/` from each service's `openapi.yaml`
-(per D29). Both are on `main` since PRs #20 and #21, so this concern builds against them there, and its proofs
-on staging wait until staging serves them (per D42).
+screens are served at exactly `/threads/loops/[loop]`, `/threads/loops/[loop]/concerns/[concern]` and
+`/threads/sessions/[session]` under `app/src/app/threads/`, which `app-inbox` and `app-loops-board` link to (per
+D52). The threads and runner clients come from `app/src/api/`, which `app-clients` generates (per D55). Its proofs
+on staging wait until staging serves threads and the runner (per D51).
 
 ## Decisions
 

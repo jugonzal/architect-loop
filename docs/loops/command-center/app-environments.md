@@ -2,7 +2,7 @@
 needs: [app-shell, status-api]
 touches: [app/src/app/(tabs)/environments/, app/src/features/environments/]
 effects: []
-ships-to: production/app
+ships-to: staging/app
 ---
 # Anyone on the project can see what each environment serves, and what is merged but not shipped
 
@@ -18,7 +18,9 @@ ships-to: production/app
 ### Approach
 
 Follow the Environments artboard (per D4). The ship brief opens as the inbox's ship card, so this tab links to
-it and does not duplicate it.
+it and does not duplicate it. The `local/<service>` rows name `localhost`, so the status service reads them as
+`unknown` (per D53, D56), and the tab shows them that way. `staging/app` reads through `app-served` once it is
+deployed (per D57).
 
 ## Decisions
 
