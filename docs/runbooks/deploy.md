@@ -1,6 +1,8 @@
 # Runbook: create an environment, and deploy a service to it from a commit on main
 
-**Status:** draft — not yet run | **Last run as written:** never
+**Status:** draft — partly run (steps 1 to 5, on staging) | **Last run as written:** 2026-10-22 on staging by
+Juan, steps 2 and 3, and step 4's second bootstrap. Step 1 ran then too (PR #29). Step 5 ran with output that
+differed from this runbook (see Corrections). No run of step 4's listings, or of steps 6 to 15, is recorded.
 
 Use this to create staging or production on GCP, or to check one, and to deploy a service (or the probe) from a
 commit on `main` with exactly the config its manifest declares. Afterwards the environment's project exists with its
@@ -8,7 +10,9 @@ registry, deploy identity, budget and what the services' manifests declare (APIs
 databases), and the service's `/version` answers the commit that was deployed. Written from `scripts/gcp/` before
 its first real run (command-center/environments, command-center/service-manifests): every expected output below is
 what the scripts print against the fakes in `tests/`, and every failure signature is what Google Cloud is known to
-answer, not what a run here showed. Correct it after the first run.
+answer, not what a run here showed. Correct it after the first run. Since then steps 2 and 3, and step 4's second
+bootstrap, have run on staging and printed what is written. Step 5's outputs have been read against staging, and
+they are written below as observed. Every other step is still as drafted.
 
 ## Quick reference
 
@@ -118,8 +122,10 @@ sh scripts/gcp/bootstrap.sh staging --billing-account=<BILLING_ACCOUNT_ID> --bud
   - Enabling the APIs fails because billing is not enabled yet: the link has not taken effect. Wait a minute and
     re-run.
   - A grant fails with `INVALID_ARGUMENT` naming a role: Google Cloud does not offer that role on a project. Record
-    it as a trap and take the manifest's `roles` to `/loop-build`. (`roles/run.jobsExecutorWithOverrides` is
-    unproven here: if it fails, `roles/run.developer` also lets the runner start its job, with more rights.)
+    it as a trap and take the manifest's `roles` to `/loop-build`. (`roles/run.jobsExecutorWithOverrides` was
+    granted on staging on 2026-10-22, so a project accepts it. Whether it is enough for the runner to start its
+    job is unproven until a dispatch. If it is not, `roles/run.developer` also lets the runner start its job, with
+    more rights.)
   - `retrying in 10 s (n of 4)` lines: a grant or call that Google Cloud has not caught up with yet. The script
     tries 5 times; if it still fails, wait and re-run.
 - **Safe to re-run:** yes. Every step reads first and changes only what is missing. It never relinks billing,
@@ -139,7 +145,10 @@ gcloud firestore databases list --project=<PROJECT_ID> --format='value(name)'
 gcloud billing budgets list --billing-account=<BILLING_ACCOUNT_ID> --billing-project=<PROJECT_ID>
 ```
 
-- **Success prints:** the bootstrap prints only `ok` and `missing  secret` lines and `staging: 0 changes.` The APIs
+- **Success prints:** the bootstrap prints only `ok` and `missing  secret` lines and `staging: 0 changes.`, then the
+  same closing lines as step 3: the secrets to create, the four served-commit lines and `Next:`. Each `ok` line
+  comes from a `gcloud` read of the same thing a listing below shows, except one. The budget's `ok` line checks only
+  its name and amount, so only the budget listing shows its alert thresholds. The APIs
   include `run.googleapis.com`, `artifactregistry.googleapis.com`, `secretmanager.googleapis.com`,
   `iamcredentials.googleapis.com`, `billingbudgets.googleapis.com`, `sqladmin.googleapis.com` and
   `sql-component.googleapis.com`. The repository `services` is `DOCKER` in `us-east1`. The accounts listed include
@@ -160,12 +169,18 @@ the contract, so the owner merges it.
 
 ```bash
 sh scripts/gcp/served.sh https://status-<PROJECT_NUMBER>.us-east1.run.app/version
+curl -s -o /dev/null -w '%{http_code} %{size_download}\n' https://status-<PROJECT_NUMBER>.us-east1.run.app/version
 ```
 
-- **Success prints:** until `status` is deployed, `curl: (22) The requested URL returned error: 404` and
-  `served: GET ... failed`, with exit status 1, and `/loop-status` shows that row as unknown, which is true.
-- **Failure looks like:** a DNS error rather than a 404: the URL is mistyped, or the project number is wrong.
-- **Safe to re-run:** yes.
+- **Success prints:** until `status` is deployed, `curl: (56) The requested URL returned error: 404` (the curl
+  macOS ships, 8.7.1, over HTTP/2; other versions print `curl: (22)`) and `served: GET ... failed`, with exit
+  status 1, and `/loop-status` shows that row as unknown, which is true. The second command prints `404 0`: an
+  empty 404, which is what a project answers for a service it does not have.
+- **Failure looks like:** a 404 with a size above 0 (`404 272` here), an HTML body that says "Error: Page not
+  found": the project number or the region in the URL is wrong. Cloud Run answers every `*.run.app` name, so a wrong URL never fails DNS, and
+  `served.sh` prints the same lines for it as for a service not yet deployed. A mistyped service name in the right
+  project answers the same empty 404 as an undeployed service, so compare each name with step 3's lines.
+- **Safe to re-run:** yes; it only reads.
 
 ### 6. Deploy the probe from main (environments C2, service-manifests C1)
 
@@ -410,8 +425,26 @@ yet deployed.
 
 Each learned in a real run. Newest first.
 
-- None yet: this runbook has not been run.
+- **2026-10-22:** a staging row whose URL is wrong reads as unknown forever, just like a service not yet
+  deployed → Cloud Run answers every `*.run.app` name, so a wrong project number or region gets a 404 (with a
+  "Page not found" body) instead of a DNS error, and `served.sh` fails the same way on any 404 → before merging
+  step 5's rows, check that each URL answers an empty 404 (`404 0` from step 5's second command), and that its
+  service name matches step 3's line. Found by reading staging's four URLs, a made-up project number, `us-west1`
+  in place of `us-east1`, and two made-up service names, all read-only.
 
 ## Corrections
 
-- None yet.
+- 2026-10-22: Status and intro: steps 1 to 3 and 5 ran on staging on 2026-10-22, by the owner. Step 1 is PR #29,
+  which names the projects in `projects.txt`. PR #30's body quotes the served-commit lines step 3 printed. Step 5
+  is PR #30, which fills in staging's four rows of `LOOP.md` §3. The runbook said it had never run.
+- 2026-10-22: Last run as written: the owner confirmed that steps 2 and 3 printed what is written, so the status
+  names them. Nothing in either step changed.
+- 2026-10-22: Step 4: the second bootstrap on staging printed what is written, ending `staging: 0 changes.` with
+  every resource `ok` and the five `missing  secret` lines. Step 4 now says the run ends with step 3's closing
+  lines, and that the budget's `ok` line does not read its thresholds (`bootstrap.sh` checks only the name and
+  amount). Step 3: `roles/run.jobsExecutorWithOverrides` was granted, so it is no longer an unproven role name.
+- 2026-10-22: Step 5's success: the curl macOS ships (8.7.1) prints `curl: (56)`, not `curl: (22)`, for the same
+  404 over HTTP/2. `served.sh` fails on any non-zero exit, so what it does is unchanged. `(22)` came from the fake
+  `curl` in `tests/test_layout.py`.
+- 2026-10-22: Step 5's failure: a wrong project number or region answers a 404 with a body, not a DNS error. Step
+  5 gained a second command that tells the two 404s apart.
