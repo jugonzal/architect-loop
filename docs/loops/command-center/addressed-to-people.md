@@ -86,3 +86,29 @@ will be a decision recorded as `<name>, delegated by <owner>`.
 ## Evidence
 
 ## Shipped
+
+2026-10-23, to `main`, its `ships-to`. Terminals get it with the first plugin release after 50b6066 (per D17),
+the concern's second effect.
+
+- **What shipped.** PR #45 (merge 50b6066) added `plugin/skills/loop-status/scripts/addressing.py`, which
+  `loop_status.py` calls after building the queue, so the terminal board and the status service address items the
+  same way (per D15). Each queue item names one GitHub login in `waits_on`: its gate's holder from `LOOP.md` §2,
+  else the loop's `owner:`, else §1's owner (per D62). It lists the loop's `members:` in `visible_to` (per D10),
+  and carries the `gate` its kind crosses (per D58 to D60, D63, D64). A ship item splits into `ship/<env>` for
+  `deploy` plus one `ship/<env>/<key>` for each other gate its concerns' effects carry. `questions.py` gained
+  `gate_keys`, which reads `(...; gates: <key>)` in questions and effects alike. Step 6 of the skill states the
+  rules, and the `loop-init` and `loop-plan` templates show the key-and-holder and gated-effect forms.
+  `tests/test_addressing.py` added 31 tests, and `tests/test_loop_status.py` and the world fixture changed with
+  it (D1). PR #46 (merge a88018e) carried out the first effect: each of the thirteen gates in this repository's
+  `LOOP.md` §2 got its key and a holder.
+- **Departures from the design.** None in what the claims ask. Seven readings the decisions left open are tested
+  and stated in step 6, and listed in PR #45's body; none is a recorded decision yet. For example, once §2 names
+  keys, a key it does not define is drift and not a gate; an item spanning loops whose owners differ waits on §1's
+  owner; and a question naming two keys crosses no gate. Step 6 states the rules as paragraphs, not bullets,
+  because `tests/test_status_schema.py` reads each bullet there as a kind of queue item.
+- **Learned.** `touches` had to widen twice before the build could finish: on 2026-10-22 for the script and
+  `questions.py`, and on 2026-10-23 for the test and fixture that pinned `waits_on` and `gate` to null (D1),
+  which the first build found when it stopped before committing. Two files outside `touches` shaped the build
+  without changing: `tests/test_status_schema.py` reads step 6's bullets, and `tests/test_questions.py` pins the
+  question reader's output exactly. A field an earlier concern left empty is pinned by that concern's tests, so a
+  concern that fills it should list those tests in `touches` from the start.
