@@ -14,6 +14,11 @@ command-center/status-derivation:
   status service supplies one, whose git questions an independent commit graph answers. Both give the same
   document, and so do the command line's default, `gather` then `derive --facts`, and stdin.
 
+command-center/addressed-to-people (tests/test_addressing.py has the rest):
+- C1 to C3 through the whole world: every queue item carries its gate, the one person it waits on and the loop's
+  members (expected.json), a ship is split into one item per gate plus deploy, and LOOP.md §2 naming no keys is one
+  drift line. Gathered and supplied facts agree on all of it.
+
 command-center/needs-proven:
 - C1: a concern that nothing has been built for yet is blocked while one of its needs is not met, and a need is met
   once its work is on main and each of its claims holds on some LOOP.md §3 environment (command-center/D50).
@@ -474,11 +479,11 @@ class WorldTest(unittest.TestCase):
         self.assertEqual({l["state"] for l in self.doc["loops"]}, set(ls.LOOP_STATES))
 
     def test_the_queue_is_every_kind_most_unblocking_first(self):
-        got = [{"id": i["id"], "kind": i["kind"], "unblocks": i["unblocks"]} for i in self.doc["queue"]]
+        # And each item addressed (addressed-to-people C1 to C3): its gate, the one person it waits on, and the
+        # loop's members, who see it.
+        got = [{k: i[k] for k in ("id", "kind", "unblocks", "gate", "waits_on", "visible_to")}
+               for i in self.doc["queue"]]
         self.assertEqual(got, self.expected["queue"])
-        for item in self.doc["queue"]:
-            self.assertIsNone(item["waits_on"], "addressing is addressed-to-people's")
-            self.assertEqual(item["visible_to"], [])
 
     def test_agents_can_start(self):
         self.assertEqual(self.doc["agents_can_start"], self.expected["agents_can_start"])
@@ -525,8 +530,10 @@ class WorldTest(unittest.TestCase):
         refused = items["example/reports#9"]["detail"]
         self.assertEqual(refused["failures"], ["FAIL: changes a file outside docs/loops/: LOOP.md"])
         ship = items["ship/production"]["detail"]
-        self.assertEqual(ship, {"environment": "production",
-                                "manual_steps": ["the SMTP password in production's secret store (secrets)"]})
+        self.assertEqual(ship, {"environment": "production", "manual_steps": []})
+        secrets = items["ship/production/secrets"]["detail"]
+        self.assertEqual(secrets, {"environment": "production", "manual_steps": [
+            "the SMTP password in production's secret store (the owner sets it; gates: secrets)"]})
 
     def test_a_need_is_met_once_proven_below_its_ships_to(self):
         # needs-proven C1 and C2, through gathered and supplied facts alike (command-center/D50).
@@ -616,7 +623,8 @@ class WorldTest(unittest.TestCase):
         self.assertIn("reports · 16 concerns · main %s" % self.world.main[:7], text)
         self.assertIn("staging serves %s" % self.world.short("staging-build"), text)
         self.assertRegex(text, r"(?m)^scheduler +merged +.+ +/loop-ship production$")
-        self.assertIn("Needs you (8), most unblocking first", text)
+        self.assertIn("Needs you (9), most unblocking first", text)
+        self.assertIn("· waits on ben (gate: secrets)", text)
         self.assertIn("Agents can start now (7)", text)
         self.assertIn("Record (2), on your yes", text)
         self.assertIn("search · backlog", text)
@@ -938,7 +946,8 @@ class TableTest(unittest.TestCase):
         self.assertIs(c["inputs"]["served"]["serves"], False)
         ship = [i for i in self.derive(m)["queue"] if i["kind"] == "ship"]
         self.assertEqual(ship[0]["detail"], {"environment": "staging", "manual_steps": ["a migration on shared data"]})
-        self.assertIsNone(ship[0]["gate"])
+        self.assertEqual(len(ship), 1, "an effect that names no gate is a step of the deploy item")
+        self.assertEqual(ship[0]["gate"], "deploy")
 
     def test_shipped_while_a_claim_has_no_current_holds(self):
         m = Mini()

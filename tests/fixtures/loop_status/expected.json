@@ -1,5 +1,5 @@
 {
-  "comment": "What the derivation table in loop-status SKILL.md gives for world.json, worked out by hand from the table, one row and definition at a time; each concern file in project/ says why. The test derives the world both from gathered and from supplied facts and compares both with this.",
+  "comment": "What the derivation table in loop-status SKILL.md gives for world.json, worked out by hand from the table, one row and definition at a time; each concern file in project/ says why. Each queue item is addressed by step 6: LOOP.md §2 names no keys, so a gated item keeps its gate and waits on its loop's owner (ben for reports, whose members are ana and carla; ana, from LOOP.md §1, for onboarding, which names no owner:), and the drift has one line saying so. The test derives the world both from gathered and from supplied facts and compares both with this.",
   "loops": {
     "audit": "open",
     "billing": "parked",
@@ -33,16 +33,17 @@
     "search/indexer": "ready"
   },
   "queue": [
-    {"id": "reports/worker/C2", "kind": "contradiction", "unblocks": ["reports/worker", "reports/notifier"]},
-    {"id": "reports/dashboard/Q1", "kind": "question", "unblocks": ["reports/dashboard"]},
-    {"id": "example/reports#5", "kind": "review", "unblocks": ["reports/retries"]},
-    {"id": "ship/production", "kind": "ship", "unblocks": ["reports/scheduler"]},
-    {"id": "reports/queue/C2", "kind": "proof", "unblocks": ["reports/queue"]},
-    {"id": "reports/importer/C1", "kind": "contradiction", "unblocks": ["reports/importer"]},
-    {"id": "reports/Q2", "kind": "question", "unblocks": []},
-    {"id": "example/reports#9", "kind": "refused_pr", "unblocks": []},
-    {"id": "record/onboarding", "kind": "record", "unblocks": []},
-    {"id": "record/reports/contract", "kind": "record", "unblocks": []}
+    {"id": "reports/worker/C2", "kind": "contradiction", "unblocks": ["reports/worker", "reports/notifier"], "gate": null, "waits_on": "ben", "visible_to": ["ana", "carla"]},
+    {"id": "reports/dashboard/Q1", "kind": "question", "unblocks": ["reports/dashboard"], "gate": null, "waits_on": "ben", "visible_to": ["ana", "carla"]},
+    {"id": "example/reports#5", "kind": "review", "unblocks": ["reports/retries"], "gate": "merge", "waits_on": "ben", "visible_to": ["ana", "carla"]},
+    {"id": "ship/production", "kind": "ship", "unblocks": ["reports/scheduler"], "gate": "deploy", "waits_on": "ben", "visible_to": ["ana", "carla"]},
+    {"id": "ship/production/secrets", "kind": "ship", "unblocks": ["reports/scheduler"], "gate": "secrets", "waits_on": "ben", "visible_to": ["ana", "carla"]},
+    {"id": "reports/queue/C2", "kind": "proof", "unblocks": ["reports/queue"], "gate": null, "waits_on": "ben", "visible_to": ["ana", "carla"]},
+    {"id": "reports/importer/C1", "kind": "contradiction", "unblocks": ["reports/importer"], "gate": null, "waits_on": "ben", "visible_to": ["ana", "carla"]},
+    {"id": "reports/Q2", "kind": "question", "unblocks": [], "gate": "prod-data", "waits_on": "ben", "visible_to": ["ana", "carla"]},
+    {"id": "example/reports#9", "kind": "refused_pr", "unblocks": [], "gate": "merge", "waits_on": "ben", "visible_to": ["ana", "carla"]},
+    {"id": "record/onboarding", "kind": "record", "unblocks": [], "gate": null, "waits_on": "ana", "visible_to": []},
+    {"id": "record/reports/contract", "kind": "record", "unblocks": [], "gate": null, "waits_on": "ben", "visible_to": ["ana", "carla"]}
   ],
   "agents_can_start": [
     {"concern": "reports/exporter", "action": "build", "command": "/loop-build reports/exporter"},
@@ -54,6 +55,7 @@
     {"concern": "reports/ranking", "action": "design", "command": "/loop-design reports/ranking"}
   ],
   "drift": [
+    "LOOP.md, §2",
     "docs/loops/reports/dashboard.md and docs/loops/reports/exporter.md, touches",
     "docs/loops/reports/retries.md, needs",
     "docs/loops/reports/retries.md, since reports/retries started",

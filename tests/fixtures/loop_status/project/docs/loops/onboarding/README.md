@@ -1,7 +1,7 @@
 # New customers get a welcome email with a sample report
 
 **Intent.** A fixture loop that is done: its one concern is done, and G1 holds by CI on main. It has no Shipped
-note, so a record item offers one.
+note, so a record item offers one. It has no owner:, so that item waits on the owner LOOP.md §1 names, ana.
 
 ## Goals
 
