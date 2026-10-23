@@ -3,7 +3,7 @@
   "apis": ["sqladmin.googleapis.com", "sql-component.googleapis.com"],
   "settings": {
     "THREADS_PROJECTS": "jugonzal/architect-loop",
-    "THREADS_GITHUB_APP_ID": "TODO(owner)",
+    "THREADS_GITHUB_APP_ID": {"staging": "5447412", "production": "TODO(owner)"},
     "THREADS_AUDIENCE": "https://threads-{number}.{region}.run.app",
     "THREADS_RUNNER_SERVICE_ACCOUNTS": "runner@{project}.iam.gserviceaccount.com"
   },
