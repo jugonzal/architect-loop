@@ -106,13 +106,17 @@ class ManifestTest(unittest.TestCase):
         for name in config.SECRETS:
             self.assertNotIn(name, self.manifest.get("settings", {}))
 
-    def test_it_serves_this_repository_and_leaves_the_app_id_to_the_owner(self):
+    def test_it_serves_this_repository_and_names_only_staging_s_app(self):
         settings = self.manifest["settings"]
         self.assertEqual(settings["STATUS_PROJECTS"], "jugonzal/architect-loop")
-        self.assertEqual(settings["STATUS_GITHUB_APP_ID"], manifest.TODO)
-        # So deploy.sh refuses to deploy it until the owner names the app in a pull request.
+        app_id = settings["STATUS_GITHUB_APP_ID"]
+        # The owner named staging's app (docs/runbooks/deploy.md step 11). Production's belongs to a later loop
+        # (command-center/D54), so deploy.sh refuses production until the owner names it in a pull request.
+        self.assertRegex(app_id["staging"], r"^[0-9]+$")
+        self.assertEqual(app_id["production"], manifest.TODO)
+        manifest.checked(MANIFEST_PATH, env="staging")
         with self.assertRaises(manifest.Refused):
-            manifest.checked(MANIFEST_PATH, env="staging")
+            manifest.checked(MANIFEST_PATH, env="production")
 
     def test_it_runs_as_its_own_identity_and_needs_no_cloud_role(self):
         self.assertEqual(self.manifest["identity"], {"name": "status", "roles": []})
