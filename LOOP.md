@@ -20,31 +20,41 @@ it (command-center/D13).
 ## 2. Gates: always stop for the owner
 
 An agent that reaches one of these stops, says exactly what it would do and why, and waits for an
-explicit yes in the conversation.
+explicit yes in the conversation. Each gate has a short key and one holder, by GitHub login: the person an item
+that crosses it waits on (command-center/D58, D62). A gate with no holder waits on the loop's owner.
 
-- **Never done by an agent, even after a yes** (the owner performs them), unless listed in §2.1:
-  - merging to `main`; deploying or promoting to any shared environment; running migrations against
-    shared data
-  - releasing the plugin: bumping the version in `plugin/.claude-plugin/plugin.json`, tagging a release, or
-    changing what the marketplace in `.claude-plugin/marketplace.json` serves (command-center/D17). A pull
-    request may propose a marketplace change, but the owner's merge is the release.
-  - submitting a build to the App Store, Google Play, TestFlight or any other store or beta channel
+- **Never done by an agent, even after a yes** (the holder performs them), unless listed in §2.1:
+  - **Merge** (key: merge; holder: jugonzal): merging to `main`
+  - **Deploy** (key: deploy; holder: jugonzal): deploying or promoting to any shared environment
+  - **Migration** (key: migration; holder: jugonzal): running migrations against shared data
+  - **Release** (key: release; holder: jugonzal): releasing the plugin: bumping the version in
+    `plugin/.claude-plugin/plugin.json`, tagging a release, or changing what the marketplace in
+    `.claude-plugin/marketplace.json` serves (command-center/D17). A pull request may propose a marketplace change,
+    but the owner's merge is the release.
+  - **Store** (key: store; holder: jugonzal): submitting a build to the App Store, Google Play, TestFlight or any
+    other store or beta channel
 - **Done by an agent only after a per-action yes** (approval covers that one action, not the next one of its kind):
-  - Money: prices, billing, tax, payment-provider settings
-  - Spending: starting hosted agent sessions or runner workers, or provisioning paid cloud resources (databases,
-    push services, hosting), beyond what the owner has already approved for the current task. State the
-    expected cost before asking.
-  - Identity and access: auth providers, roles, admin grants, OAuth/SSO apps, forge (GitHub) app permissions
-  - Secrets: creating, rotating, reading production values
-  - Legal and public text: privacy policy, terms, published pricing, store listings
-  - DNS, certificates, firewall, cloud IAM
-  - Deleting or rewriting production data; expiring user content
-  - Sending anything to real users, including push notifications and digests
+  - **Money** (key: money; holder: jugonzal): prices, billing, tax, payment-provider settings
+  - **Spending** (key: spending; holder: jugonzal): starting hosted agent sessions or runner workers, or
+    provisioning paid cloud resources (databases, push services, hosting), beyond what the owner has already
+    approved for the current task. State the expected cost before asking.
+  - **Identity** (key: identity; holder: jugonzal): auth providers, roles, admin grants, OAuth/SSO apps, forge
+    (GitHub) app permissions
+  - **Secrets** (key: secrets; holder: jugonzal): creating, rotating, reading production values
+  - **Legal** (key: legal; holder: jugonzal): privacy policy, terms, published pricing, store listings
+  - **Infra** (key: infra; holder: jugonzal): DNS, certificates, firewall, cloud IAM
+  - **Production data** (key: prod-data; holder: jugonzal): deleting or rewriting production data; expiring user
+    content
+  - **Send** (key: send; holder: jugonzal): sending anything to real users, including push notifications and
+    digests
 
 Changes to the skills under `plugin/skills/` are ordinary concerns, built and reviewed like any code
 (command-center/D17). They are not gated, but they must keep the skills standalone (§6).
 
-A concern declares the gates it crosses in its `effects`, so they are visible before any work starts.
+A concern declares the gates it crosses in its `effects`, so they are visible before any work starts. Each effect
+ends with the keys it crosses, as in `the API key rotated (the owner rotates it; gates: secrets)`, and a question
+whose answer crosses a gate ends with `(gates: <key>)` (command-center/D58, D64). `/loop-status` sends each item to
+its gate's holder.
 
 ### 2.1 Delegated actions
 
