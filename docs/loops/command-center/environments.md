@@ -32,14 +32,18 @@ ships-to: main
 - Verified 2026-10-20 (`one-repository` C2's evidence): the independence check has no service host in its pattern
   yet, because no service has one.
 - Assumed: no GCP project exists for this repository. Check with `gcloud projects list` on the owner's account
-  before the first bootstrap.
+  before the first bootstrap. (Overtaken 2026-10-22: staging's bootstrap has run; see the next bullet.)
 - Verified 2026-10-20 (main @a9fde89, PR #19): `scripts/gcp/` holds `bootstrap.sh`, `deploy.sh`, `served.sh`,
   `common.sh`, `projects.txt` and `probe/`, and `docs/runbooks/deploy.md` is a draft, not yet run. `LOOP.md` §3 has
   one row per service and environment, with every URL `TODO(owner)`, and §4 has the bootstrap, deploy and verify
   commands. Both project IDs in `projects.txt` are `TODO(owner)` (per D3). `deploy.sh` sets `COMMIT_SHA` (per
   command-center/D47) and changes nothing else in a service's config, so the runner's and threads' settings,
   secrets and Cloud SQL instance have no home yet; `service-manifests` adds one (per command-center/D46). No
-  `gcloud` command has been run against the owner's account.
+  `gcloud` command has been run against the owner's account. (Superseded in part, 2026-10-22, main @18b866b:
+  `projects.txt` names staging `loops-512401` and production `loops-512402`. Staging's bootstrap ran on
+  2026-10-22 (project number 665570365697), and §3 holds staging's four URLs since PR #30 (9f57ff2). Production
+  has not been bootstrapped. No service is deployed to staging: all four answer 404. `docs/runbooks/deploy.md`
+  still reads "not yet run".)
 - Verified 2026-10-20 (`gh repo view jugonzal/architect-loop`): the repository is public, so an unauthenticated
   `/version` shows only a commit anyone can already see (command-center/D24, D32). (Corrected 2026-10-20: this
   said the repository was private.)

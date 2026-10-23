@@ -76,9 +76,15 @@ ships-to: staging/runner
   mints its own installation tokens, which expire after an hour (GitHub's docs, read 2026-10-20), and nothing
   refreshes them. The service reads its commit from `COMMIT_SHA` (per command-center/D47). The changes these
   decisions call for are built by `runner-dispatch` (C5, C6) and `runner-store` (per command-center/D44).
+  (Superseded in part, 2026-10-22, main @18b866b: since PR #24 (900dc5a), only a `/loop-build` session adds
+  `Concern:`, only `/loop-build` and `/loop-design` hold a concern, `/loop-ship` and loop- or environment-scoped
+  dispatches are accepted, and a budget above the $10 ceiling is refused. The store is still SQLite only. See
+  `runner-dispatch`.)
 - Missing:
   - staging's GCP projects (`environments` creates them, per command-center/D31; corrected 2026-10-20: this said
-    `status-service`);
+    `status-service`; corrected 2026-10-22: staging's project, `loops-512401`, exists and was bootstrapped on
+    2026-10-22, per `scripts/gcp/projects.txt` and PR #30; production's belongs to a later loop, per
+    command-center/D54);
   - the GitHub App (in effects).
 
 ### Approach

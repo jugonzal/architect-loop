@@ -37,6 +37,13 @@ ships-to: staging/runner
   - `store.py`'s claim refuses any dispatch on a concern that has an open PR or a running session, whatever the
     skill. The only store is SQLite; `runner-store` adds Firestore after this concern (per command-center/D44).
   - Nothing keeps a session's final message.
+
+  (Superseded 2026-10-22, main @18b866b, by PR #24 (900dc5a): `session.py` adds `Concern:` only in a
+  `/loop-build` session, and `Sponsored-by:` in every one (per command-center/D45). `config.py` lets a dispatch
+  name a concern, a loop or an environment, adds `loop-ship`, and lists `HOLDING_SKILLS` as `loop-build` and
+  `loop-design`, which `store.py`'s claim uses. `dispatch.py` refuses a budget above `budget_ceiling_usd`, $10 by
+  default. `models.py` keeps each session's `final_message`, and `openapi.yaml` serves it. The store is still
+  SQLite only.)
 - `session-runner`'s C5 and C6 are the claims this concern's change makes true for the runner as a whole. Its C1
   and C3, which described the runner as built, are struck (2026-10-20).
 
