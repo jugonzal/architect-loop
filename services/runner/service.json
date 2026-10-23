@@ -1,7 +1,9 @@
 {
-  "identity": {"name": "runner", "roles": ["roles/run.jobsExecutorWithOverrides"]},
+  "identity": {"name": "runner", "roles": ["roles/run.jobsExecutorWithOverrides", "roles/datastore.user"]},
+  "apis": ["firestore.googleapis.com"],
   "settings": {
     "RUNNER_GCP_PROJECT": "{project}",
+    "RUNNER_STORE": "firestore:runner",
     "RUNNER_APP_ID": "TODO(owner)",
     "RUNNER_APP_INSTALLATION_ID": "TODO(owner)",
     "RUNNER_APP_SLUG": "TODO(owner)"
@@ -9,6 +11,7 @@
   "secrets": {
     "RUNNER_APP_PRIVATE_KEY": "runner-app-private-key"
   },
+  "firestore": ["runner"],
   "jobs": {
     "runner-session": {
       "command": ["python", "-m", "runner", "job"],
