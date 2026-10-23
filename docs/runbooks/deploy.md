@@ -1,8 +1,8 @@
 # Runbook: create an environment, and deploy a service to it from a commit on main
 
-**Status:** draft — partly run (steps 1, 3 and 5, on staging) | **Last run as written:** never. Steps 1, 3 and 5
-ran on staging on 2026-10-22, by the owner, and step 5 printed something other than what is written here (see
-Corrections). Whether steps 2 and 3 printed what is written is not recorded. No run of steps 4 or 6 to 15 is recorded.
+**Status:** draft — partly run (steps 1 to 3 and 5, on staging) | **Last run as written:** 2026-10-22 on staging
+by Juan, steps 2 and 3. Step 1 ran then too (PR #29). Step 5 ran with output that differed from this runbook (see
+Corrections). No run of steps 4 or 6 to 15 is recorded.
 
 Use this to create staging or production on GCP, or to check one, and to deploy a service (or the probe) from a
 commit on `main` with exactly the config its manifest declares. Afterwards the environment's project exists with its
@@ -10,8 +10,9 @@ registry, deploy identity, budget and what the services' manifests declare (APIs
 databases), and the service's `/version` answers the commit that was deployed. Written from `scripts/gcp/` before
 its first real run (command-center/environments, command-center/service-manifests): every expected output below is
 what the scripts print against the fakes in `tests/`, and every failure signature is what Google Cloud is known to
-answer, not what a run here showed. Correct it after the first run. Since then step 5's outputs have been read
-against staging, and they are written below as observed. Every other step is still as drafted.
+answer, not what a run here showed. Correct it after the first run. Since then steps 2 and 3 have run on staging
+and printed what is written. Step 5's outputs have been read against staging, and they are written below as
+observed. Every other step is still as drafted.
 
 ## Quick reference
 
@@ -428,9 +429,11 @@ Each learned in a real run. Newest first.
 
 ## Corrections
 
-- 2026-10-22: Status and intro: steps 1, 3 and 5 ran on staging on 2026-10-22, by the owner. Step 1 is PR #29,
-  which names the projects in `projects.txt`. PR #30's body quotes the served-commit lines step 3 printed. Step 5 is PR #30, which
-  fills in staging's four rows of `LOOP.md` §3. The runbook said it had never run.
+- 2026-10-22: Status and intro: steps 1 to 3 and 5 ran on staging on 2026-10-22, by the owner. Step 1 is PR #29,
+  which names the projects in `projects.txt`. PR #30's body quotes the served-commit lines step 3 printed. Step 5
+  is PR #30, which fills in staging's four rows of `LOOP.md` §3. The runbook said it had never run.
+- 2026-10-22: Last run as written: the owner confirmed that steps 2 and 3 printed what is written, so the status
+  names them. Nothing in either step changed.
 - 2026-10-22: Step 5's success: the curl macOS ships (8.7.1) prints `curl: (56)`, not `curl: (22)`, for the same
   404 over HTTP/2. `served.sh` fails on any non-zero exit, so what it does is unchanged. `(22)` came from the fake
   `curl` in `tests/test_layout.py`.
