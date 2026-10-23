@@ -14,6 +14,15 @@ command-center/status-derivation:
   status service supplies one, whose git questions an independent commit graph answers. Both give the same
   document, and so do the command line's default, `gather` then `derive --facts`, and stdin.
 
+command-center/needs-proven:
+- C1: a concern that nothing has been built for yet is blocked while one of its needs is not met, and a need is met
+  once its work is on main and each of its claims holds on some LOOP.md §3 environment (command-center/D50).
+  NeedsTest has a need proven only on a local row, only by CI on main, only on staging, one whose touches changed
+  after its HOLDS, and one with a claim unproven. The world has a need met below its ships-to (search/alerts) and
+  one whose HOLDS went stale (search/feeds), so gathered and supplied facts are compared on both.
+- C2: a blocked concern's reason names each unmet need and its claims without a HOLDS anywhere, its next step is
+  the /loop-prove that would prove one, and that command is among what agents can start now.
+
 Nothing here touches a network or a real account: git runs on temporary repositories, gh is
 tests/fixtures/loop_status/fake_gh.py placed first on PATH, and the served-commit commands read local files.
 
@@ -519,6 +528,17 @@ class WorldTest(unittest.TestCase):
         self.assertEqual(ship, {"environment": "production",
                                 "manual_steps": ["the SMTP password in production's secret store (secrets)"]})
 
+    def test_a_need_is_met_once_proven_below_its_ships_to(self):
+        # needs-proven C1 and C2, through gathered and supplied facts alike (command-center/D50).
+        alerts = concern(self.doc, "search/alerts")
+        self.assertIn("reports/scheduler, which it needs, is proven: C1 HOLDS rung 1 on staging @%s"
+                      % self.world.short("staging-build"), alerts["reason"])
+        feeds = concern(self.doc, "search/feeds")
+        self.assertIn("reports/metrics, which it needs, is stale, and not yet proven on any environment: C1 held on "
+                      "staging @%s, but src/metrics.py changed since" % self.world.short("metrics-merge"),
+                      feeds["reason"])
+        self.assertEqual(feeds["next"], "/loop-prove reports/metrics staging")
+
     # C3.
 
     def test_supplied_facts_give_the_same_document(self):
@@ -597,7 +617,7 @@ class WorldTest(unittest.TestCase):
         self.assertIn("staging serves %s" % self.world.short("staging-build"), text)
         self.assertRegex(text, r"(?m)^scheduler +merged +.+ +/loop-ship production$")
         self.assertIn("Needs you (8), most unblocking first", text)
-        self.assertIn("Agents can start now (6)", text)
+        self.assertIn("Agents can start now (7)", text)
         self.assertIn("Record (2), on your yes", text)
         self.assertIn("search · backlog", text)
         one = ls.board(self.doc, "reports/scheduler")
@@ -1138,10 +1158,10 @@ class TableTest(unittest.TestCase):
     def test_unknown_needs_leave_blocked_and_ready_apart(self):
         m = Mini()
         m.land("loop/base", 1)
-        m.env_error["staging"] = "staging did not answer"
-        m.concern("loop/base", concern_md())
+        m.ci, m.ci_error = "unknown", "gh run list failed"
+        m.concern("loop/base", concern_md(claims=["- **C1** Holds. Prove: unit tests, in CI on main."]))
         m.concern("loop/thing", concern_md(needs="[base]"))
-        self.assertEqual(self.state(m)[0], "unknown")
+        self.assertEqual(self.state(m)[0], "unknown", "whether its need's claim holds by CI cannot be read")
         m.concern("loop/third", concern_md(questions=["| Q1 | Which? | C1 | This |"]))
         m.concern("loop/thing", concern_md(needs="[base, third]"))
         self.assertEqual(self.state(m)[0], "blocked", "one need known not to be done is enough")
@@ -1234,6 +1254,123 @@ class TableTest(unittest.TestCase):
         item = [i for i in self.derive(m)["queue"] if i["kind"] == "refused_pr"][0]
         self.assertEqual(item["loop"], "loop")
         self.assertEqual(item["detail"]["command"], "scripts/check_loop_pr.sh --pr 7")
+
+
+LOCAL_LOOP_MD = LOOP_MD.replace("| staging | staging |",
+                                "| local | this machine | yes | no | whoever runs it | `sh served.sh local` | |\n"
+                                "| staging | staging |")
+
+
+class NeedsTest(unittest.TestCase):
+    """needs-proven: a need is met once its work is on main and every claim holds on some environment (D50)."""
+
+    def setup(self, claims, evidence=(), ships_to="production", loop_md=LOOP_MD):
+        """loop/base merged, shipping to an environment that does not serve it yet, and loop/thing needing it.
+        Each evidence line's {main} is replaced by base's merge commit."""
+        m = Mini()
+        m.files["LOOP.md"] = loop_md
+        m.served["local"] = m.root
+        merge = m.land("loop/base", 1, files=("src/base/a.py",))
+        self.merge = merge
+        m.concern("loop/base", concern_md(touches="[src/base/]", ships_to=ships_to, claims=claims,
+                                          evidence=[e.format(main=merge[:7]) for e in evidence]))
+        m.concern("loop/thing", concern_md(needs="[base]"))
+        return m
+
+    def derive(self, m):
+        return m.derive(self)
+
+    def thing(self, m):
+        doc = self.derive(m)
+        return concern(doc, "loop/thing"), concern(doc, "loop/base"), doc
+
+    def test_a_need_proven_only_on_a_local_row_is_met(self):
+        m = self.setup(["- **C1** Runs. Prove: the smoke script, on local, then production."],
+                       ["- 2026-10-21 · C1 · HOLDS · rung 3 · local @{main} · the smoke script passed"],
+                       loop_md=LOCAL_LOOP_MD)
+        thing, base, _ = self.thing(m)
+        self.assertEqual(base["state"], "merged", "production does not serve it, so it is not done")
+        self.assertEqual(thing["state"], "ready")
+        self.assertIn("loop/base, which it needs, is proven", thing["reason"])
+        m.files["LOOP.md"] = LOOP_MD
+        thing, _, _ = self.thing(m)
+        self.assertEqual(thing["state"], "blocked", "a line on an environment LOOP.md §3 does not list counts for nothing")
+        self.assertIn("local is not a row of LOOP.md §3", thing["reason"])
+
+    def test_a_need_proven_only_by_ci_on_main_is_met_while_ci_is_green(self):
+        m = self.setup(["- **C1** Holds. Prove: unit tests, in CI on main, then a run on production."])
+        thing, base, _ = self.thing(m)
+        self.assertEqual(base["state"], "merged")
+        self.assertEqual(thing["state"], "ready")
+        m.ci = "failure"
+        thing, _, _ = self.thing(m)
+        self.assertEqual(thing["state"], "blocked")
+        self.assertIn("C1 holds by CI, which is failure on main", thing["reason"])
+        m.ci, m.ci_error = "unknown", "gh run list failed"
+        thing, _, _ = self.thing(m)
+        self.assertEqual(thing["state"], "unknown")
+        self.assertTrue(any("gh run list failed" in x for x in thing["inputs"]["missing"]), thing["inputs"]["missing"])
+
+    def test_a_need_proven_on_a_lower_environment_is_met(self):
+        m = self.setup(["- **C1** Runs. Prove: a run, on staging, then production."],
+                       ["- 2026-10-21 · C1 · HOLDS · rung 1 · staging @{main} · ran"])
+        thing, base, _ = self.thing(m)
+        self.assertEqual(base["state"], "merged")
+        self.assertEqual(thing["state"], "ready")
+        self.assertEqual(thing["next"], "/loop-build loop/thing")
+
+    def test_a_need_whose_touches_changed_after_its_holds_is_not_met(self):
+        m = self.setup(["- **C1** Runs. Prove: a run, on staging, then production."],
+                       ["- 2026-10-21 · C1 · HOLDS · rung 1 · staging @{main} · ran"])
+        m.commit("base-change", files=("src/base/b.py",))
+        thing, _, _ = self.thing(m)
+        self.assertEqual(thing["state"], "blocked")
+        self.assertIn("src/base/ changed since", thing["reason"])
+        m.commit("unrelated", files=("src/x/z.py",))
+        self.assertEqual(self.thing(m)[0]["state"], "blocked", "the change under its touches still stands")
+
+    def test_a_need_with_a_claim_unproven_is_not_met_and_says_how_to_prove_it(self):
+        m = self.setup(["- **C1** Runs. Prove: a run, on staging, then production.",
+                        "- **C2** Scales. Prove: a load run, on staging, then production."],
+                       ["- 2026-10-21 · C1 · HOLDS · rung 1 · staging @{main} · ran"])
+        thing, _, doc = self.thing(m)
+        self.assertEqual(thing["state"], "blocked")
+        self.assertIn("loop/base, which it needs, is merged, and not yet proven on any environment", thing["reason"])
+        self.assertIn("C2 has no evidence", thing["reason"])
+        self.assertNotIn("C1", thing["reason"].split("not yet proven")[1], "only the claims without a HOLDS")
+        self.assertEqual(thing["next"], "/loop-prove loop/base production",
+                         "with no lower environment serving it, the need's ships-to")
+        m.serve("staging")
+        thing, _, doc = self.thing(m)
+        self.assertEqual(thing["next"], "/loop-prove loop/base staging", "the lowest environment that serves it")
+        self.assertIn({"concern": "loop/base", "action": "prove", "command": "/loop-prove loop/base staging"},
+                      doc["agents_can_start"])
+        self.assertRegex(ls.board(doc), r"(?m)^thing +blocked .+/loop-prove loop/base staging$")
+
+    def test_a_contradicted_or_unmerged_need_is_not_met(self):
+        m = self.setup(["- **C1** Runs. Prove: a run, on staging, then production."],
+                       ["- 2026-10-21 · C1 · HOLDS · rung 1 · local @{main} · ran",
+                        "- 2026-10-22 · C1 · CONTRADICTS · rung 1 · staging @{main} · it did not"],
+                       loop_md=LOCAL_LOOP_MD)
+        thing, base, _ = self.thing(m)
+        self.assertEqual(base["state"], "contradicted")
+        self.assertEqual(thing["state"], "blocked", "a contradiction stops what needs it, wherever it was seen")
+        self.assertEqual(thing["next"], "/loop-design loop/base")
+        m = Mini()
+        m.concern("loop/base", concern_md())
+        m.pr("loop/base", 1, "OPEN")
+        m.concern("loop/thing", concern_md(needs="[base]"))
+        thing = concern(self.derive(m), "loop/thing")
+        self.assertEqual(thing["state"], "blocked")
+        self.assertIn("its work is not on main", thing["reason"])
+
+    def test_a_done_need_is_met(self):
+        m = self.setup(["- **C1** Runs. Prove: a run, on production."],
+                       ["- 2026-10-21 · C1 · HOLDS · rung 1 · production @{main} · ran"])
+        m.serve("production")
+        thing, base, _ = self.thing(m)
+        self.assertEqual(base["state"], "done")
+        self.assertEqual(thing["state"], "ready")
 
 
 class SkillTest(unittest.TestCase):

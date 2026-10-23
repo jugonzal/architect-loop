@@ -48,7 +48,9 @@ PR for the owner, and mention `/loop-init` once.
 
 5. **Cut a first set of concerns.** Each concern is one outcome that can be built, proven and shipped on its
    own, with at most three claims (`C#`). Name each by its outcome, not by an order. Default to independent; add
-   a `needs` only for a real dependency you can state, never for "it seems to come first". When two concerns would
+   a `needs` only for a real dependency of the build you can state, never for "it seems to come first" and never
+   for something only its proofs rely on. A need is met once the needed concern is proven on any environment, not
+   only where it ships, so a `needs` holds a concern back no longer than it must. When two concerns would
    share an interface, make the interface its own small concern that both need. Put the riskiest unknown first as
    a question to answer, not as a step. Three to seven concerns is typical; fewer is fine.
 
@@ -57,7 +59,7 @@ PR for the owner, and mention `/loop-init` once.
    - **relates**: both loops touch the same area, with no ordering. Say how this loop stays out of the other's way.
    - **needs a decision**: a concern here relies on a decision another loop published (`<loop>/D<n>`). Put it in
      that concern's `needs`, so it goes stale if the decision is superseded.
-   - **needs a concern**: a concern here waits for another loop's concern to be done (`<loop>/<concern>`).
+   - **needs a concern**: a concern here waits for another loop's concern to be proven (`<loop>/<concern>`).
 
    Check for: overlapping `touches` with any active concern, which is a merge conflict waiting to happen; goals
    in tension; decisions this loop would contradict, which become a `Q#` here and never an edit there; and

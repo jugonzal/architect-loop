@@ -268,6 +268,12 @@ def is_ci_claim(text):
     return bool(re.search(r"(?:^|[\s,])(?:in )?CI(?: on main)?$", prove))
 
 
+def names_ci(text):
+    """Whether a claim's Prove names CI anywhere, as "unit tests, in CI on main, then a run on staging" does. Such a
+    claim holds on main while CI is green there, which is enough to meet a need (command-center/D50)."""
+    return bool(re.search(r"(?<![\w-])CI(?![\w-])", prove_clause(text)))
+
+
 def environment_rows(loop_md):
     """Every row of LOOP.md §3, in order: {name, readable, command, error}. A row whose served-commit command an
     agent may not run, or that has none, carries the error that makes it unknown."""
@@ -548,6 +554,7 @@ class Concern:
         self.state = self.reason = self.next = None
         self.missing = []
         self.contradictions = []
+        self.prove_needs = []
         self.open_by_contract = False
         self.claim_results = {}
         self.serves = self.served = None
@@ -946,7 +953,112 @@ class Derivation:
         result = self.claim_result(c, claim)[0]
         return True if result == "current" else None if result == "unknown" else False
 
-    # Needs.
+    # Needs (command-center/D50): a need is met once its work is on main and every claim holds on some environment.
+
+    def need_met(self, other):
+        """Whether a concern in some needs is met: {met: True | False | None, detail, missing, prove}. detail
+        completes "<need>, which it needs, ...", missing names the facts an unknown rests on, and prove is the
+        command that would prove one of its unproven claims, when its work is on main."""
+        out = {"met": None, "detail": None, "missing": [], "prove": None}
+        if other.state is None:
+            out["missing"] = ["the state of %s" % other.ref]
+            return out
+        if other.state == "done":
+            return dict(out, met=True, detail="is done")
+        if other.state == "contradicted":
+            # A contradiction is a reason to stop, wherever it was seen.
+            return dict(out, met=False, detail="is contradicted")
+        on_main, why = self.work_on_main(other)
+        if on_main is None:
+            return dict(out, missing=["whether the work of %s, which it needs, is on main: %s" % (other.ref, why)])
+        if on_main is False:
+            return dict(out, met=False, detail="is %s, and its work is not on main" % other.state)
+        results = [self.claim_proven(other, claim) for claim in other.live_claims()]
+        unproven = [why for result, why in results if result == "missing"]
+        if unproven:
+            return dict(out, met=False, detail="is %s, and not yet proven on any environment: %s" % (
+                other.state, "; ".join(unproven)), prove="/loop-prove %s %s" % (other.ref, self.prove_environment(other)))
+        unknown = [why for result, why in results if result == "unknown"]
+        if unknown:
+            return dict(out, missing=unknown)
+        proven = "; ".join(why for _, why in results) or "it has no claims"
+        return dict(out, met=True, detail="is proven: %s" % proven)
+
+    def claim_proven(self, c, claim):
+        """('holds' | 'missing' | 'unknown', why): whether a claim holds on some environment of LOOP.md §3, at a
+        commit on main with nothing under c's touches changed since, or by CI on main while CI is green there."""
+        key = claim["id"]
+        main7 = self.p.main[:7]
+        failed, unknown = [], []
+        if names_ci(claim["text"]):
+            if self.p.ci == "success":
+                return ("holds", "%s holds by CI, which is green on %s" % (key, main7))
+            if self.p.ci == "unknown":
+                unknown.append("%s holds by CI, and the checks on main @%s cannot be read: %s" % (
+                    key, main7, self.p.ci_error))
+            else:
+                failed.append("%s holds by CI, which is %s on main @%s" % (key, self.p.ci, main7))
+        latest = {}
+        for line in c.lines(key):
+            latest[line["environment"]] = line
+        for env, line in latest.items():
+            if line["verdict"] != "HOLDS":
+                failed.append("%s's latest line on %s is %s" % (key, env, line["verdict"]))
+            elif self.p.environment(env) is None:
+                failed.append("%s holds only on %s, and %s is not a row of LOOP.md §3" % (key, env, env))
+            elif line["commit"] is None:
+                failed.append("%s's HOLDS on %s was migrated without a commit (@?), which never counts" % (key, env))
+            else:
+                result, why = self.proven_since(c, key, line)
+                if result == "holds":
+                    return (result, why)
+                (unknown if result == "unknown" else failed).append(why)
+        if unknown:
+            return ("unknown", "; ".join(unknown))
+        return ("missing", "; ".join(failed) or "%s has no evidence" % key)
+
+    def proven_since(self, c, key, line):
+        """claim_proven for one HOLDS line: its commit is on main, and nothing under touches changed since."""
+        proof, env = line["commit"], line["environment"]
+        value, error = self.oracle.ask({"kind": "ancestor", "repository": self.p.project, "commit": proof,
+                                        "of": self.p.main})
+        if value is None:
+            return ("unknown", "whether %s's HOLDS on %s @%s is on main cannot be read: %s" % (key, env, proof, error))
+        if not value:
+            return ("missing", "%s's HOLDS on %s cites %s, which is not on main" % (key, env, proof))
+        paths = c.local_touches(self.p.project)
+        if paths:
+            changed, error = self.oracle.ask({"kind": "changes", "repository": self.p.project, "from": proof,
+                                              "to": self.p.main, "paths": paths})
+            if changed is None:
+                return ("unknown", "what changed under the touches of %s since %s cannot be read: %s" % (
+                    c.ref, proof, error))
+            if changed:
+                return ("missing", "%s held on %s @%s, but %s changed since, in %s" % (
+                    key, env, proof, ", ".join(paths), ", ".join(s[:7] for s in changed)))
+        foreign = [(r, p) for r, p in c.touch_paths if r != self.p.project]
+        if foreign:
+            return ("unknown", "changes under %s since %s cannot be read from this repository" % (
+                ", ".join("%s:%s" % rp for rp in foreign), proof))
+        superseded = self.needed_decisions_superseded(c)
+        if superseded:
+            return ("missing", "%s held on %s @%s, but %s, which %s needs, has been superseded" % (
+                key, env, proof, ", ".join(superseded), c.id))
+        return ("holds", "%s HOLDS rung %d on %s @%s" % (key, line["rung"], env, proof))
+
+    def prove_environment(self, c):
+        """Where to prove c's unproven claims: the lowest environment after main that serves its work, else its
+        ships-to."""
+        commits, _, _ = self.merge_commits(c)
+        if c.ships_to and c.ships_to != "main" and commits:
+            for env in self.p.environments:
+                if env["name"] == "main" or env["error"] or not env["served"]:
+                    continue
+                values = [self.oracle.ask({"kind": "ancestor", "repository": self.p.project, "commit": sha,
+                                           "of": env["served"]})[0] for sha in commits]
+                if all(v is True for v in values):
+                    return env["name"]
+        return c.ships_to or "main"
 
     def find_cycles(self):
         graph = {}
@@ -1078,13 +1190,13 @@ class Derivation:
                                 self.unread_missing(c))
         # blocked, ready
         if built is not True:
-            not_done, unknown, missing = [], [], []
+            not_met, unknown, missing, met = [], [], [], []
             for need in c.needs:
                 kind = self.p.resolve_need(c, need)
                 if kind[0] == "decision":
                     continue
                 if kind[0] == "missing":
-                    not_done.append((kind[1], None, "does not exist"))
+                    not_met.append((kind[1], None, "does not exist", None))
                     continue
                 other = self.p.by_ref[kind[1]]
                 if ref in self.cycles and other.ref in self.cycles.get(ref, []):
@@ -1092,33 +1204,31 @@ class Derivation:
                     missing.append("its needs form a cycle: %s" % ", ".join(self.cycles[ref]))
                     continue
                 self.derive_concern(other, chain)
-                if other.state == "done":
-                    continue
-                if other.state == "unknown" or other.state is None:
+                need = self.need_met(other)
+                if need["met"] is True:
+                    met.append("%s, which it needs, %s" % (other.ref, need["detail"]))
+                elif need["met"] is None:
                     unknown.append(other.ref)
-                    missing += other.missing or ["the state of %s" % other.ref]
+                    missing += need["missing"] or other.missing or ["the state of %s" % other.ref]
                 else:
-                    not_done.append((other.ref, other, other.state))
+                    not_met.append((other.ref, other, need["detail"], need["prove"]))
             if built is False:
-                if not_done:
-                    name, other, state = not_done[0]
+                if not_met:
+                    c.prove_needs = [{"concern": n, "command": p} for n, _, _, p in not_met if p]
+                    name, other, detail, prove = not_met[0]
+                    next_step = prove or (other.next if other is not None and other.next else "/loop-design %s" % ref)
                     return self.set(c, "blocked", "Nothing is built yet, and %s" % "; ".join(
-                        "%s, which it needs, %s" % (n, "does not exist" if o is None else "is %s" % s)
-                        for n, o, s in not_done), other.next if other is not None and other.next else
-                        "/loop-design %s" % ref)
+                        "%s, which it needs, %s" % (n, d) for n, _, d, _ in not_met), next_step)
                 if unknown:
                     cycle = ref in self.cycles
                     return self.set(c, "unknown", "Nothing is built yet, but %s" % (
-                        "its needs form a cycle (%s), so whether they are done cannot be read" % ", ".join(
-                            self.cycles[ref]) if cycle else "whether %s, which it needs, is done cannot be read"
+                        "its needs form a cycle (%s), so whether they are met cannot be read" % ", ".join(
+                            self.cycles[ref]) if cycle else "whether %s, which it needs, is met cannot be read"
                         % ", ".join(unknown)), self.fix_next(c), missing)
-                done_needs = [n for n in c.needs if self.p.resolve_need(c, n)[0] == "concern"]
                 return self.set(c, "ready", "Nothing is built yet: no linked pull request, no %s branch, no commit "
-                                "with its trailer%s" % (ref, "; %s, which it needs, %s done" % (
-                                    ", ".join(done_needs), "is" if len(done_needs) == 1 else "are")
-                                    if done_needs else ""), "/loop-build %s" % ref)
+                                "with its trailer%s" % (ref, "".join("; %s" % m for m in met)), "/loop-build %s" % ref)
             # built is None: ready or blocked cannot be told from building.
-            what = "blocked" if not_done else "ready"
+            what = "blocked" if not_met else "ready"
             return self.set(c, "unknown", "No %s branch and no commit with its trailer, but whether a pull request "
                             "links it cannot be read, so %s and building cannot be told apart" % (ref, what),
                             self.fix_next(c), self.unread_missing(c) + missing)
@@ -1514,6 +1624,16 @@ class Derivation:
                                   "command": "/loop-prove %s %s" % (c.ref, c.ships_to)})
                 elif c.state == "open" and c.open_by_contract:
                     design.append({"concern": c.ref, "action": "design", "command": "/loop-design %s" % c.ref})
+        # What would meet a blocked concern's needs: proving a need whose work is on main (command-center/D50).
+        for loop in self.p.loops:
+            if loop.state == "parked":
+                continue
+            for c in loop.concerns:
+                if c.state != "blocked":
+                    continue
+                for entry in c.prove_needs:
+                    if not any(a["command"] == entry["command"] for a in prove):
+                        prove.append({"concern": entry["concern"], "action": "prove", "command": entry["command"]})
         return build + prove + design
 
     # Step 8: drift the facts can show.
@@ -1588,13 +1708,13 @@ class Derivation:
                     kind = self.p.resolve_need(c, need)
                     if kind[0] == "concern":
                         other = self.p.by_ref[kind[1]]
-                        if other.state not in ("done", "unknown"):
-                            behind.append("%s is %s" % (other.ref, other.state))
+                        if other.state is not None and self.need_met(other)["met"] is False:
+                            behind.append("%s %s" % (other.ref, self.need_met(other)["detail"]))
                 if behind:
                     out.append({"where": "%s, needs" % c.path,
-                                "finding": "%s is being built ahead of what it needs: %s, not done" % (
+                                "finding": "%s is being built ahead of what it needs, which is not met: %s" % (
                                     c.id, "; ".join(behind)),
-                                "checked": "the derived state of each concern in needs"})
+                                "checked": "each need's evidence and work on main (command-center/D50)"})
                 if c.branch_head:
                     base, _ = self.oracle.ask({"kind": "merge_base", "repository": self.p.project,
                                                "a": c.branch_head, "b": self.p.main})

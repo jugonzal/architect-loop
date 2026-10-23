@@ -13,9 +13,12 @@ ships-to: production
 <!-- Everything above this comment is the concern's contract. loop-plan writes it, and loop-design completes
      it with the owner. Drop these comments when you write a real concern.
 
-     needs     what this concern needs first: a concern in this loop (`queue`), a concern in another loop
-               (`billing/invoices`), or a published decision (`report-pipeline/D1`, `billing/D3`).
-               A needed concern must be done; a needed decision must not be superseded.
+     needs     what this concern's build relies on: a concern in this loop (`queue`), a concern in another
+               loop (`billing/invoices`), or a published decision (`report-pipeline/D1`, `billing/D3`).
+               A needed concern is met once its work is on main and each of its claims holds on some
+               environment, a lower or local one included; a needed decision must not be superseded.
+               What only this concern's proofs rely on is not a need: those proofs wait until their
+               environment serves it.
      touches   paths or globs this concern may change; `<repo>:<path>` for another repository.
      effects   the gates from LOOP.md §2 this concern crosses, in plain words ("migration on shared data");
                [] if none. The owner sees them before work starts, and the ship brief lists them.
