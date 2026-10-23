@@ -11,7 +11,7 @@
       "env": {
         "EXPO_PUBLIC_ENVIRONMENT": "staging/app",
         "EXPO_PUBLIC_GITHUB_CLIENT_ID": "TODO(owner): the GitHub OAuth app's client ID",
-        "EXPO_PUBLIC_STATUS_URL": "TODO(owner): staging's status service, https://status-<staging project number>.us-east1.run.app"
+        "EXPO_PUBLIC_STATUS_URL": "https://status-665570365697.us-east1.run.app"
       }
     },
     "production": {
