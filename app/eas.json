@@ -11,7 +11,10 @@
       "env": {
         "EXPO_PUBLIC_ENVIRONMENT": "staging/app",
         "EXPO_PUBLIC_GITHUB_CLIENT_ID": "TODO(owner): the GitHub OAuth app's client ID",
-        "EXPO_PUBLIC_STATUS_URL": "TODO(owner): staging's status service, https://status-<staging project number>.us-east1.run.app"
+        "EXPO_PUBLIC_STATUS_URL": "https://status-665570365697.us-east1.run.app",
+        "EXPO_PUBLIC_RUNNER_URL": "https://runner-665570365697.us-east1.run.app",
+        "EXPO_PUBLIC_THREADS_URL": "https://threads-665570365697.us-east1.run.app",
+        "EXPO_PUBLIC_NOTIFY_URL": "https://notify-665570365697.us-east1.run.app"
       }
     },
     "production": {
@@ -20,7 +23,10 @@
       "env": {
         "EXPO_PUBLIC_ENVIRONMENT": "production/app",
         "EXPO_PUBLIC_GITHUB_CLIENT_ID": "TODO(owner): the GitHub OAuth app's client ID",
-        "EXPO_PUBLIC_STATUS_URL": "TODO(owner): production's status service, https://status-<production project number>.us-east1.run.app"
+        "EXPO_PUBLIC_STATUS_URL": "TODO(owner): production's status service, https://status-<production project number>.us-east1.run.app",
+        "EXPO_PUBLIC_RUNNER_URL": "TODO(owner): production's runner service, https://runner-<production project number>.us-east1.run.app",
+        "EXPO_PUBLIC_THREADS_URL": "TODO(owner): production's threads service, https://threads-<production project number>.us-east1.run.app",
+        "EXPO_PUBLIC_NOTIFY_URL": "TODO(owner): production's notify service, https://notify-<production project number>.us-east1.run.app"
       }
     }
   },

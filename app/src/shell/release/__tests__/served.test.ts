@@ -115,9 +115,19 @@ describe("the app's environments (command-center/D43)", () => {
   });
 
   it('puts no secret in a build profile: only the public client ID, URLs and names', () => {
+    // The services' URLs are Cloud Run's public URLs (command-center/D32, app-clients D1).
+    const PUBLIC = [
+      'EXPO_PUBLIC_ENVIRONMENT',
+      'EXPO_PUBLIC_GITHUB_CLIENT_ID',
+      'EXPO_PUBLIC_STATUS_URL',
+      'EXPO_PUBLIC_RUNNER_URL',
+      'EXPO_PUBLIC_THREADS_URL',
+      'EXPO_PUBLIC_NOTIFY_URL',
+      'EXPO_PUBLIC_PROJECT',
+    ];
     for (const profile of Object.values<{ env?: Record<string, string> }>(eas.build)) {
       for (const name of Object.keys(profile.env ?? {})) {
-        expect(['EXPO_PUBLIC_ENVIRONMENT', 'EXPO_PUBLIC_GITHUB_CLIENT_ID', 'EXPO_PUBLIC_STATUS_URL', 'EXPO_PUBLIC_PROJECT']).toContain(name);
+        expect(PUBLIC).toContain(name);
       }
     }
   });
