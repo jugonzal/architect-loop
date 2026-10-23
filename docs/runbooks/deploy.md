@@ -1,6 +1,8 @@
 # Runbook: create an environment, and deploy a service to it from a commit on main
 
-**Status:** draft — not yet run | **Last run as written:** never
+**Status:** draft — partly run (steps 1, 3 and 5, on staging) | **Last run as written:** never. Steps 1, 3 and 5
+ran on staging on 2026-10-22, by the owner, and step 5 printed something other than what is written here (see
+Corrections). Whether steps 2 and 3 printed what is written is not recorded. No run of steps 4 or 6 to 15 is recorded.
 
 Use this to create staging or production on GCP, or to check one, and to deploy a service (or the probe) from a
 commit on `main` with exactly the config its manifest declares. Afterwards the environment's project exists with its
@@ -8,7 +10,8 @@ registry, deploy identity, budget and what the services' manifests declare (APIs
 databases), and the service's `/version` answers the commit that was deployed. Written from `scripts/gcp/` before
 its first real run (command-center/environments, command-center/service-manifests): every expected output below is
 what the scripts print against the fakes in `tests/`, and every failure signature is what Google Cloud is known to
-answer, not what a run here showed. Correct it after the first run.
+answer, not what a run here showed. Correct it after the first run. Since then step 5's outputs have been read
+against staging, and they are written below as observed. Every other step is still as drafted.
 
 ## Quick reference
 
@@ -160,12 +163,18 @@ the contract, so the owner merges it.
 
 ```bash
 sh scripts/gcp/served.sh https://status-<PROJECT_NUMBER>.us-east1.run.app/version
+curl -s -o /dev/null -w '%{http_code} %{size_download}\n' https://status-<PROJECT_NUMBER>.us-east1.run.app/version
 ```
 
-- **Success prints:** until `status` is deployed, `curl: (22) The requested URL returned error: 404` and
-  `served: GET ... failed`, with exit status 1, and `/loop-status` shows that row as unknown, which is true.
-- **Failure looks like:** a DNS error rather than a 404: the URL is mistyped, or the project number is wrong.
-- **Safe to re-run:** yes.
+- **Success prints:** until `status` is deployed, `curl: (56) The requested URL returned error: 404` (the curl
+  macOS ships, 8.7.1, over HTTP/2; other versions print `curl: (22)`) and `served: GET ... failed`, with exit
+  status 1, and `/loop-status` shows that row as unknown, which is true. The second command prints `404 0`: an
+  empty 404, which is what a project answers for a service it does not have.
+- **Failure looks like:** a 404 with a size above 0 (`404 272` here), an HTML body that says "Error: Page not
+  found": the project number or the region in the URL is wrong. Cloud Run answers every `*.run.app` name, so a wrong URL never fails DNS, and
+  `served.sh` prints the same lines for it as for a service not yet deployed. A mistyped service name in the right
+  project answers the same empty 404 as an undeployed service, so compare each name with step 3's lines.
+- **Safe to re-run:** yes; it only reads.
 
 ### 6. Deploy the probe from main (environments C2, service-manifests C1)
 
@@ -410,8 +419,20 @@ yet deployed.
 
 Each learned in a real run. Newest first.
 
-- None yet: this runbook has not been run.
+- **2026-10-22:** a staging row whose URL is wrong reads as unknown forever, just like a service not yet
+  deployed → Cloud Run answers every `*.run.app` name, so a wrong project number or region gets a 404 (with a
+  "Page not found" body) instead of a DNS error, and `served.sh` fails the same way on any 404 → before merging
+  step 5's rows, check that each URL answers an empty 404 (`404 0` from step 5's second command), and that its
+  service name matches step 3's line. Found by reading staging's four URLs, a made-up project number, `us-west1`
+  in place of `us-east1`, and two made-up service names, all read-only.
 
 ## Corrections
 
-- None yet.
+- 2026-10-22: Status and intro: steps 1, 3 and 5 ran on staging on 2026-10-22, by the owner. Step 1 is PR #29,
+  which names the projects in `projects.txt`. PR #30's body quotes the served-commit lines step 3 printed. Step 5 is PR #30, which
+  fills in staging's four rows of `LOOP.md` §3. The runbook said it had never run.
+- 2026-10-22: Step 5's success: the curl macOS ships (8.7.1) prints `curl: (56)`, not `curl: (22)`, for the same
+  404 over HTTP/2. `served.sh` fails on any non-zero exit, so what it does is unchanged. `(22)` came from the fake
+  `curl` in `tests/test_layout.py`.
+- 2026-10-22: Step 5's failure: a wrong project number or region answers a 404 with a body, not a DNS error. Step
+  5 gained a second command that tells the two 404s apart.
