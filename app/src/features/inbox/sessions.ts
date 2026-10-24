@@ -123,10 +123,13 @@ export function useLatestSession(
 export type EstimateRead =
   | { kind: 'no-runner' }
   | { kind: 'loading' }
-  | { kind: 'read'; model: string; estimate: Estimate | null }
+  | { kind: 'read'; model: string; estimate: Estimate | null; release: string | null }
   | { kind: 'failed'; message: string };
 
-/** The runner's estimate for a skill on its model, before a start (command-center/D23). */
+/**
+ * The runner's estimate for a skill on its model, before a start (command-center/D23), and the newest release of the
+ * skills, which the start runs (command-center/D68).
+ */
 export function useEstimate(runner: RunnerClient | null, skill: Skill): EstimateRead {
   const [read, setRead] = useState<EstimateRead>(runner ? { kind: 'loading' } : { kind: 'no-runner' });
   useEffect(() => {
@@ -138,7 +141,10 @@ export function useEstimate(runner: RunnerClient | null, skill: Skill): Estimate
     setRead({ kind: 'loading' });
     runner
       .estimate({ query: { skill } })
-      .then((answer) => live && setRead({ kind: 'read', model: answer.model, estimate: answer.estimate }))
+      .then(
+        (answer) =>
+          live && setRead({ kind: 'read', model: answer.model, estimate: answer.estimate, release: answer.plugin_release }),
+      )
       .catch((error: unknown) => live && setRead({ kind: 'failed', message: serviceMessage(error) }));
     return () => {
       live = false;

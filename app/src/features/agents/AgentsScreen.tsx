@@ -46,7 +46,7 @@ import {
   estimateLong,
   estimateShort,
   parseBudget,
-  PLUGIN_RELEASE,
+  releaseLine,
   rowAction,
   rowButton,
   rowHeadline,
@@ -78,6 +78,11 @@ type StatusRead =
   | { kind: 'failed'; message: string };
 
 type EstimateRead = { kind: 'reading' } | { kind: 'read'; answer: EstimateAnswer } | { kind: 'failed'; message: string };
+
+/** The release a start runs: the one its skill's estimate named, or none until the estimate names one (D68). */
+function releaseOf(estimate: EstimateRead | undefined): string | null {
+  return estimate?.kind === 'read' ? estimate.answer.plugin_release : null;
+}
 
 /** The confirmation open under one row: the budget as typed, and whether it is being sent. */
 type Draft = { command: string; budget: string; touched: boolean; sending: boolean; failure: string | null };
@@ -252,10 +257,11 @@ export function AgentsScreen({
   const confirmStart = async (row: StartRow) => {
     if (!runner || !draft || draft.command !== row.command || draft.sending) return;
     const budget = parseBudget(draft.budget);
-    if (!budget.ok) return;
+    const release = releaseOf(estimateOf(row.skill));
+    if (!budget.ok || !release) return;
     setDraft({ ...draft, sending: true, failure: null });
     try {
-      const session = await runner.dispatch({ body: dispatchFor(row, project, budget.usd) });
+      const session = await runner.dispatch({ body: dispatchFor(row, project, budget.usd, release) });
       if (!alive.current) return;
       setStarted((was) => ({ ...was, [row.command]: session }));
       setDraft(null);
@@ -575,8 +581,14 @@ function Confirmation({
       : estimate.kind === 'failed'
         ? `The estimate could not be read: ${estimate.message}`
         : estimateLong(estimate.answer);
+  const release =
+    estimate === undefined || estimate.kind === 'reading'
+      ? 'Reading the release of the skills…'
+      : estimate.kind === 'failed'
+        ? 'The release of the skills could not be read, so it cannot start.'
+        : releaseLine(estimate.answer);
   const confirmLabel = budget.ok ? `Start with a ${money(budget.usd)} budget` : 'Start';
-  const enabled = budget.ok && !draft.sending;
+  const enabled = budget.ok && !draft.sending && releaseOf(estimate) !== null;
   return (
     <View style={styles.confirm} testID="start-confirmation">
       <Text style={styles.confirmTitle}>{`/${row.skill} ${row.concern}${row.arguments ? ` ${row.arguments}` : ''}`}</Text>
@@ -600,7 +612,7 @@ function Confirmation({
         {!budget.ok && <Text style={styles.meta}>{budget.reason}</Text>}
       </View>
       <Text style={styles.meta}>{BUDGET_NOTE}</Text>
-      <Text style={styles.meta}>{`Sponsored by you, ${login}. It runs the skills of release ${PLUGIN_RELEASE}.`}</Text>
+      <Text style={styles.meta} testID="start-release">{`Sponsored by you, ${login}. ${release}`}</Text>
       {draft.failure !== null && (
         <Text style={styles.failure} accessibilityRole="alert">
           {draft.failure}

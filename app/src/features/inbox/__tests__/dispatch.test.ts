@@ -4,6 +4,9 @@
 // (D2). The sponsor is never a field of the request: the runner names whoever's token starts it
 // (command-center/D28), and the person sees the budget before anything starts (the concern's effects).
 
+import * as fs from 'fs';
+import * as path from 'path';
+
 import type { Session } from '../../../api/runner.gen';
 import type { QueueItem } from '../../../api/status';
 import { loadStatusFixture } from '../../../api/statusFixtures';
@@ -16,13 +19,15 @@ import {
   formatUsd,
   isDeployItem,
   parseBudget,
-  PLUGIN_RELEASE,
   REASON_MAX,
   recordPlan,
   sameWork,
 } from '../dispatch';
 
 const doc = loadStatusFixture('board');
+
+/** The release a start sheet was shown: whatever the runner's estimate named, here not the one any card was written with. */
+const RELEASE = 'v0.7.0';
 
 function item(id: string): QueueItem {
   const found = doc.queue.find((i) => i.id === id);
@@ -46,7 +51,7 @@ function session(over: Partial<Session>): Session {
     model: 'claude-test',
     sponsor: 'ana',
     budget_usd: 2,
-    plugin_release: PLUGIN_RELEASE,
+    plugin_release: RELEASE,
     branch: 'main',
     state: 'running',
     outcome: null,
@@ -134,6 +139,7 @@ describe('the dispatch', () => {
     const body = dispatchRequest(answerPlan(item('report-pipeline/dashboard/Q1')), {
       project: 'example/reports',
       budgetUsd: 2.5,
+      release: RELEASE,
     });
     expect(body).toEqual({
       project: 'example/reports',
@@ -141,13 +147,27 @@ describe('the dispatch', () => {
       concern: 'report-pipeline/dashboard',
       arguments: 'Q1',
       budget_usd: 2.5,
-      plugin_release: PLUGIN_RELEASE,
+      plugin_release: RELEASE,
     });
     expect(Object.keys(body)).not.toContain('sponsor');
   });
 
-  it('runs a tagged release of the skills, never a branch (command-center/D17)', () => {
-    expect(PLUGIN_RELEASE).toMatch(/^v[0-9]+\.[0-9]+\.[0-9]+$/);
+  it("runs exactly the release the start sheet showed, which the runner's estimate named (latest-release C2)", () => {
+    for (const release of ['v0.7.0', 'v1.12.3']) {
+      expect(
+        dispatchRequest(briefPlan(item('ship/production')), { project: 'example/reports', budgetUsd: 1, release }).plugin_release,
+      ).toBe(release);
+    }
+  });
+
+  it('names no release tag anywhere in the inbox’s code: the runner’s estimate names it', () => {
+    const dir = path.join(__dirname, '..');
+    const sources = fs.readdirSync(dir).filter((name) => /\.tsx?$/.test(name));
+    expect(sources.length).toBeGreaterThan(0);
+    for (const name of sources) {
+      const text = fs.readFileSync(path.join(dir, name), 'utf8');
+      expect([name, text.match(/v[0-9]+\.[0-9]+\.[0-9]+/g)]).toEqual([name, null]);
+    }
   });
 
   it('starts from a budget the person can change, and refuses one that is not a positive amount', () => {

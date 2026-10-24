@@ -291,17 +291,16 @@ export function targetName(target: RecordTarget): string {
 /** The runner refuses arguments longer than this (services/runner/runner/dispatch.py). */
 export const MAX_ARGUMENTS = 2000;
 
-/**
- * The tagged release of the skills a dispatch from this screen runs, never the clone's own plugin/ (command-center/D17).
- * It is the newest release when this was written; the person sees it, and can change it, before every dispatch.
- */
-export const SKILLS_RELEASE = 'v0.4.0';
-
 /** The budget the sheet starts with; the person sees it, and can change it, before every dispatch. */
 export const DEFAULT_BUDGET_USD = 2;
 
 const RELEASE = /^v[0-9]+\.[0-9]+\.[0-9]+$/;
 
+/**
+ * Whether the record sheet's release field holds a tag of the skills, the only form the runner runs, never the
+ * clone's own plugin/ (command-center/D17). The field starts from the release the runner's estimate names, the newest
+ * release tag (latest-release C2, command-center/D68); the screen holds none of its own.
+ */
 export function validRelease(text: string): boolean {
   return RELEASE.test(text.trim());
 }

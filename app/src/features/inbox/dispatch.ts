@@ -11,15 +11,13 @@
 //   deployed, "Deployed" starts it again with `deployed`, for its verification.
 // - A record card starts /loop-status's record step on the record's loop, saying what the person said yes to. The
 //   step writes its own loop-document PR and merges it under LOOP.md §2.1, as from a terminal (D2).
+//
+// Every start runs a tagged release of the skills, never the clone's own plugin/ (command-center/D17): the one the
+// runner's estimate names, the newest release tag of the project (latest-release C2, command-center/D68). Nothing
+// here holds a release of its own, so a tag the owner cuts reaches the next card with no new build.
 
 import type { DispatchRequest, Session } from '../../api/runner.gen';
 import type { ProjectKey, QueueItem } from '../../api/status';
-
-/**
- * The release of the skills every dispatch runs (command-center/D17): a tag, never the clone's own plugin/. The
- * app has no way to read which release is current, so it is named here, and the start sheet shows it.
- */
-export const PLUGIN_RELEASE = 'v0.4.0';
 
 /** The budget a start sheet offers first, in dollars. The person can change it before anything starts. */
 export const DEFAULT_BUDGET_USD = 2;
@@ -114,17 +112,20 @@ export function recordPlan(item: QueueItem): SessionPlan {
   return plan('record', { skill: 'loop-status', loop }, args, { first: 'record:' });
 }
 
-/** The runner's dispatch for a plan. It names no sponsor: the runner's is always the caller (command-center/D28). */
+/**
+ * The runner's dispatch for a plan, on the release the start sheet showed: the one the runner's estimate named. It
+ * names no sponsor: the runner's is always the caller (command-center/D28).
+ */
 export function dispatchRequest(
   sessionPlan: SessionPlan,
-  { project, budgetUsd }: { project: ProjectKey; budgetUsd: number },
+  { project, budgetUsd, release }: { project: ProjectKey; budgetUsd: number; release: string },
 ): DispatchRequest {
   return {
     project,
     ...sessionPlan.target,
     arguments: sessionPlan.arguments,
     budget_usd: budgetUsd,
-    plugin_release: PLUGIN_RELEASE,
+    plugin_release: release,
   };
 }
 

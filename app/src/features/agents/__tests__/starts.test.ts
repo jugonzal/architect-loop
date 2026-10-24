@@ -3,6 +3,9 @@
 // wait on), each with the dispatch that starts it on the concern, the runner's estimate (command-center/D23) and a
 // budget the person confirms.
 
+import * as fs from 'fs';
+import * as path from 'path';
+
 import type { EstimateAnswer } from '../../../api/runner.gen';
 import { ServiceError } from '../../../api/service';
 import { loadStatusFixture, statusFixtureNames } from '../../../api/statusFixtures';
@@ -12,7 +15,7 @@ import {
   estimateLong,
   estimateShort,
   parseBudget,
-  PLUGIN_RELEASE,
+  releaseLine,
   rowAction,
   rowButton,
   rowHeadline,
@@ -25,6 +28,7 @@ const answer = (estimate: EstimateAnswer['estimate'], skill: EstimateAnswer['ski
   skill,
   model: 'claude-opus-5-5',
   estimate,
+  plugin_release: 'v0.7.0',
 });
 
 describe('the rows', () => {
@@ -83,32 +87,35 @@ describe("a command's arguments", () => {
 });
 
 describe('the dispatch', () => {
-  it("starts the row's skill on its concern, with its arguments, the confirmed budget and the pinned release", () => {
+  it("starts the row's skill on its concern, with its arguments, the confirmed budget and the estimate's release", () => {
     const [exporter, , queue] = startRows(loadStatusFixture('board'));
-    expect(dispatchFor(exporter!, 'example/reports', 3)).toEqual({
+    expect(dispatchFor(exporter!, 'example/reports', 3, 'v0.7.0')).toEqual({
       project: 'example/reports',
       skill: 'loop-build',
       concern: 'report-pipeline/exporter',
       budget_usd: 3,
-      plugin_release: PLUGIN_RELEASE,
+      plugin_release: 'v0.7.0',
     });
-    expect(dispatchFor(queue!, 'example/reports', 0.5)).toEqual({
+    expect(dispatchFor(queue!, 'example/reports', 0.5, 'v0.12.3')).toEqual({
       project: 'example/reports',
       skill: 'loop-prove',
       concern: 'report-pipeline/queue',
       arguments: 'staging',
       budget_usd: 0.5,
-      plugin_release: PLUGIN_RELEASE,
+      plugin_release: 'v0.12.3',
     });
   });
 
   it('names no sponsor: the runner takes it from the caller’s token (command-center/D28)', () => {
     const [exporter] = startRows(loadStatusFixture('board'));
-    expect(Object.keys(dispatchFor(exporter!, 'example/reports', 1))).not.toContain('sponsor');
+    expect(Object.keys(dispatchFor(exporter!, 'example/reports', 1, 'v0.7.0'))).not.toContain('sponsor');
   });
 
-  it('names a release tag, the only form the runner accepts (command-center/D17)', () => {
-    expect(PLUGIN_RELEASE).toMatch(/^v[0-9]+\.[0-9]+\.[0-9]+$/);
+  it("says the release the runner's estimate named, or that there is none to start (latest-release C2)", () => {
+    expect(releaseLine(answer(null))).toBe('It runs the skills of release v0.7.0.');
+    expect(releaseLine({ ...answer(null), plugin_release: null })).toBe(
+      'The runner names no release of the skills, so it cannot start yet.',
+    );
   });
 });
 
@@ -188,3 +195,19 @@ describe('a start that did not start', () => {
     expect(startFailure(new Error('network down'))).toBe('network down');
   });
 });
+
+describe('no release of its own (latest-release C2)', () => {
+  it('names no release tag anywhere in the tab’s code: the runner’s estimate names it', () => {
+    const sources = featureSources(path.join(__dirname, '..'));
+    expect(sources.length).toBeGreaterThan(0);
+    for (const [name, text] of sources) expect([name, text.match(/v[0-9]+\.[0-9]+\.[0-9]+/g)]).toEqual([name, null]);
+  });
+});
+
+/** Each source file of a feature, by name, beside its text; its tests are left out. */
+function featureSources(dir: string): [string, string][] {
+  return fs
+    .readdirSync(dir)
+    .filter((name) => /\.tsx?$/.test(name))
+    .map((name) => [name, fs.readFileSync(path.join(dir, name), 'utf8')]);
+}

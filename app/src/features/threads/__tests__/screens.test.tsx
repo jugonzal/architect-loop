@@ -21,8 +21,8 @@ import { memorySessionStore } from '../../../shell/auth/sessionStore';
 import { SignIn } from '../../../shell/auth/signIn';
 import { AppRoot } from '../../../shell/AppRoot';
 import type { AppConfig } from '../../../shell/config';
-import { MAX_ARGUMENTS, SKILLS_RELEASE } from '../thread';
-import { at, fakeRunner, fakeSession, fakeThreads, person, RUNNER_URL, services, STATUS_URL, THREADS_URL } from './fakeServices';
+import { MAX_ARGUMENTS } from '../thread';
+import { at, FAKE_RELEASE, fakeRunner, fakeSession, fakeThreads, person, RUNNER_URL, services, STATUS_URL, THREADS_URL } from './fakeServices';
 
 const PROJECT = 'example/reports';
 const PEOPLE = {
@@ -474,7 +474,7 @@ describe('"record this?" (C2)', () => {
     expect(sheet.getByText(/\/loop-design report-pipeline\/queue/)).toBeTruthy();
     expect(sheet.getByText(/as a session you sponsor \(ana\)/)).toBeTruthy();
     expect(sheet.getByLabelText('Budget in dollars').props.value).toBe('2');
-    expect(sheet.getByLabelText('Skills release').props.value).toBe(SKILLS_RELEASE);
+    expect(sheet.getByLabelText('Skills release').props.value).toBe(FAKE_RELEASE);
     expect(sheet.getByTestId('estimate')).toHaveTextContent(
       "Estimate: about $0.84, the median of loop-design's last 7 sessions on claude-test.",
     );
@@ -491,7 +491,7 @@ describe('"record this?" (C2)', () => {
       concern: 'report-pipeline/queue',
       arguments: expect.stringContaining(`message ${decision.id}, written by ana`),
       budget_usd: 2,
-      plugin_release: SKILLS_RELEASE,
+      plugin_release: FAKE_RELEASE,
     });
     const args = (dispatch.body as { arguments: string }).arguments;
     expect(args).toContain('marked "record this?" by ben');
@@ -547,6 +547,50 @@ describe('"record this?" (C2)', () => {
     await flush();
     await press('Start /loop-design', sheet());
     expect(w.runner.dispatched).toEqual([expect.objectContaining({ budget_usd: 3.5, plugin_release: 'v0.3.0' })]);
+  });
+
+  it('starts from the release the runner names, so a tag cut later reaches the sheet with no new build (latest-release C2)', async () => {
+    const w = world();
+    w.runner.release('v0.9.0');
+    const [marked] = w.threads.seed(w.threads.paths.concern('report-pipeline', 'queue'), [
+      { body: 'Retry five times.', author: person('ben'), record_marks: [{ login: 'ben', marked_at: at(1) }] },
+    ]);
+    await open(CONCERN_THREAD, w, { as: 'ana' });
+    await press('Record it…', within(screen.getByTestId(`message-${marked!.id}`)));
+    const sheet = within(screen.getByTestId('record-sheet'));
+    expect(sheet.getByLabelText('Skills release').props.value).toBe('v0.9.0');
+    await press('Start /loop-design', sheet);
+    expect(w.runner.dispatched).toEqual([expect.objectContaining({ plugin_release: 'v0.9.0' })]);
+  });
+
+  it('starts nothing until a release is named, by the runner or by the person (latest-release C2)', async () => {
+    const w = world();
+    w.runner.release(null);
+    const [marked] = w.threads.seed(w.threads.paths.concern('report-pipeline', 'queue'), [
+      { body: 'Retry five times.', author: person('ben'), record_marks: [{ login: 'ben', marked_at: at(1) }] },
+    ]);
+    await open(CONCERN_THREAD, w, { as: 'ana' });
+    await press('Record it…', within(screen.getByTestId(`message-${marked!.id}`)));
+    const sheet = () => within(screen.getByTestId('record-sheet'));
+    expect(sheet().getByLabelText('Skills release').props.value).toBe('');
+    expect(sheet().getByText('The runner names no release of the skills yet. Type the tag to run, as vX.Y.Z.')).toBeTruthy();
+    expect(sheet().getByRole('button', { name: 'Start /loop-design' }).props.accessibilityState).toMatchObject({ disabled: true });
+    fireEvent.press(sheet().getByRole('button', { name: 'Start /loop-design' }));
+    await flush();
+    expect(w.runner.dispatched).toEqual([]);
+  });
+
+  it('says so when the estimate, and so the release, cannot be read', async () => {
+    const w = world();
+    w.runner.failEstimates(true);
+    const [marked] = w.threads.seed(w.threads.paths.concern('report-pipeline', 'queue'), [
+      { body: 'Retry five times.', author: person('ben'), record_marks: [{ login: 'ben', marked_at: at(1) }] },
+    ]);
+    await open(CONCERN_THREAD, w, { as: 'ana' });
+    await press('Record it…', within(screen.getByTestId(`message-${marked!.id}`)));
+    const sheet = within(screen.getByTestId('record-sheet'));
+    expect(sheet.getByText('The runner did not name a release of the skills. Type the tag to run, as vX.Y.Z.')).toBeTruthy();
+    expect(sheet.getByRole('button', { name: 'Start /loop-design' }).props.accessibilityState).toMatchObject({ disabled: true });
   });
 
   it('closes the sheet on Cancel, and starts nothing', async () => {

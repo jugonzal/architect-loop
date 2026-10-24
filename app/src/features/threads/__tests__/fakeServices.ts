@@ -224,8 +224,16 @@ export function fakeSession(overrides: Partial<Session> & Pick<Session, 'id'>): 
   };
 }
 
+/**
+ * The newest release the fake runner's estimate names. Not the release any screen was written with, so a test that
+ * passes with it shows the screen took the runner's (latest-release C2).
+ */
+export const FAKE_RELEASE = 'v0.7.0';
+
 export function fakeRunner({ tokens }: { tokens: Record<string, string> }) {
   const sessions = new Map<string, Session>();
+  let release: string | null = FAKE_RELEASE;
+  let estimateFails = false;
   const dispatched: DispatchRequest[] = [];
   let refusal: Refusal | null = null;
   let nextId = 1;
@@ -234,10 +242,12 @@ export function fakeRunner({ tokens }: { tokens: Record<string, string> }) {
     const login = tokens[auth?.replace(/^Bearer /, '') ?? ''];
     if (!login) return problem(401, 'unauthenticated', 'GitHub did not accept the token');
     if (method === 'GET' && path === '/estimates') {
+      if (estimateFails) return problem(502, 'upstream-failed', 'GitHub did not answer as expected');
       return json(200, {
         skill: query.get('skill'),
         model: 'claude-test',
         estimate: { kind: 'estimate', usd: 0.84, wall_clock_s: 300, sessions: 7 },
+        plugin_release: release,
       });
     }
     const one = /^\/sessions\/([0-9a-f]+)$/.exec(path);
@@ -279,6 +289,14 @@ export function fakeRunner({ tokens }: { tokens: Record<string, string> }) {
     },
     refuse(next: Refusal | null) {
       refusal = next;
+    },
+    /** The newest release the estimate names from now on, or null for a project with none. */
+    release(next: string | null) {
+      release = next;
+    },
+    /** Whether the estimate, and so the release, fails to be read from now on. */
+    failEstimates(fails: boolean) {
+      estimateFails = fails;
     },
     handle,
   };

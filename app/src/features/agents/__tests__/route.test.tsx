@@ -30,8 +30,7 @@ import { AppRoot } from '../../../shell/AppRoot';
 import type { AppConfig } from '../../../shell/config';
 import { SHELL_TABS } from '../../../shell/tabs';
 import { REFRESH_MS } from '../sessions';
-import { PLUGIN_RELEASE } from '../starts';
-import { fakeRunner, RUNNER_URL, session } from './fakeRunner';
+import { FAKE_RELEASE, fakeRunner, RUNNER_URL, session } from './fakeRunner';
 
 const CONFIG: AppConfig = {
   githubClientId: 'Iv1.test-client',
@@ -144,7 +143,7 @@ describe('the Agents tab', () => {
         skill: 'loop-build',
         concern: 'report-pipeline/exporter',
         budget_usd: 2,
-        plugin_release: PLUGIN_RELEASE,
+        plugin_release: FAKE_RELEASE,
       },
     });
     expect(runner.state.sessions[0]).toMatchObject({ sponsor: 'octocat', concern: 'report-pipeline/exporter' });
