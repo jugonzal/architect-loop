@@ -232,7 +232,8 @@ export const FAKE_RELEASE = 'v0.7.0';
 
 export function fakeRunner({ tokens }: { tokens: Record<string, string> }) {
   const sessions = new Map<string, Session>();
-  let release: string | null = FAKE_RELEASE;
+  // undefined: a runner deployed before latest-release, which answers no plugin_release at all.
+  let release: string | null | undefined = FAKE_RELEASE;
   let estimateFails = false;
   const dispatched: DispatchRequest[] = [];
   let refusal: Refusal | null = null;
@@ -290,8 +291,8 @@ export function fakeRunner({ tokens }: { tokens: Record<string, string> }) {
     refuse(next: Refusal | null) {
       refusal = next;
     },
-    /** The newest release the estimate names from now on, or null for a project with none. */
-    release(next: string | null) {
+    /** The newest release the estimate names from now on: null for a project with none, undefined for an old runner. */
+    release(next: string | null | undefined) {
       release = next;
     },
     /** Whether the estimate, and so the release, fails to be read from now on. */

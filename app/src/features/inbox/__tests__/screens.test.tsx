@@ -57,7 +57,7 @@ const json = (status: number, body: unknown) =>
 function services(
   doc: StatusDocument,
   login: string,
-  options: { refuse?: Session; earlier?: Session[]; release?: string | null } = {},
+  options: { refuse?: Session; earlier?: Session[]; release?: string | null; oldRunner?: boolean } = {},
 ) {
   const release = options.release === undefined ? RELEASE : options.release;
   const calls: Call[] = [];
@@ -74,7 +74,8 @@ function services(
     if (method === 'GET' && pathname === '/estimates') {
       const skill = searchParams.get('skill');
       const estimate = skill === 'loop-design' ? { kind: 'estimate', usd: 0.84, wall_clock_s: 540, sessions: 7 } : null;
-      return json(200, { skill, model: 'claude-test', estimate, plugin_release: release });
+      // A runner deployed before latest-release answers no plugin_release at all.
+      return json(200, { skill, model: 'claude-test', estimate, ...(options.oldRunner ? {} : { plugin_release: release }) });
     }
     if (method === 'POST' && pathname === '/sessions') {
       if (options.refuse) {
@@ -188,6 +189,7 @@ async function open(
     refuse,
     earlier,
     release,
+    oldRunner,
   }: {
     login?: string;
     doc?: StatusDocument;
@@ -195,9 +197,10 @@ async function open(
     refuse?: Session;
     earlier?: Session[];
     release?: string | null;
+    oldRunner?: boolean;
   } = {},
 ) {
-  const fake = services(doc, login, { refuse, earlier, release });
+  const fake = services(doc, login, { refuse, earlier, release, oldRunner });
   const result = renderRouter(
     {
       _layout: () => <AppRoot signIn={signedIn(login)} config={configFor(runnerUrl)} fetch={fake.fetch} />,
@@ -589,6 +592,16 @@ describe('the release a card starts (latest-release C2)', () => {
     expect(screen.getByTestId('start-release')).toHaveTextContent('Runs the skills released as v0.9.0, the newest release.');
     await press('Start · budget $2.00');
     expect(fake.starts().map((c) => (c.body as DispatchRequest).plugin_release)).toEqual(['v0.9.0']);
+  });
+
+  it('starts nothing on a runner that names no release, as one deployed before this concern', async () => {
+    const { fake } = await open(itemUrl('report-pipeline/dashboard/Q1'), { oldRunner: true });
+    await press('Answer in a session');
+    expect(screen.getByTestId('start-release')).toHaveTextContent(
+      'The project has no release of the skills yet, so nothing can start.',
+    );
+    expect(screen.getByRole('button', { name: 'Start · budget $2.00' })).toBeDisabled();
+    expect(fake.starts()).toEqual([]);
   });
 
   it('starts nothing while the project has no release', async () => {

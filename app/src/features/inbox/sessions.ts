@@ -143,7 +143,8 @@ export function useEstimate(runner: RunnerClient | null, skill: Skill): Estimate
       .estimate({ query: { skill } })
       .then(
         (answer) =>
-          live && setRead({ kind: 'read', model: answer.model, estimate: answer.estimate, release: answer.plugin_release }),
+          // A runner deployed before latest-release names no release at all, which is none: nothing starts on it.
+          live && setRead({ kind: 'read', model: answer.model, estimate: answer.estimate, release: answer.plugin_release ?? null }),
       )
       .catch((error: unknown) => live && setRead({ kind: 'failed', message: serviceMessage(error) }));
     return () => {

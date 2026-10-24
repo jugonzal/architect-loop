@@ -702,7 +702,8 @@ function RecordSheet({
   // Whether the person typed a release, which the estimate's then no longer replaces.
   const [releaseTyped, setReleaseTyped] = useState(false);
   const [estimate, setEstimate] = useState<EstimateRead>({ kind: 'reading' });
-  const named = estimate.kind === 'read' ? estimate.answer.plugin_release : null;
+  // A runner deployed before latest-release names no release at all, which is none.
+  const named = estimate.kind === 'read' ? (estimate.answer.plugin_release ?? null) : null;
 
   useEffect(() => {
     if (named && !releaseTyped) setRelease(named);

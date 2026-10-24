@@ -580,6 +580,19 @@ describe('"record this?" (C2)', () => {
     expect(w.runner.dispatched).toEqual([]);
   });
 
+  it('starts nothing on a runner that names no release, as one deployed before this concern', async () => {
+    const w = world();
+    w.runner.release(undefined);
+    const [marked] = w.threads.seed(w.threads.paths.concern('report-pipeline', 'queue'), [
+      { body: 'Retry five times.', author: person('ben'), record_marks: [{ login: 'ben', marked_at: at(1) }] },
+    ]);
+    await open(CONCERN_THREAD, w, { as: 'ana' });
+    await press('Record it…', within(screen.getByTestId(`message-${marked!.id}`)));
+    const sheet = within(screen.getByTestId('record-sheet'));
+    expect(sheet.getByLabelText('Skills release').props.value).toBe('');
+    expect(sheet.getByRole('button', { name: 'Start /loop-design' }).props.accessibilityState).toMatchObject({ disabled: true });
+  });
+
   it('says so when the estimate, and so the release, cannot be read', async () => {
     const w = world();
     w.runner.failEstimates(true);

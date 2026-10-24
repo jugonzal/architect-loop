@@ -79,9 +79,12 @@ type StatusRead =
 
 type EstimateRead = { kind: 'reading' } | { kind: 'read'; answer: EstimateAnswer } | { kind: 'failed'; message: string };
 
-/** The release a start runs: the one its skill's estimate named, or none until the estimate names one (D68). */
+/**
+ * The release a start runs: the one its skill's estimate named, or none until the estimate names one (D68). A runner
+ * deployed before latest-release answers no plugin_release at all, which is none too, so nothing starts on it.
+ */
 function releaseOf(estimate: EstimateRead | undefined): string | null {
-  return estimate?.kind === 'read' ? estimate.answer.plugin_release : null;
+  return estimate?.kind === 'read' ? (estimate.answer.plugin_release ?? null) : null;
 }
 
 /** The confirmation open under one row: the budget as typed, and whether it is being sent. */

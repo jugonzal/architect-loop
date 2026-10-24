@@ -503,6 +503,25 @@ describe('the release a start runs (latest-release C2)', () => {
     expect(fake.callsTo('POST', '/sessions')).toHaveLength(0);
   });
 
+  it('starts nothing on a runner that names no release, as one deployed before this concern', async () => {
+    const { fake } = await shown({
+      answer: (call) =>
+        call.path === '/estimates'
+          ? { status: 200, body: { skill: call.query.skill, model: 'claude-opus-5-5', estimate: null } }
+          : undefined,
+    });
+    fireEvent.press(screen.getByRole('button', { name: 'Start report-pipeline/exporter' }));
+    expect(screen.getByTestId('start-release')).toHaveTextContent(
+      'Sponsored by you, octocat. The runner names no release of the skills, so it cannot start yet.',
+    );
+    fireEvent.changeText(screen.getByLabelText('Budget in dollars'), '2');
+    const start = screen.getByRole('button', { name: 'Start with a $2.00 budget' });
+    expect(start.props.accessibilityState).toMatchObject({ disabled: true });
+    fireEvent.press(start);
+    await flush();
+    expect(fake.callsTo('POST', '/sessions')).toHaveLength(0);
+  });
+
   it('starts nothing when the estimate, and so the release, cannot be read', async () => {
     const { fake } = await shown({
       answer: (call) =>
