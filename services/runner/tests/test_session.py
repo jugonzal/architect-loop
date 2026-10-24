@@ -97,12 +97,16 @@ class FakeWorkspace:
 
 
 class RecordingStore(SqliteStore):
+    """Records each publication with the job's clock. `stalls` maps a publication's number (from 1) to a real pause,
+    in seconds, before it is written: the stall a busy machine causes."""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.published = []
+        self.published, self.clock, self.stalls = [], time.monotonic, {}
 
     def publish(self, session_id, spend, now):
-        self.published.append((time.monotonic(), spend))
+        self.published.append((self.clock(), spend))
+        time.sleep(self.stalls.get(len(self.published), 0))
         return super().publish(session_id, spend, now)
 
 
@@ -153,6 +157,17 @@ class SpendPublicationTest(JobTest):
         self.assertGreaterEqual(len(times), 8, "the 0.6 s silence must still see publications")
         gaps = [b - a for a, b in zip(times, times[1:])]
         self.assertLessEqual(max(gaps), self.interval * 3, gaps)  # the interval plus scheduling slack
+
+    def test_a_stalled_machine_cannot_fail_the_timing_tests(self):
+        """CI's machines sometimes stall for hundreds of milliseconds. A real pause in the middle of the silence must
+        change nothing the test above sees."""
+        session = self.claimed()
+        self.store.stalls = {4: 0.3}
+        self.run_job(session, [(0.01, assistant(1)), (0.6, assistant(2)), (0.01, result())])
+        times = [t for t, spend in self.store.published if spend]
+        self.assertGreaterEqual(len(times), 8)
+        gaps = [b - a for a, b in zip(times, times[1:])]
+        self.assertLessEqual(max(gaps), self.interval * 3, gaps)
 
     def test_every_published_figure_is_labelled_an_estimate(self):
         session = self.claimed()
