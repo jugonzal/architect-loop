@@ -68,6 +68,10 @@ Standing permissions the owner grants on purpose. Anything not listed here is no
 
 | Environment | Where | Agents may read | Agents may write | Deployed by | Served commit: a command that prints its SHA | Verify with |
 | --- | --- | --- | --- | --- | --- | --- |
+| local/status | the service `status` in Docker on the machine that runs the harness, built from a clean checkout's HEAD and run against Postgres, the Firestore emulator and the fakes in `scripts/local/fakes/` | yes | yes: the harness costs nothing and crosses no gate | anyone, agents included: `sh scripts/local/up.sh` from a clean checkout of a commit on `origin/main` | `sh scripts/gcp/served.sh http://localhost:8701/version` | `sh scripts/gcp/served.sh http://localhost:8701/version <sha>` |
+| local/runner | the service `runner` and each session's job in Docker on the machine that runs the harness, as for `local/status` | yes | yes: the harness costs nothing and crosses no gate | anyone, agents included: `sh scripts/local/up.sh` from a clean checkout of a commit on `origin/main` | `sh scripts/gcp/served.sh http://localhost:8702/version` | `sh scripts/gcp/served.sh http://localhost:8702/version <sha>` |
+| local/threads | the service `threads` in Docker on the machine that runs the harness, as for `local/status` | yes | yes: the harness costs nothing and crosses no gate | anyone, agents included: `sh scripts/local/up.sh` from a clean checkout of a commit on `origin/main` | `sh scripts/gcp/served.sh http://localhost:8703/version` | `sh scripts/gcp/served.sh http://localhost:8703/version <sha>` |
+| local/notify | the service `notify` in Docker on the machine that runs the harness, as for `local/status` | yes | yes: the harness costs nothing and crosses no gate | anyone, agents included: `sh scripts/local/up.sh` from a clean checkout of a commit on `origin/main` | `sh scripts/gcp/served.sh http://localhost:8704/version` | `sh scripts/gcp/served.sh http://localhost:8704/version <sha>` |
 | main | the `main` branch of [jugonzal/architect-loop](https://github.com/jugonzal/architect-loop) | yes | `docs/loops/` only (§2.1) | owner, by merging | `git fetch -q origin && git rev-parse origin/main` | `gh run list --repo jugonzal/architect-loop --commit <sha>` (the `check` workflow) |
 | staging/status | Cloud Run service `status`, us-east1, staging's GCP project `loops-512401` | yes | no | owner: `sh scripts/gcp/deploy.sh status staging <sha>` | `sh scripts/gcp/served.sh https://status-665570365697.us-east1.run.app/version` | `sh scripts/gcp/served.sh https://status-665570365697.us-east1.run.app/version <sha>` |
 | staging/runner | Cloud Run service `runner`, us-east1, staging's GCP project `loops-512401` | yes | no | owner: `sh scripts/gcp/deploy.sh runner staging <sha>` | `sh scripts/gcp/served.sh https://runner-665570365697.us-east1.run.app/version` | `sh scripts/gcp/served.sh https://runner-665570365697.us-east1.run.app/version <sha>` |
@@ -84,6 +88,17 @@ List environments from lowest to highest: a concern is proven on each one on its
 `/loop-status` runs the served-commit command for every environment agents may read. Without that command it
 cannot tell a merged concern from a shipped one, so fill it in first. What an environment serves is what the
 command prints, not what a document says.
+
+The `local/<service>` rows are the local harness in `scripts/local/` (command-center/D53): every service in
+`services/`, built from a clean checkout's HEAD and run on one machine with its manifest's settings, against
+Postgres, the Firestore emulator and fakes of GitHub, the Agent SDK, Cloud Run's job launch and the metadata server.
+Every secret it hands a service is made up, and the services and their jobs sit on a Docker network with no route
+off the machine, so it costs nothing and crosses no gate, and agents may run it and read it. It proves the wiring,
+not GitHub or the SDK. A row reads a commit only while the harness runs on the machine that reads it, and reads as
+unknown otherwise, which is true. An evidence line cites `local @<sha>` only for a commit on `main`. The status
+service reads these rows as unknown from the cloud (command-center/D56), and `local/notify` reads as unknown until
+`services/notify/` exists. Each port is 8700 plus the service's place in `SERVICES` in `scripts/gcp/common.sh`. See
+`docs/runbooks/local.md`.
 
 The command center has more than one deployable, so staging and production each have one row per service, named
 `<environment>/<service>` after the service's folder in `services/` (command-center/environments). Each
@@ -114,7 +129,8 @@ The plugin is not an environment: a release is a tagged commit on `main` that th
 | Unit tests | `python3 -m unittest discover -s tests -v` | standard library only; no packages to install |
 | Full suite | `sh scripts/check.sh` | validates every skill, checks that the skills stand alone (§6), then runs the unit tests. `CHECK_SKIP_TESTS=1` skips the tests |
 | Lint / types | `sh scripts/check.sh` | the same script; there is no separate linter yet |
-| Smoke test (end to end, synthetic input) | TODO(owner) | the proof that the whole pipeline works |
+| Smoke test (end to end, synthetic input) | `sh scripts/local/smoke.sh` | the proof that the whole pipeline works, on the local harness: it brings every service up at HEAD (as `up.sh`), dispatches a `/loop-build` to the local runner and follows it to its end against the fake GitHub and the fake Agent SDK, checks threads, and reads every `local/<service>` row. Needs Docker, git, openssl and python3; refuses a dirty working tree; leaves the harness running, so `/loop-status` can read the local rows. `--no-up` checks what `up.sh` already started. CI runs it in `.github/workflows/local.yml`. See `docs/runbooks/local.md` |
+| Run the services locally | `sh scripts/local/up.sh`, and `sh scripts/local/down.sh` to stop them | anyone, agents included (§3's `local/<service>` rows). Builds every service in `services/` at HEAD, so the first run takes minutes; later ones reuse Docker's cache. Each start wipes the local stores |
 | CI result for a commit | `gh run list --repo jugonzal/architect-loop --commit <sha>` | |
 | Install the skills from a checkout | `sh scripts/install.sh --user`, or `--project <dir>` | copies `plugin/skills/loop-*` |
 | Release the plugin | owner only (§2) | |
