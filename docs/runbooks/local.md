@@ -3,8 +3,9 @@
 **Status:** run end to end, on a branch | **Last run as written:** 2026-10-24 on a developer's Mac (Docker
 Desktop, Apple silicon), by an agent building `command-center/local-harness`, from commits of its branch, not yet
 on `main`: steps 1 to 3 three times, and step 4 once. Every expected output below is what those runs printed,
-with the commit written `<sha>`. CI's first run, in `.github/workflows/local.yml` on Ubuntu, is not recorded here
-yet.
+with the commit written `<sha>`. Then, the same day, `.github/workflows/local.yml` ran on Ubuntu for a push of
+the branch, with no cache: the harness's tests, then `smoke.sh`, whose `up` took 80 s and whose checks all held
+11 s after it, printing what steps 1 and 3 show.
 
 Use this to run the command center's services on one machine, from a clean checkout of a commit, so a claim can be
 proven before staging (command-center/D53), and to run `LOOP.md` §4's smoke test. Afterwards every service in
@@ -197,4 +198,5 @@ Each learned in a real run. Newest first.
 
 ## Corrections
 
-None yet.
+- 2026-10-24: Status: CI's first run of `local.yml` on Ubuntu passed for a push of the branch; the status said it
+  was not recorded yet. Nothing in the steps changed.
