@@ -27,6 +27,11 @@ command-center/needs-proven:
   one whose HOLDS went stale (search/feeds), so gathered and supplied facts are compared on both.
 - C2: a blocked concern's reason names each unmet need and its claims without a HOLDS anywhere, its next step is
   the /loop-prove that would prove one, and that command is among what agents can start now.
+- C3: that /loop-prove names only one of the need's own rows (needs-proven/D1): main for ships-to: main, otherwise
+  a row listed no higher than ships-to with the same part after the /. With one row per service, the runner's row
+  serves a commit holding the status service's need, and the board never names it (NeedsTest). When none of its
+  own rows serves the need, the blocked concern's next step is the need's own, and no agent is sent to prove it
+  (D2). SkillTest checks that the table defines a concern's own rows.
 
 Nothing here touches a network or a real account: git runs on temporary repositories, gh is
 tests/fixtures/loop_status/fake_gh.py placed first on PATH, and the served-commit commands read local files.
@@ -1269,6 +1274,11 @@ LOCAL_LOOP_MD = LOOP_MD.replace("| staging | staging |",
                                 "| local | this machine | yes | no | whoever runs it | `sh served.sh local` | |\n"
                                 "| staging | staging |")
 
+# One row per service, as in a repository that deploys several services from one main.
+SERVICE_LOOP_MD = LOOP_MD.split("| staging |")[0] + "".join(
+    "| %s | %s | yes | no | owner | `sh served.sh %s` | |\n" % (name, name, name)
+    for name in ("local/status", "staging/status", "staging/runner", "production/status"))
+
 
 class NeedsTest(unittest.TestCase):
     """needs-proven: a need is met once its work is on main and every claim holds on some environment (D50)."""
@@ -1347,8 +1357,10 @@ class NeedsTest(unittest.TestCase):
         self.assertIn("loop/base, which it needs, is merged, and not yet proven on any environment", thing["reason"])
         self.assertIn("C2 has no evidence", thing["reason"])
         self.assertNotIn("C1", thing["reason"].split("not yet proven")[1], "only the claims without a HOLDS")
-        self.assertEqual(thing["next"], "/loop-prove loop/base production",
-                         "with no lower environment serving it, the need's ships-to")
+        self.assertEqual(thing["next"], "/loop-ship production",
+                         "with none of its own rows serving it, the need's own next step (needs-proven/D2)")
+        self.assertFalse([a for a in doc["agents_can_start"] if a["concern"] == "loop/base"],
+                         "no agent can prove what none of its rows serves")
         m.serve("staging")
         thing, _, doc = self.thing(m)
         self.assertEqual(thing["next"], "/loop-prove loop/base staging", "the lowest environment that serves it")
@@ -1381,6 +1393,44 @@ class NeedsTest(unittest.TestCase):
         self.assertEqual(base["state"], "done")
         self.assertEqual(thing["state"], "ready")
 
+    def test_a_need_is_proven_only_on_its_own_services_rows(self):
+        """needs-proven/C3: every row built from one repository serves every concern on main by ancestry, so the
+        runner's row serves the status service's need without running its code. The board never names it."""
+        m = self.setup(["- **C1** Answers. Prove: a request, on staging/status."], ships_to="staging/status",
+                       loop_md=SERVICE_LOOP_MD)
+        for env in ("local/status", "staging/status", "staging/runner", "production/status"):
+            m.served[env] = m.root
+        m.serve("staging/runner")
+        m.env_error["staging/status"] = "GET https://status.example/version failed: 404"
+        thing, base, doc = self.thing(m)
+        self.assertEqual(base["state"], "unknown")
+        self.assertEqual(thing["state"], "blocked")
+        self.assertEqual(thing["next"], "Check that staging/status answers, then /loop-status again",
+                         "none of its own rows serves it, so the need's own next step (D2), never staging/runner")
+        self.assertFalse([a for a in doc["agents_can_start"] if a["concern"] == "loop/base"])
+        self.assertFalse([line for line in ls.board(doc).splitlines() if "/loop-prove loop/base" in line])
+        del m.env_error["staging/status"]
+        thing, base, doc = self.thing(m)
+        self.assertEqual(base["state"], "merged")
+        self.assertEqual(thing["next"], "/loop-ship staging/status")
+        m.serve("production/status")
+        self.assertEqual(self.thing(m)[0]["next"], "/loop-ship staging/status", "a row above its ships-to is not its own")
+        m.serve("local/status")
+        thing, _, doc = self.thing(m)
+        self.assertEqual(thing["next"], "/loop-prove loop/base local/status", "the lowest of its own rows that serves it")
+        self.assertIn({"concern": "loop/base", "action": "prove", "command": "/loop-prove loop/base local/status"},
+                      doc["agents_can_start"])
+        self.assertRegex(ls.board(doc), r"(?m)^thing +blocked .+/loop-prove loop/base local/status$")
+        m.served["local/status"] = m.root
+        m.serve("staging/status")
+        thing, base, _ = self.thing(m)
+        self.assertEqual(base["state"], "shipped")
+        self.assertEqual(thing["next"], "/loop-prove loop/base staging/status")
+        m.concern("loop/base", m.files["docs/loops/loop/base.md"].replace("ships-to: staging/status",
+                                                                          "ships-to: staging/runner"))
+        self.assertEqual(self.thing(m)[0]["next"], "/loop-prove loop/base staging/runner",
+                         "the runner's row is the place to prove the runner's own concern")
+
 
 class SkillTest(unittest.TestCase):
     """The script's states are the table's, and the skill runs the script while keeping the table as the
@@ -1406,6 +1456,14 @@ class SkillTest(unittest.TestCase):
         step_5 = re.search(r"^5\. \*\*Derive each loop's state\.\*\*(.*?)^\d+\. \*\*", self.skill, re.M | re.S).group(1)
         self.assertIn("unknown", step_5)
         self.assertIn("never guessed as active", step_5)
+
+    def test_the_table_proves_a_concern_only_on_its_own_rows(self):
+        """command-center/needs-proven D1 and D2."""
+        step_4 = re.search(r"^4\. \*\*Derive each concern's state\.\*\*(.*?)^\d+\. \*\*", self.skill, re.M | re.S).group(1)
+        self.assertIn("- **Its own rows:**", step_4)
+        rows = {r.split("|")[1].strip(): r for r in step_4.splitlines() if r.strip().startswith("| ")}
+        self.assertIn("the lowest of its own rows that serves it; when none does", rows["blocked"])
+        self.assertIn("any of its own rows below `ships-to`", rows["merged"])
 
 
 class CommandLineTest(unittest.TestCase):

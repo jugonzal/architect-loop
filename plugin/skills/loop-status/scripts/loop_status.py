@@ -985,8 +985,9 @@ class Derivation:
         results = [self.claim_proven(other, claim) for claim in other.live_claims()]
         unproven = [why for result, why in results if result == "missing"]
         if unproven:
+            env = self.prove_environment(other)
             return dict(out, met=False, detail="is %s, and not yet proven on any environment: %s" % (
-                other.state, "; ".join(unproven)), prove="/loop-prove %s %s" % (other.ref, self.prove_environment(other)))
+                other.state, "; ".join(unproven)), prove="/loop-prove %s %s" % (other.ref, env) if env else None)
         unknown = [why for result, why in results if result == "unknown"]
         if unknown:
             return dict(out, missing=unknown)
@@ -1055,19 +1056,35 @@ class Derivation:
                 key, env, proof, ", ".join(superseded), c.id))
         return ("holds", "%s HOLDS rung %d on %s @%s" % (key, line["rung"], env, proof))
 
+    def own_rows(self, c):
+        """The rows of LOOP.md §3 that run c's code, lowest first: main for ships-to: main, otherwise every row
+        but main, listed no higher than ships-to, with the same part after the / (command-center/needs-proven D1).
+        Rows built from one repository serve every concern on main by ancestry, so serving alone is not enough."""
+        if c.ships_to == "main":
+            return [e for e in self.p.environments if e["name"] == "main"]
+        names = [e["name"] for e in self.p.environments]
+        if not c.ships_to or c.ships_to not in names:
+            return []
+        service = c.ships_to.partition("/")[2]
+        return [e for e in self.p.environments[:names.index(c.ships_to) + 1]
+                if e["name"] != "main" and e["name"].partition("/")[2] == service]
+
     def prove_environment(self, c):
-        """Where to prove c's unproven claims: the lowest environment after main that serves its work, else its
-        ships-to."""
+        """Where to prove c's unproven claims: the lowest of its own rows that serves its work, or None when none
+        does, so that what needs it waits on its own next step (command-center/needs-proven D2)."""
+        if c.ships_to == "main":
+            return "main"
         commits, _, _ = self.merge_commits(c)
-        if c.ships_to and c.ships_to != "main" and commits:
-            for env in self.p.environments:
-                if env["name"] == "main" or env["error"] or not env["served"]:
-                    continue
-                values = [self.oracle.ask({"kind": "ancestor", "repository": self.p.project, "commit": sha,
-                                           "of": env["served"]})[0] for sha in commits]
-                if all(v is True for v in values):
-                    return env["name"]
-        return c.ships_to or "main"
+        if not commits:
+            return None
+        for env in self.own_rows(c):
+            if env["error"] or not env["served"]:
+                continue
+            values = [self.oracle.ask({"kind": "ancestor", "repository": self.p.project, "commit": sha,
+                                       "of": env["served"]})[0] for sha in commits]
+            if all(v is True for v in values):
+                return env["name"]
+        return None
 
     def find_cycles(self):
         graph = {}
