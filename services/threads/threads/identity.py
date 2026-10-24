@@ -9,9 +9,8 @@ rather than leaving it to Cloud Run's invoker check.
 
 import jwt
 
+from .config import GOOGLE_CERTS
 from .errors import InvalidCredentials, Unavailable
-
-GOOGLE_CERTS = "https://www.googleapis.com/oauth2/v3/certs"
 ISSUERS = ("https://accounts.google.com", "accounts.google.com")
 
 

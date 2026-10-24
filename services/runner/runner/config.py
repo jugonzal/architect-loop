@@ -84,6 +84,14 @@ class Config:
     # Where a session's job clones from and works.
     git_url: str = ""
     workdir: str = "/tmp/runner/sessions"
+    # The services outside the runner. Each defaults to the real one; the local harness points them at its fakes
+    # (command-center/D53).
+    github_api_url: str = "https://api.github.com"
+    run_api_url: str = "https://run.googleapis.com"  # Cloud Run's Admin API, which runs a session's job
+    metadata_url: str = "http://metadata.google.internal"  # the metadata server, for the service identity's token
+    # The Agent SDK client a session's job runs, as `<module>:<callable>` on the import path: the SDK's own by default,
+    # or a stand-in, such as the local harness's fake SDK, which spends nothing.
+    sdk_client: str = "runner.session:claude_client"
 
     def __post_init__(self):
         if not 0 < self.spend_interval_s <= MAX_SPEND_INTERVAL_S:
@@ -119,6 +127,8 @@ class Config:
             "COMMIT_SHA": "commit", "RUNNER_APP_ID": "app_id", "RUNNER_APP_INSTALLATION_ID": "app_installation_id",
             "RUNNER_APP_SLUG": "app_slug", "RUNNER_GCP_PROJECT": "gcp_project", "RUNNER_REGION": "region",
             "RUNNER_JOB": "job", "RUNNER_GIT_URL": "git_url", "RUNNER_WORKDIR": "workdir",
+            "RUNNER_GITHUB_API_URL": "github_api_url", "RUNNER_RUN_API_URL": "run_api_url",
+            "RUNNER_METADATA_URL": "metadata_url", "RUNNER_SDK_CLIENT": "sdk_client",
         }
         for name, key in plain.items():
             if env.get(name):

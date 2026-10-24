@@ -12,6 +12,7 @@
 | `THREADS_GITHUB_API_URL` | GitHub's REST API. Default `https://api.github.com`. |
 | `THREADS_AUDIENCE` | This service's own URL, the audience the runner's ID token must name. Unset, no runner is trusted. |
 | `THREADS_RUNNER_SERVICE_ACCOUNTS` | The service accounts trusted as the runner, comma-separated. Unset, none is. |
+| `THREADS_RUNNER_KEYS_URL` | The keys the runner's ID token is checked against. Default Google's; the local harness's own. |
 | `THREADS_CACHE_SECONDS` | How long a caller's login and membership are reused before GitHub is asked again. Default 60. |
 
 The secrets reach the service as environment variables that Cloud Run fills from Secret Manager. A first deploy
@@ -21,6 +22,8 @@ starts: `GET /version` answers, and every other request is refused with 503 nami
 
 import os
 from dataclasses import dataclass, field
+
+GOOGLE_CERTS = "https://www.googleapis.com/oauth2/v3/certs"
 
 
 def _list(value):
@@ -39,6 +42,7 @@ class Settings:
     github_api_url: str = "https://api.github.com"
     audience: str | None = None
     runner_service_accounts: tuple = field(default_factory=tuple)
+    runner_keys_url: str = GOOGLE_CERTS
 
     @classmethod
     def from_env(cls, environ=None):
@@ -56,6 +60,7 @@ class Settings:
             github_api_url=env.get("THREADS_GITHUB_API_URL") or "https://api.github.com",
             audience=env.get("THREADS_AUDIENCE"),
             runner_service_accounts=tuple(_list(env.get("THREADS_RUNNER_SERVICE_ACCOUNTS"))),
+            runner_keys_url=env.get("THREADS_RUNNER_KEYS_URL") or GOOGLE_CERTS,
         )
 
     def problems(self):
