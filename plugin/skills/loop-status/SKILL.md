@@ -93,10 +93,10 @@ If the script cannot run, gather the same facts with the commands below and appl
    | parked | Front matter has `parked: D<n>` | Nothing. Show what the decision says would unpark it |
    | contradicted | A claim's latest verdict is CONTRADICTS, and no decision is dated after it | `/loop-design <loop>/<concern>` (or `/loop-diagnose` when the cause is unknown) |
    | open | A question that blocks a claim is unanswered, or a decision in `needs` has been superseded; or nothing is built yet and the contract lacks Done when, `touches` or `ships-to` | `/loop-design`. The owner answers |
-   | blocked | Nothing is built yet, and a concern in `needs` is not met | `/loop-prove` on that concern, on the lowest environment that serves it, when its work is on main; otherwise its next action |
+   | blocked | Nothing is built yet, and a concern in `needs` is not met | `/loop-prove` on that concern, on the lowest of its own rows that serves it; when none does, or its work is not on main, that concern's next step |
    | ready | Nothing is built yet: no linked PR, no `<loop>/<concern>` branch, no commit with its trailer | `/loop-build <loop>/<concern>` |
    | building | A linked PR is open, or the branch exists, and none of its work is on main | The PR's next step: build, review, or the owner merges once the proof in its body holds and CI is green |
-   | merged | Its work is on main, and its `ships-to` environment does not serve it yet | Prove on any lower environment that serves it, then `/loop-ship <env>` |
+   | merged | Its work is on main, and its `ships-to` environment does not serve it yet | Prove on any of its own rows below `ships-to` that serves it, then `/loop-ship <env>` |
    | shipped | `ships-to` serves its work, and some claim has no current HOLDS there | `/loop-prove <loop>/<concern> <env>` |
    | stale | Every claim had a current HOLDS there, but code under `touches` or a decision in `needs` has changed since | `/loop-prove` again |
    | done | Every claim has a current HOLDS on `ships-to` | Offer a Shipped note if it has none |
@@ -108,6 +108,12 @@ If the script cannot run, gather the same facts with the commands below and appl
    - **Serves:** the environment's served commit has every one of the concern's merge commits as an ancestor.
      For `ships-to: main`, the main branch's head serves whatever is on main, including a PR merged in another
      repository whose merge commit is on that repository's main (step 3).
+   - **Its own rows:** the rows of `LOOP.md` §3 that run a concern's code, the only ones the board names as a
+     place to prove it. For `ships-to: main`, `main`. Otherwise every row other than `main`, listed no higher than
+     `ships-to`, whose name has the same part after the `/` as `ships-to` (or no `/`, when `ships-to` has none):
+     for `ships-to: staging/status`, `local/status` and `staging/status`, never `staging/runner`. Rows built from
+     one repository serve every concern on main by ancestry, so serving alone never makes another service's row a
+     place to prove it.
    - **Current HOLDS for a claim on an environment:** its latest evidence line is HOLDS there, its commit is an
      ancestor of the served commit, and `git log --format=%h <proof>..<served> -- <touches>` prints nothing.
      A claim whose Prove says CI holds at rung 5 when CI is green on the main branch's head, with no line needed.
