@@ -1,9 +1,11 @@
 """Tests for the services' manifests (command-center/service-manifests): the format that scripts/gcp/manifest.py
 reads, how deploy.sh applies the manifest of the commit it deploys (C1), what bootstrap.sh creates from the
-manifests (C2), and whether the runner's and threads' manifests declare what their code reads (C3).
+manifests (C2), and whether the runner's and threads' manifests declare what their code reads (C3). Also the
+schedules a manifest may declare (command-center/service-schedules): their format and what render makes of them
+(C1), and how deploy.sh and bootstrap.sh apply them (C2).
 
-The scripts run against the fake gcloud, docker and curl of test_layout.py, first on PATH; git is real. Nothing here
-reaches Google Cloud.
+The scripts run against the fake gcloud, docker and curl of test_layout.py, first on PATH, with this file's model of
+Cloud Scheduler added to the fake gcloud; git is real. Nothing here reaches Google Cloud.
 
 Run from the repository root: python3 -m unittest discover -s tests -v
 """
@@ -16,14 +18,101 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 import unittest
 
-from test_layout import GCP, ROOT, STAGING, GcpHarness, write
+import test_layout
+from test_layout import GCP, ROOT, STAGING, GcpHarness, parse_flags, positional, write
 
 spec = importlib.util.spec_from_file_location("gcp_manifest", os.path.join(GCP, "manifest.py"))
 manifest = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(manifest)
+
+
+def fake_scheduler(state, argv, entry):
+    """`gcloud scheduler jobs list|create http|update http|delete`, or None for any other gcloud call.
+
+    Like Cloud Scheduler, it refuses a call in a project that has not enabled its API, or from a caller without
+    roles/cloudscheduler.admin on the project, and a job whose OIDC identity does not exist. update keeps what a flag
+    it is not given set before. list prints what `--format='value(name,httpTarget.uri)'` prints.
+    """
+    pos, flags = positional(argv), parse_flags(argv)
+    if pos[:2] != ["scheduler", "jobs"]:
+        return None
+
+    def one(key):
+        return flags.get(key, [None])[0]
+
+    def fail(message, code=1):
+        sys.stderr.write("ERROR: (gcloud.scheduler.jobs) %s\n" % message)
+        return code
+
+    project = state["projects"].get(one("project"))
+    if project is None:
+        return fail("NOT_FOUND: project %s" % one("project"))
+    if manifest.SCHEDULER_API not in project["services"]:
+        return fail("PERMISSION_DENIED: Cloud Scheduler API has not been used in project %s" % one("project"))
+    caller = one("impersonate-service-account") or state["account"]
+    if "serviceAccount:" + caller not in project["policy"].get("roles/cloudscheduler.admin", []):
+        return fail("PERMISSION_DENIED: %s lacks IAM permission cloudscheduler.jobs.%s" % (caller, pos[2]))
+    jobs, location = project.setdefault("scheduler", {}), one("location")
+    if pos[2:] == ["list"]:
+        for job_id, job in sorted(jobs.items()):
+            if job["location"] == location:
+                sys.stdout.write("projects/%s/locations/%s/jobs/%s\t%s\n" % (one("project"), location, job_id, job["uri"]))
+        return 0
+    job_id = pos[-1]
+    found = jobs.get(job_id) if jobs.get(job_id, {}).get("location") == location else None
+    if pos[2:] == ["delete", job_id]:
+        if found is None:
+            return fail("NOT_FOUND: Job not found.")
+        del jobs[job_id]
+        return 0
+    if pos[2:] in (["create", "http", job_id], ["update", "http", job_id]):
+        if pos[2] == "create" and found is not None:
+            return fail("ALREADY_EXISTS: Job projects/%s/locations/%s/jobs/%s already exists." % (
+                one("project"), location, job_id))
+        if pos[2] == "update" and found is None:
+            return fail("NOT_FOUND: Job not found.")
+        job = dict(found or {"location": location})
+        for key, flag in (("schedule", "schedule"), ("time_zone", "time-zone"), ("uri", "uri"),
+                          ("http_method", "http-method"), ("oidc_identity", "oidc-service-account-email"),
+                          ("audience", "oidc-token-audience")):
+            if one(flag) is not None:
+                job[key] = one(flag)
+        if job.get("oidc_identity") and job["oidc_identity"] not in project["accounts"]:
+            return fail("INVALID_ARGUMENT: service account %s does not exist" % job["oidc_identity"])
+        jobs[job_id] = job
+        return 0
+    return fail("the fake gcloud does not model: %s" % " ".join(argv), 2)
+
+
+LAYOUT_GCLOUD = test_layout.fake_gcloud
+
+
+def fake_gcloud(state, argv, entry):
+    code = fake_scheduler(state, argv, entry)
+    return LAYOUT_GCLOUD(state, argv, entry) if code is None else code
+
+
+if __name__ == "__main__" and sys.argv[1:2] == ["fake"]:
+    test_layout.fake_gcloud = fake_gcloud
+    sys.exit(test_layout.fake(sys.argv[2], sys.argv[3:]))
+
+
+class Harness(GcpHarness):
+    """GcpHarness, whose fake gcloud also models Cloud Scheduler (fake_scheduler above)."""
+
+    def make_root(self, projects=None):
+        root = super().make_root(projects)
+        with open(os.path.join(self.fake_dir, "bin", "gcloud"), "w") as f:
+            f.write('#!/bin/sh\nexec "%s" -S "%s" fake gcloud "$@"\n' % (sys.executable, os.path.abspath(__file__)))
+        return root
+
+    def scheduled(self, project=STAGING):
+        return self.state()["projects"][project].get("scheduler", {})
+
 
 IDENTITY = "fixture-runtime@%s.iam.gserviceaccount.com" % STAGING
 # A manifest with every field of the format.
@@ -49,8 +138,12 @@ FULL = {
             "secrets": {"FIXTURE_API_KEY": "fixture-api-key"},
         },
     },
+    "schedules": {"tick": {"cron": "* * * * *", "time_zone": "Etc/UTC", "path": "/tick"}},
 }
+TICK = FULL["schedules"]["tick"]
 FULL_SECRETS = ("fixture-app-private-key", "fixture-database-url", "fixture-api-key")
+SCHEDULER_AGENT = "serviceAccount:service-%s@gcp-sa-cloudscheduler.iam.gserviceaccount.com"
+DEPLOY = "deploy@%s.iam.gserviceaccount.com" % STAGING
 
 
 def full(**changes):
@@ -114,11 +207,43 @@ class FormatTest(unittest.TestCase):
             (full(jobs={"fixture-job": dict(job, settings={"FIXTURE_LIST": "again"})}),
              "jobs.fixture-job.settings.FIXTURE_LIST: already declared in settings"),
             (full(jobs={"Fixture_Job": job}), "a job's name"),
+            # Schedules (service-schedules C1).
+            (full(schedules=[]), "schedules: an object"),
+            (full(schedules={"Tick": TICK}), "schedules.Tick: a schedule's name"),
+            (full(schedules={"t" * 49: TICK}), "a schedule's name"),
+            (full(schedules={"tick": "* * * * *"}), "schedules.tick: an object with cron, time_zone, path"),
+            (full(schedules={"tick": dict(TICK, method="GET")}), "schedules.tick.method: not a field of a schedule"),
+            (full(schedules={"tick": {"cron": "* * * * *", "time_zone": "Etc/UTC"}}), "schedules.tick.path: missing"),
+            (full(schedules={"tick": dict(TICK, cron="* * * *")}), "schedules.tick.cron: five fields"),
+            (full(schedules={"tick": dict(TICK, cron="0 * * * * *")}), "schedules.tick.cron: five fields"),
+            (full(schedules={"tick": dict(TICK, cron="*  * * * *")}), "schedules.tick.cron: five fields"),
+            (full(schedules={"tick": dict(TICK, cron="every minute")}), "schedules.tick.cron: five fields"),
+            (full(schedules={"tick": dict(TICK, cron="* * * * ?")}), "schedules.tick.cron: five fields"),
+            (full(schedules={"tick": dict(TICK, cron=60)}), "schedules.tick.cron: five fields"),
+            (full(schedules={"tick": dict(TICK, time_zone="UTC +1")}), "schedules.tick.time_zone"),
+            (full(schedules={"tick": dict(TICK, time_zone="../etc")}), "schedules.tick.time_zone"),
+            (full(schedules={"tick": dict(TICK, time_zone="")}), "schedules.tick.time_zone"),
+            (full(schedules={"tick": dict(TICK, path="tick")}), "schedules.tick.path: a path on the service"),
+            (full(schedules={"tick": dict(TICK, path="/a tick")}), "schedules.tick.path: a path on the service"),
+            (full(schedules={"tick": dict(TICK, path="/tick#now")}), "schedules.tick.path: a path on the service"),
         ]
         for m, reason in cases:
             with self.subTest(reason=reason):
                 found = manifest.problems(m)
                 self.assertTrue(any(reason in p for p in found), found)
+
+    def test_schedules_in_the_forms_cloud_scheduler_takes_fit(self):
+        for schedule in (TICK, dict(TICK, cron="*/5 9-17 * JAN,FEB MON-FRI"), dict(TICK, time_zone="UTC"),
+                         dict(TICK, time_zone="America/New_York"), dict(TICK, path="/"),
+                         dict(TICK, path="/digest?kind=daily")):
+            with self.subTest(schedule=schedule):
+                self.assertEqual(manifest.problems(full(schedules={"tick": schedule, "digest-2": TICK})), [])
+
+    @unittest.skipUnless(manifest._known_zone("Etc/UTC") and not manifest._known_zone("Mars/Olympus_Mons"),
+                         "this Python cannot read the tz database")
+    def test_a_time_zone_the_tz_database_does_not_know_is_refused(self):
+        found = manifest.problems(full(schedules={"tick": dict(TICK, time_zone="Mars/Olympus_Mons")}))
+        self.assertTrue(any(p.startswith("schedules.tick.time_zone") for p in found), found)
 
     def test_every_problem_is_reported_at_once(self):
         found = manifest.problems(full(identity=None, settings=[], cloudsql=7))
@@ -149,7 +274,8 @@ class RenderTest(unittest.TestCase):
     FACTS = {"project": STAGING, "number": "100000000001", "region": "us-east1"}
 
     def test_placeholders_and_per_environment_values_resolve(self):
-        config = manifest.render(FULL, "production", dict(self.FACTS, project="al-test-production"), "abc1234")
+        config = manifest.render(FULL, "production", dict(self.FACTS, project="al-test-production"), "abc1234",
+                                 "fixture")
         env = config["service"]["env"]
         self.assertEqual(env["FIXTURE_PROJECT"], "al-test-production")
         self.assertEqual(env["FIXTURE_URL"], "https://fixture-100000000001.us-east1.run.app")
@@ -159,7 +285,7 @@ class RenderTest(unittest.TestCase):
         self.assertEqual(config["service"]["cloudsql"], "al-test-production:us-east1:fixture-sql")
 
     def test_a_job_has_the_services_config_and_its_own(self):
-        config = manifest.render(FULL, "staging", self.FACTS, "abc1234")
+        config = manifest.render(FULL, "staging", self.FACTS, "abc1234", "fixture")
         service, job = config["service"], config["jobs"]["fixture-job"]
         self.assertEqual(job["env"], dict(service["env"], FIXTURE_JOB_ONLY="yes"))
         self.assertEqual(job["secrets"], dict(service["secrets"], FIXTURE_API_KEY="fixture-api-key"))
@@ -167,10 +293,87 @@ class RenderTest(unittest.TestCase):
 
     def test_a_placeholder_without_its_fact_is_refused(self):
         with self.assertRaisesRegex(manifest.Refused, r"settings.FIXTURE_URL uses \{number\}"):
-            manifest.render(FULL, "staging", dict(self.FACTS, number=""), "abc1234")
+            manifest.render(FULL, "staging", dict(self.FACTS, number=""), "abc1234", "fixture")
 
 
-class ManifestDeployHarness(GcpHarness):
+class RenderSchedulesTest(unittest.TestCase):
+    """What render makes of a manifest's schedules and the jobs that already exist (service-schedules C1)."""
+
+    FACTS = RenderTest.FACTS
+    URL = "https://fixture-100000000001.us-east1.run.app"
+
+    def plan(self, m, scheduled=()):
+        return manifest.render(m, "staging", self.FACTS, "abc1234", "fixture", scheduled)["schedules"]
+
+    def test_each_declared_schedule_is_created_to_call_its_path_as_the_service(self):
+        two = full(schedules={"tick": TICK, "digest": {"cron": "0 8 * * *", "time_zone": "America/New_York",
+                                                       "path": "/digest"}})
+        self.assertEqual(self.plan(two), [
+            {"action": "create", "id": "fixture-digest", "cron": "0 8 * * *", "time_zone": "America/New_York",
+             "uri": self.URL + "/digest", "audience": self.URL},
+            {"action": "create", "id": "fixture-tick", "cron": "* * * * *", "time_zone": "Etc/UTC",
+             "uri": self.URL + "/tick", "audience": self.URL},
+        ])
+
+    def test_an_existing_one_is_updated_and_one_no_longer_declared_is_deleted(self):
+        scheduled = [("fixture-tick", self.URL + "/old-tick"), ("fixture-digest", self.URL + "/digest"),
+                     ("fixture-by-hand", self.URL)]
+        plan = self.plan(FULL, scheduled)
+        self.assertEqual([(s["action"], s["id"]) for s in plan],
+                         [("update", "fixture-tick"), ("delete", "fixture-by-hand"), ("delete", "fixture-digest")])
+        self.assertEqual(plan[0]["uri"], self.URL + "/tick")
+
+    def test_jobs_that_call_other_services_are_left_alone(self):
+        # fixture-other is another service, whose URL starts with the same letters as fixture's.
+        scheduled = [("other-tick", "https://other-100000000001.us-east1.run.app/tick"),
+                     ("fixture-other-tick", "https://fixture-other-100000000001.us-east1.run.app/tick"),
+                     ("fixture-tick-x", "https://fixture-100000000001.us-east1.run.app.example/tick")]
+        self.assertEqual(self.plan(full(schedules=None), scheduled), [])
+        self.assertEqual([s["action"] for s in self.plan(FULL, scheduled)], ["create"])
+
+    def test_a_manifest_without_schedules_deletes_the_services_own(self):
+        self.assertEqual(self.plan(full(schedules=None)), [])
+        self.assertEqual(self.plan(full(schedules=None), [("fixture-tick", self.URL + "/tick")]),
+                         [{"action": "delete", "id": "fixture-tick", "uri": self.URL + "/tick"}])
+
+    def test_schedules_without_the_service_or_its_number_are_refused(self):
+        with self.assertRaisesRegex(manifest.Refused, "schedules need the service's name and the project's number"):
+            manifest.render(FULL, "staging", self.FACTS, "abc1234")
+        with self.assertRaisesRegex(manifest.Refused, "schedules need"):
+            manifest.render(full(settings={}), "staging", dict(self.FACTS, number=""), "abc1234", "fixture")
+
+    def test_it_reads_what_gcloud_lists(self):
+        listed = ("projects/p/locations/us-east1/jobs/fixture-tick\t%s/tick\n"
+                  "projects/p/locations/us-east1/jobs/by-hand-pubsub\t\n\n" % self.URL)
+        self.assertEqual(manifest.parse_scheduled(listed),
+                         [("fixture-tick", self.URL + "/tick"), ("by-hand-pubsub", "")])
+
+    def test_it_writes_the_commands_deploy_runs(self):
+        out = tempfile.mkdtemp(prefix="manifest-")
+        self.addCleanup(shutil.rmtree, out)
+        config = manifest.render(FULL, "staging", self.FACTS, "abc1234", "fixture",
+                                 [("fixture-old", self.URL + "/old")])
+        manifest.write_flags(config, out)
+        with open(os.path.join(out, "schedules")) as f:
+            self.assertEqual(f.read(), "create fixture-tick\ndelete fixture-old\n")
+        with open(os.path.join(out, "schedule-fixture-tick.flags")) as f:
+            self.assertEqual(f.read().splitlines(), [
+                "--schedule=* * * * *", "--time-zone=Etc/UTC", "--uri=%s/tick" % self.URL, "--http-method=POST",
+                "--oidc-service-account-email=" + IDENTITY, "--oidc-token-audience=" + self.URL])
+        self.assertFalse(os.path.exists(os.path.join(out, "schedule-fixture-old.flags")))
+        self.assertIn("schedule fixture-tick: create, * * * * * Etc/UTC, POST %s/tick as %s" % (self.URL, IDENTITY),
+                      manifest.summary(config, "fixture"))
+
+    def test_bootstrap_lists_cloud_scheduler_and_the_scheduled_identities(self):
+        root = tempfile.mkdtemp(prefix="manifest-")
+        self.addCleanup(shutil.rmtree, root)
+        write(root, "services/fixture/service.json", json.dumps(FULL))
+        write(root, "services/other/service.json", json.dumps({"identity": {"name": "other-runtime"}}))
+        self.assertIn(manifest.SCHEDULER_API, manifest.listing(root, "apis"))
+        self.assertEqual(manifest.listing(root, "scheduled"), ["fixture-runtime fixture"])
+
+
+class ManifestDeployHarness(Harness):
     """A repository with one service whose manifest is FULL, in a staging project bootstrapped from it, whose
     secrets the owner has created. deploy.sh then deploys commits of it."""
 
@@ -308,7 +511,116 @@ class DeployAppliesTheManifestTest(ManifestDeployHarness):
         self.assertEqual(self.calls(), [])
 
 
-class BootstrapCreatesWhatManifestsDeclareTest(GcpHarness):
+@unittest.skipUnless(shutil.which("git"), "needs git")
+class DeployAppliesTheSchedulesTest(ManifestDeployHarness):
+    """deploy.sh applies the manifest's schedules only once the new revision answers /version, each calling the
+    service with an OIDC token for its own identity and its URL as the audience (service-schedules C2)."""
+
+    def url(self):
+        return "https://fixture-%s.us-east1.run.app" % self.number
+
+    def scheduler_calls(self):
+        return [c for c in self.calls() if c["tool"] == "gcloud" and c["argv"][:1] == ["scheduler"]]
+
+    def test_a_deploy_creates_each_schedule_once_version_answers(self):
+        result = self.deploy("fixture", self.main)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(self.scheduled(), {"fixture-tick": {
+            "location": "us-east1", "schedule": "* * * * *", "time_zone": "Etc/UTC", "uri": self.url() + "/tick",
+            "http_method": "POST", "oidc_identity": IDENTITY, "audience": self.url()}})
+        calls = self.calls()
+        version = max(i for i, c in enumerate(calls) if c["tool"] == "curl")
+        [create] = [i for i, c in enumerate(calls) if positional(c["argv"])[:3] == ["scheduler", "jobs", "create"]]
+        self.assertGreater(create, version, "a schedule changes only after /version answers the new commit")
+        for call in self.scheduler_calls():
+            self.assertEqual(parse_flags(call["argv"])["impersonate-service-account"], [DEPLOY])
+        self.assertIn("schedule fixture-tick: create, * * * * * Etc/UTC, POST %s/tick as %s" % (self.url(), IDENTITY),
+                      result.stdout)
+
+    def test_a_second_deploy_updates_the_schedule_in_place(self):
+        self.assertEqual(self.deploy("fixture", self.main).returncode, 0)
+        self.reset_calls()
+        self.assertEqual(self.deploy("fixture", self.main).returncode, 0)
+        self.assertEqual([" ".join(positional(c["argv"])[:4]) for c in self.scheduler_calls()],
+                         ["scheduler jobs list", "scheduler jobs update http"])
+        self.assertEqual(list(self.scheduled()), ["fixture-tick"])
+
+    def test_a_failed_deploy_leaves_the_old_schedules_calling_the_old_revision(self):
+        self.assertEqual(self.deploy("fixture", self.main).returncode, 0)
+        before = self.scheduled()
+        later = full(schedules={"tick": dict(TICK, cron="*/5 * * * *"), "digest": dict(TICK, path="/digest")})
+        second = self.commit_manifest(later, "Tick every five minutes, and add a digest")
+        state = self.state()
+        state["http"][self.url() + "/version"] = [200, json.dumps({"commit": self.main})]
+        self.set_state(state)
+        self.reset_calls()
+        result = self.deploy("fixture", second)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertEqual(self.scheduled(), before)
+        self.assertEqual([positional(c["argv"])[2] for c in self.scheduler_calls()], ["list"],
+                         "nothing but a read before /version answers")
+
+    def test_deploying_an_earlier_commit_restores_its_schedules(self):
+        self.assertEqual(self.deploy("fixture", self.main).returncode, 0)
+        first = self.scheduled()
+        later = full(schedules={"tick": dict(TICK, cron="*/5 * * * *"), "digest": dict(TICK, path="/digest")})
+        second = self.commit_manifest(later, "Tick every five minutes, and add a digest")
+        self.assertEqual(self.deploy("fixture", second).returncode, 0)
+        self.assertEqual(sorted(self.scheduled()), ["fixture-digest", "fixture-tick"])
+        self.assertEqual(self.scheduled()["fixture-tick"]["schedule"], "*/5 * * * *")
+        self.assertEqual(self.scheduled()["fixture-digest"]["uri"], self.url() + "/digest")
+        result = self.deploy("fixture", self.main)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(self.scheduled(), first, "the digest the earlier commit does not declare is deleted")
+        self.assertIn("schedule fixture-digest: delete, no longer declared", result.stdout)
+
+    def test_a_manifest_that_drops_its_schedules_deletes_only_the_services_own(self):
+        self.assertEqual(self.deploy("fixture", self.main).returncode, 0)
+        state = self.state()
+        other = "https://other-%s.us-east1.run.app/tick" % self.number
+        state["projects"][STAGING]["scheduler"]["other-tick"] = {"location": "us-east1", "uri": other}
+        state["projects"][STAGING]["scheduler"]["fixture-elsewhere"] = {"location": "us-west1", "uri": self.url()}
+        self.set_state(state)
+        sha = self.commit_manifest(full(schedules=None), "Stop calling the fixture on a schedule")
+        result = self.deploy("fixture", sha)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(sorted(self.scheduled()), ["fixture-elsewhere", "other-tick"],
+                         "another service's job, and one in another region, are not this deploy's")
+
+
+@unittest.skipUnless(shutil.which("git"), "needs git")
+class DeployWithoutCloudSchedulerTest(Harness):
+    """In a project whose bootstrap saw no schedules, a deploy never calls Cloud Scheduler, and a manifest that
+    declares one is refused before anything is built (service-schedules C2)."""
+
+    def setUp(self):
+        self.root = self.make_root()
+        self.add_service(self.root, "fixture", full(schedules=None))
+        self.assertEqual(self.bootstrap(self.root).returncode, 0)
+        for name in FULL_SECRETS:
+            self.add_secret(name)
+        self.assertEqual(self.bootstrap(self.root).returncode, 0)
+        self.main = self.init_repo()
+        self.reset_calls()
+
+    def test_a_deploy_without_schedules_never_calls_cloud_scheduler(self):
+        result = self.deploy("fixture", self.main)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual([c for c in self.calls("gcloud") if c["argv"][:1] == ["scheduler"]], [])
+
+    def test_schedules_are_refused_until_the_bootstrap_has_enabled_cloud_scheduler(self):
+        write(self.root, "services/fixture/service.json", json.dumps(FULL, indent=1) + "\n")
+        self.git("commit", "-qam", "Call the fixture every minute")
+        self.git("push", "-q", "origin", "main")
+        result = self.deploy("fixture", self.git("rev-parse", "HEAD"))
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("declares schedules, but Cloud Scheduler is not enabled in " + STAGING, result.stderr)
+        self.assertIn("bootstrap.sh staging", result.stderr)
+        self.assertEqual(self.calls("docker"), [], "nothing is built")
+        self.assertEqual(self.changes(), [])
+
+
+class BootstrapCreatesWhatManifestsDeclareTest(Harness):
     """bootstrap.sh enables the manifests' APIs, creates their Firestore databases and runtime identities, lets each
     identity read its own secrets, and a second run changes nothing (C2)."""
 
@@ -320,7 +632,7 @@ class BootstrapCreatesWhatManifestsDeclareTest(GcpHarness):
         changes = self.changes()
         self.assertIn("services enable run.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com"
                       " iamcredentials.googleapis.com billingbudgets.googleapis.com sqladmin.googleapis.com"
-                      " sql-component.googleapis.com firestore.googleapis.com", changes)
+                      " sql-component.googleapis.com firestore.googleapis.com cloudscheduler.googleapis.com", changes)
         self.assertIn("iam service-accounts create fixture-runtime", changes)
         self.assertIn("firestore databases create", changes)
         project = self.state()["projects"][STAGING]
@@ -371,6 +683,34 @@ class BootstrapCreatesWhatManifestsDeclareTest(GcpHarness):
         result = self.bootstrap(root)
         self.assertEqual(self.changes(), [])
         self.assertIn("staging: 0 changes.", result.stdout)
+
+    def test_a_schedule_lets_cloud_scheduler_call_as_its_service_and_the_deploy_identity_manage_it(self):
+        root = self.make_root()
+        self.add_service(root, "fixture", FULL)
+        self.add_service(root, "other", {"identity": {"name": "other-runtime"}})
+        result = self.bootstrap(root)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        project = self.state()["projects"][STAGING]
+        agent = SCHEDULER_AGENT % project["number"]
+        self.assertIn("cloudscheduler.googleapis.com", project["services"])
+        self.assertIn("serviceAccount:" + DEPLOY, project["policy"]["roles/cloudscheduler.admin"])
+        self.assertEqual(project["accounts"][IDENTITY], {"roles/iam.serviceAccountTokenCreator": [agent]})
+        self.assertEqual(project["accounts"]["other-runtime@%s.iam.gserviceaccount.com" % STAGING], {},
+                         "an identity whose manifest declares no schedule gets no grant")
+        self.assertIn("let Cloud Scheduler mint tokens as %s (fixture" % IDENTITY, result.stdout)
+        self.reset_calls()
+        result = self.bootstrap(root)
+        self.assertEqual(self.changes(), [])
+        self.assertIn("ok       Cloud Scheduler may call as %s (fixture)" % IDENTITY, result.stdout)
+
+    def test_without_schedules_it_neither_enables_cloud_scheduler_nor_grants_for_it(self):
+        root = self.make_root()
+        self.add_service(root, "fixture", full(schedules=None))
+        self.assertEqual(self.bootstrap(root).returncode, 0)
+        project = self.state()["projects"][STAGING]
+        self.assertNotIn("cloudscheduler.googleapis.com", project["services"])
+        self.assertNotIn("roles/cloudscheduler.admin", project["policy"])
+        self.assertEqual(project["accounts"][IDENTITY], {})
 
     def test_a_malformed_manifest_stops_it_before_any_call(self):
         root = self.make_root()
@@ -651,7 +991,7 @@ class ManifestsMatchTheCodeTest(unittest.TestCase):
 
 
 @unittest.skipUnless(shutil.which("git"), "needs git")
-class RepositoryManifestsTest(GcpHarness):
+class RepositoryManifestsTest(Harness):
     """The runner's and threads' own manifests, bootstrapped and deployed with the fakes (C1, C2)."""
 
     def make_repository_root(self, fill_todos):
