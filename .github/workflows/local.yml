@@ -1,0 +1,40 @@
+# The local harness (command-center/local-harness, per command-center/D53): its own tests, then the smoke test of
+# LOOP.md §4 on this runner's machine. smoke.sh builds every service in services/ at this commit, runs each with its
+# manifest's settings against Postgres, the Firestore emulator and the fakes in scripts/local/fakes/, follows one
+# session from dispatch to its end, checks threads, and reads every local/<service> row of LOOP.md §3 (C1, C2). It
+# runs on every push and pull request, as runner.yml does, so CI on main's head says whether the harness still works.
+#
+# It needs no secret and spends nothing: every secret it hands a service is made up, and the services and their jobs
+# sit on a Docker network with no route off the machine. Building the images downloads their packages, as any build
+# does.
+name: local
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Every release tag: a session installs the plugin from one.
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: The harness's own tests
+        run: python -m unittest discover -s scripts/local/tests -v
+      - name: The smoke test
+        run: sh scripts/local/smoke.sh
+      - name: What the services said
+        if: failure()
+        run: |
+          for name in $(docker ps -a --filter label=architect-loop-local=1 --format '{{.Names}}'); do
+            echo "::group::$name"
+            docker logs --tail 80 "$name" 2>&1
+            echo "::endgroup::"
+          done
+      - name: Stop the harness
+        if: always()
+        run: sh scripts/local/down.sh

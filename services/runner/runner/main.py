@@ -2,6 +2,7 @@
 configured from environment variables and secrets mounted as environment variables (command-center/D32)."""
 
 import asyncio
+import importlib
 import logging
 import os
 
@@ -33,15 +34,30 @@ def store_from(config):
 
 
 def github_from(config, private_key):
-    auth = AppAuth(config.app_id, config.app_installation_id, private_key, config.project.split("/", 1)[1])
-    return RestGitHub(config.project, auth, app_slug=config.app_slug, main_branch=config.main_branch)
+    auth = AppAuth(config.app_id, config.app_installation_id, private_key, config.project.split("/", 1)[1],
+                   api=config.github_api_url)
+    return RestGitHub(config.project, auth, app_slug=config.app_slug, main_branch=config.main_branch,
+                      api=config.github_api_url)
+
+
+def launcher_from(config):
+    return CloudRunJobs(config.gcp_project, config.region, config.job, api=config.run_api_url,
+                        metadata=config.metadata_url)
+
+
+def sdk_client_from(config):
+    """The Agent SDK client RUNNER_SDK_CLIENT names as `<module>:<callable>`, which takes the session's options as
+    the SDK's own client does. The default is the SDK's own; the local harness names its fake (command-center/D53)."""
+    module, _, name = config.sdk_client.partition(":")
+    if not (module and name):
+        raise SystemExit(f"RUNNER_SDK_CLIENT={config.sdk_client} is not <module>:<callable>")
+    return getattr(importlib.import_module(module), name)
 
 
 def service_from_env(env):
     config = Config.from_env(env)
     store = store_from(config)
-    launcher = CloudRunJobs(config.gcp_project, config.region, config.job)
-    return Api(Dispatcher(config, store, github_from(config, env.get(PRIVATE_KEY, "")), launcher))
+    return Api(Dispatcher(config, store, github_from(config, env.get(PRIVATE_KEY, "")), launcher_from(config)))
 
 
 _service = None
@@ -70,7 +86,7 @@ def job_from_env(env):
     identity = (login, f"{github.bot_user_id()}+{login}@users.noreply.github.com")
     workspace = Workspace(config.clone_url, config.workdir, identity, main_branch=config.main_branch,
                           credential_helper="!gh auth git-credential")
-    return SessionJob(config, store_from(config), github, workspace), session_id
+    return SessionJob(config, store_from(config), github, workspace, client_factory=sdk_client_from(config)), session_id
 
 
 def run_job():
