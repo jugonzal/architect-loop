@@ -1,8 +1,10 @@
 # Runbook: create an environment, and deploy a service to it from a commit on main
 
-**Status:** draft — partly run (steps 1 to 5, on staging) | **Last run as written:** 2026-10-22 on staging by
-Juan, steps 2 and 3, and step 4's second bootstrap. Step 1 ran then too (PR #29). Step 5 ran with output that
-differed from this runbook (see Corrections). No run of step 4's listings, or of steps 6 to 15, is recorded.
+**Status:** draft — partly run (steps 1 to 5 and 13, on staging) | **Last run as written:** 2026-10-23 on
+staging by Juan, step 13's three exports; the deploys' own output was not reported. Before that, on 2026-10-22,
+steps 2 and 3, and step 4's second bootstrap. Step 1 ran then too (PR #29). Step 5 ran with output that differed
+from this runbook (see Corrections). Step 13 succeeding means steps 9, 11 and 12 had been done, but their output is
+not recorded here, and neither is a run of step 4's listings or of steps 6 to 8, 10, 14 or 15.
 
 Use this to create staging or production on GCP, or to check one, and to deploy a service (or the probe) from a
 commit on `main` with exactly the config its manifest declares. Afterwards the environment's project exists with its
@@ -11,8 +13,8 @@ databases), and the service's `/version` answers the commit that was deployed. W
 its first real run (command-center/environments, command-center/service-manifests): every expected output below is
 what the scripts print against the fakes in `tests/`, and every failure signature is what Google Cloud is known to
 answer, not what a run here showed. Correct it after the first run. Since then steps 2 and 3, and step 4's second
-bootstrap, have run on staging and printed what is written. Step 5's outputs have been read against staging, and
-they are written below as observed. Every other step is still as drafted.
+bootstrap, have run on staging and printed what is written. Step 5's outputs and step 13's exports have been read
+against staging, and they are written below as observed. Every other step is still as drafted.
 
 ## Quick reference
 
@@ -343,6 +345,17 @@ gcloud run jobs describe runner-session --region=us-east1 --project=<PROJECT_ID>
 gcloud run services describe threads --region=us-east1 --project=<PROJECT_ID> --format=export
 ```
 
+To see what each export must hold, render the manifest the way `deploy.sh` does, from the checkout at `$sha` (the
+preconditions keep it up to date). It only reads, and needs no credentials:
+
+```bash
+python3 scripts/gcp/manifest.py render services/<service>/service.json --name=<service> --env=staging --project=<PROJECT_ID> --region=us-east1 --number=<PROJECT_NUMBER> --commit="$sha" --out=<DIR>
+```
+
+It prints the summary the deploy prints, and writes every setting's value to `<DIR>/service.env.yaml` (and, for the
+runner, `<DIR>/job-runner-session.env.yaml`), and the identity, secrets and Cloud SQL instance to
+`<DIR>/service.flags`.
+
 - **Success prints:** each deploy prints `config from services/<service>/service.json: runs as
   <service>@<PROJECT_ID>.iam.gserviceaccount.com` and its settings, secrets, Cloud SQL instance and (for the
   runner) `job runner-session: python -m runner job; tasks 1, retries 0, timeout 3600 s`, then gcloud's
@@ -351,7 +364,10 @@ gcloud run services describe threads --region=us-east1 --project=<PROJECT_ID> --
   setting and for `COMMIT_SHA: <SHA>`, and one with `valueFrom.secretKeyRef` (`key: latest`) for each secret, and
   nothing else; threads has the annotation `run.googleapis.com/cloudsql-instances: <PROJECT_ID>:us-east1:threads`;
   the job has `maxRetries: 0`, `timeoutSeconds: '3600'` and the command `python` with args `-m runner job`, and
-  `ANTHROPIC_API_KEY` among its secrets while the service has not.
+  `ANTHROPIC_API_KEY` among its secrets while the service has not. Also seen on staging on 2026-10-23: the
+  runner's service has `run.googleapis.com/cloudsql-instances: ''`, empty, because `deploy.sh` clears the instance
+  when a manifest names none; both services have `run.googleapis.com/maxScale: '3'`, which no manifest or script
+  here sets, so Cloud Run or gcloud set it; and the job's export has no Cloud SQL annotation.
 - **Failure looks like:**
   - `manifest: ... leaves settings.<NAME> TODO(owner) for staging`: step 11 is not done. Nothing was deployed.
   - `manifest: ... does not fit the manifest format`: the commit's manifest is broken. Nothing was deployed; fix it
@@ -373,7 +389,15 @@ sh scripts/gcp/deploy.sh <service> staging "$sha"
 ```
 
 Pick a `<PREVIOUS_SHA>` on main whose `services/<service>/service.json` differs from `$sha`'s
-(`git log --oneline -- services/<service>/service.json`).
+(`git log --oneline -- services/<service>/service.json`), and that this environment can deploy. This prints
+nothing and exits 0 when it can:
+
+```bash
+git show <PREVIOUS_SHA>:services/<service>/service.json > <FILE> && python3 scripts/gcp/manifest.py check <FILE> --name=<service> --env=staging
+```
+
+If no such commit exists yet, this step waits for the next commit on main that changes the manifest (see Traps,
+2026-10-23): deploy that commit with step 13, then roll back to the commit before it.
 
 - **Success prints:** the export shows exactly the previous commit's settings, secrets and Cloud SQL instance, and
   `COMMIT_SHA: <PREVIOUS_SHA>`: a variable added later is gone. The last command restores the current one.
@@ -384,7 +408,8 @@ Pick a `<PREVIOUS_SHA>` on main whose `services/<service>/service.json` differs 
 ### 15. Production
 
 Repeat steps 3 to 14 with `production` in place of `staging`. Its budget may be a different amount, and its secrets
-and Cloud SQL instance are its own.
+and Cloud SQL instance are its own. Step 14 meets the same wait there: the commit that first names production's
+values has no earlier commit production can deploy (see Traps, 2026-10-23).
 
 ## Verify
 
@@ -407,7 +432,8 @@ yet deployed.
   back with `gcloud run services update-traffic --to-revisions`: traffic stays pinned to that revision, and later
   deploys then receive none.
 - **A bad manifest:** revert it in a pull request and deploy the revert. A commit from before the manifests
-  existed cannot be deployed: `deploy.sh` refuses a commit without one.
+  existed cannot be deployed: `deploy.sh` refuses a commit without one. Nor can a commit whose manifest leaves a
+  value `TODO(owner)` for that environment: on staging, that is every runner or threads commit before 1bdb337.
 - **The probe:** it can stay, since it scales to zero. Deleting it is
   `gcloud run services delete probe --region=us-east1 --project=<PROJECT_ID>`.
 - **What does not roll back:**
@@ -425,6 +451,14 @@ yet deployed.
 
 Each learned in a real run. Newest first.
 
+- **2026-10-23:** step 14 had no commit to roll back to, after step 13 deployed the runner and threads from
+  1eae0a3 → staging's GitHub App IDs were first named in 1bdb337 (PR #48). Every earlier runner or threads
+  manifest leaves them `TODO(owner)` for staging, and `deploy.sh` refuses such a commit before any `gcloud` call.
+  Every later commit had the same manifests as 1eae0a3, and the probe's manifest has never changed → check
+  `<PREVIOUS_SHA>` with step 14's `manifest.py check` before deploying it. Until one passes, wait for the next
+  commit that changes `services/runner/service.json` or `services/threads/service.json`, deploy it with step 13,
+  then roll back to the commit before it. In production, the commit that first names its values will meet the
+  same wait. Found by checking each earlier manifest with `manifest.py check --env=staging`, read-only.
 - **2026-10-22:** a staging row whose URL is wrong reads as unknown forever, just like a service not yet
   deployed → Cloud Run answers every `*.run.app` name, so a wrong project number or region gets a 404 (with a
   "Page not found" body) instead of a DNS error, and `served.sh` fails the same way on any 404 → before merging
@@ -434,6 +468,15 @@ Each learned in a real run. Newest first.
 
 ## Corrections
 
+- 2026-10-23: Status, Last run as written and intro: the owner ran step 13 on staging from 1eae0a3 and reported
+  its three exports, which hold what step 13 says (see `service-manifests` C1's evidence line at 1eae0a3). The
+  status said no run of steps 6 to 15 was recorded. The deploys' own output was not reported, so it is still as
+  drafted.
+- 2026-10-23: Step 13: added the `manifest.py render` command that gives what each export must hold, and three
+  things the exports show that the step did not say: the runner's empty `cloudsql-instances` annotation, both
+  services' `maxScale: '3'`, and no Cloud SQL annotation on the job.
+- 2026-10-23: Step 14: `<PREVIOUS_SHA>` must also be deployable to the environment, checked with `manifest.py
+  check`. As of 1eae0a3 no runner or threads commit qualifies (see Traps). Step 15 and Rollback say the same.
 - 2026-10-22: Status and intro: steps 1 to 3 and 5 ran on staging on 2026-10-22, by the owner. Step 1 is PR #29,
   which names the projects in `projects.txt`. PR #30's body quotes the served-commit lines step 3 printed. Step 5
   is PR #30, which fills in staging's four rows of `LOOP.md` §3. The runbook said it had never run.
