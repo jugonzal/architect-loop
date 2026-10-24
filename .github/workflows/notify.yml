@@ -1,0 +1,46 @@
+# The notifier's own tests, with its own dependencies (command-center/D30). The root `check` stays standard library
+# only and does not run these. Its manifest is checked with scripts/gcp/manifest.py, so a change there runs them too.
+#
+# Then the store's tests again, against the Firestore emulator (per command-center/D44), the store every instance
+# shares on Cloud Run. The first run skips them, having no emulator; the second sets NOTIFY_FIRESTORE_TESTS=required,
+# so a missing emulator fails the job instead of skipping them. The emulator is firebase-tools' (Java 21 or later), on
+# a demo project, which reaches nothing outside this machine and needs no credentials. No test calls Expo.
+name: notify
+on:
+  push:
+    branches: [main]
+    paths: ["services/notify/**", ".github/workflows/notify.yml", "scripts/gcp/manifest.py"]
+  pull_request:
+    paths: ["services/notify/**", ".github/workflows/notify.yml", "scripts/gcp/manifest.py"]
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/notify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/notify/requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - run: python -m unittest discover -s tests -v
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: The store's tests against the Firestore emulator
+        env:
+          NOTIFY_FIRESTORE_TESTS: required
+        run: |
+          printf '{"emulators": {"firestore": {"host": "127.0.0.1", "port": 8686}, "ui": {"enabled": false}}}\n' \
+            > "$RUNNER_TEMP/firebase.json"
+          npx --yes firebase-tools@15.33.0 emulators:exec --config "$RUNNER_TEMP/firebase.json" --only firestore \
+            --project demo-notify "python -m unittest discover -s tests -p test_store.py -v"

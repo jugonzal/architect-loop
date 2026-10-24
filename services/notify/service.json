@@ -1,0 +1,11 @@
+{
+  "identity": {"name": "notify", "roles": ["roles/datastore.user"]},
+  "apis": ["firestore.googleapis.com"],
+  "settings": {
+    "NOTIFY_PROJECTS": "jugonzal/architect-loop",
+    "NOTIFY_STORE": "firestore:notify",
+    "NOTIFY_GCP_PROJECT": "{project}",
+    "NOTIFY_STATUS_URL": "https://status-{number}.{region}.run.app"
+  },
+  "firestore": ["notify"]
+}
