@@ -2,9 +2,12 @@
 that crosses the budget, the final estimate with its overshoot), the stop a sponsor asks for, the options the
 SDK runs with (D3, D5, D17, D21), and the trailers on the pull requests a session opens (session-runner C5,
 runner-dispatch C1).
+
+The tests that bound timing run the job on a virtual clock (VirtualTimeLoop), so a stalled machine cannot fail them.
 """
 
 import asyncio
+import concurrent.futures
 import os
 import time
 import unittest
@@ -110,6 +113,57 @@ class RecordingStore(SqliteStore):
         return super().publish(session_id, spend, now)
 
 
+class InlineExecutor(concurrent.futures.ThreadPoolExecutor):
+    """Runs each `asyncio.to_thread` call at once, on the loop's own thread, so a virtual clock never waits on a
+    real one."""
+
+    def submit(self, fn, /, *args, **kwargs):
+        future = concurrent.futures.Future()
+        try:
+            future.set_result(fn(*args, **kwargs))
+        except BaseException as error:
+            future.set_exception(error)
+        return future
+
+
+class JumpingSelector:
+    """Wraps a loop's selector: where the loop would sleep until its next timer, it moves the loop's clock there."""
+
+    def __init__(self, selector, loop):
+        self._selector, self._loop = selector, loop
+
+    def select(self, timeout=None):
+        if time.monotonic() > self._loop.real_deadline:
+            raise RuntimeError("the job ran for 10 s of real time on a virtual clock")
+        events = self._selector.select(0)
+        if events or timeout == 0:
+            return events
+        if timeout is None:
+            raise RuntimeError("nothing is ready and no timer is set: the job would wait forever")
+        self._loop.virtual_now += timeout
+        return events
+
+    def __getattr__(self, name):
+        return getattr(self._selector, name)
+
+
+class VirtualTimeLoop(asyncio.SelectorEventLoop):
+    """An event loop on a virtual clock. Time passes only by jumping to the next timer, never while code runs, so
+    a test's timing depends on the job's timers alone and a stalled machine cannot change it."""
+
+    def __init__(self):
+        self.virtual_now, self.real_deadline = 0.0, time.monotonic() + 10
+        super().__init__()
+        self._selector = JumpingSelector(self._selector, self)
+        self.set_default_executor(InlineExecutor())
+
+    def time(self):
+        return self.virtual_now
+
+    async def shutdown_default_executor(self, timeout=None):
+        """Nothing ran on a thread, so there is nothing to join."""
+
+
 class JobTest(unittest.TestCase):
     interval = 0.05
 
@@ -129,34 +183,40 @@ class JobTest(unittest.TestCase):
         self.assertIsNone(self.store.claim(session, 3, session.created_at, 300))
         return session
 
+    virtual_time = False  # the tests that bound timing set it, so their job runs on a VirtualTimeLoop
+
     def run_job(self, session, script, crash_after=None, during=None):
         def factory(options):
             client = FakeClaude(script, options, crash_after)
             self.clients.append(client)
             return client
 
-        job = SessionJob(self.config, self.store, self.github, self.workspace, factory)
-
-        async def main():
+        async def main(job):
             task = asyncio.create_task(job.run(session.id))
             if during:
                 await during()
             return await asyncio.wait_for(task, 10)
 
-        started = time.monotonic()
-        ended = asyncio.run(main())
-        self.elapsed = time.monotonic() - started
+        with asyncio.Runner(loop_factory=VirtualTimeLoop if self.virtual_time else None) as runner:
+            clock = runner.get_loop().time
+            self.store.clock = clock
+            job = SessionJob(self.config, self.store, self.github, self.workspace, factory, monotonic=clock)
+            started = clock()
+            ended = runner.run(main(job))
+            self.elapsed = clock() - started
         return ended
 
 
 class SpendPublicationTest(JobTest):
+    virtual_time = True
+
     def test_spend_is_published_at_least_every_interval_even_while_the_model_is_silent(self):
         session = self.claimed()
         self.run_job(session, [(0.01, assistant(1)), (0.6, assistant(2)), (0.01, result())])
         times = [t for t, spend in self.store.published if spend]
         self.assertGreaterEqual(len(times), 8, "the 0.6 s silence must still see publications")
         gaps = [b - a for a, b in zip(times, times[1:])]
-        self.assertLessEqual(max(gaps), self.interval * 3, gaps)  # the interval plus scheduling slack
+        self.assertAlmostEqual(max(gaps), self.interval, places=6, msg=gaps)  # on the virtual clock, no slack
 
     def test_a_stalled_machine_cannot_fail_the_timing_tests(self):
         """CI's machines sometimes stall for hundreds of milliseconds. A real pause in the middle of the silence must
@@ -167,7 +227,7 @@ class SpendPublicationTest(JobTest):
         times = [t for t, spend in self.store.published if spend]
         self.assertGreaterEqual(len(times), 8)
         gaps = [b - a for a, b in zip(times, times[1:])]
-        self.assertLessEqual(max(gaps), self.interval * 3, gaps)
+        self.assertAlmostEqual(max(gaps), self.interval, places=6, msg=gaps)
 
     def test_every_published_figure_is_labelled_an_estimate(self):
         session = self.claimed()
@@ -187,14 +247,16 @@ class SpendPublicationTest(JobTest):
 
 
 class BudgetTest(JobTest):
+    virtual_time = True
+
     def test_the_sdks_budget_stop_ends_it_with_outcome_budget_and_reports_the_overshoot(self):
         session = self.claimed(budget=0.10)
-        ended = self.run_job(session, [(0.01, assistant(1)), (0.01, result("error_max_budget_usd", cost=0.1118))])
+        ended = self.run_job(session, [(0.01, assistant(1)), (0.3, result("error_max_budget_usd", cost=0.1118))])
         self.assertEqual((ended.state, ended.outcome), ("ended", "budget"))
         self.assertAlmostEqual(ended.spend["usd"], 0.1118)
         self.assertAlmostEqual(ended.spend["overshoot_usd"], 0.0118)
         self.assertEqual(ended.spend["tokens"]["output"], 400)
-        self.assertAlmostEqual(ended.spend["wall_clock_s"], self.elapsed, delta=0.2)
+        self.assertAlmostEqual(ended.spend["wall_clock_s"], self.elapsed, delta=0.05)  # it is rounded to 0.1 s
 
     def test_it_stops_at_the_first_response_that_crosses_even_if_the_sdk_does_not(self):
         session = self.claimed(budget=0.01)  # each response costs about $0.0062, so the second crosses
@@ -213,6 +275,8 @@ class BudgetTest(JobTest):
 
 
 class StopTest(JobTest):
+    virtual_time = True
+
     def test_a_sponsor_stop_interrupts_the_model_within_one_publication(self):
         session = self.claimed()
 
@@ -221,7 +285,7 @@ class StopTest(JobTest):
             self.store.request_stop(session.id)
 
         ended = self.run_job(session, [(0.01, assistant(1)), (5, assistant(2)), (0, result())], during=stop_soon)
-        self.assertLess(self.elapsed, 1.0)
+        self.assertLessEqual(self.elapsed, 0.15 + self.interval)  # the first publication after the stop sees it
         self.assertTrue(self.clients[0].interrupted)
         self.assertEqual((ended.state, ended.outcome), ("ended", "sponsor"))
         self.assertEqual(ended.spend["basis"], "sdk result")
