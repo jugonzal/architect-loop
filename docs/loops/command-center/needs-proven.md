@@ -31,6 +31,15 @@ ships-to: main
 - Verified 2026-10-22 (`plugin/skills/loop-plan/templates/concern.md`, line 16): the template says `needs` is "what
   this concern needs first". It does not say what makes a need met, or that what only a concern's proofs rely on
   is not a need (D51).
+- Verified 2026-10-23 (`/loop-status` from the installed release, and `prove_environment` in `loop_status.py`,
+  on main @1eae0a3): the command a blocked concern's reason names for a need proves it on the first `LOOP.md` §3
+  row after `main` whose served commit has every one of the need's merge commits as an ancestor. That row may run
+  another service, or sit above the need's `ships-to`. Every service in this repository is built from the same
+  `main`, so ancestry is true of every row that serves a recent commit. The board names `staging/runner`, which
+  serves 1eae0a3, as the place to prove `status-service`, which ships to `staging/status` (it answers 404). The
+  table's merged row ("any lower environment that serves it") has the same gap, although the script names only
+  `/loop-ship` there. The table's definition of serves is right for a concern's own `ships-to`, which names its
+  own row.
 
 ### Approach
 
@@ -55,6 +64,29 @@ Rollback: revert the PR. Needs then read by the old rule again, and no data is w
 
 | # | Question | Blocks | Default if unanswered |
 | --- | --- | --- | --- |
+| Q1 | Which `LOOP.md` §3 rows may the board name as the place to prove a concern, when every row built from this repository serves every commit on `main` by ancestry? (raised by `/loop-status` on main @1eae0a3, which names `staging/runner` to prove `status-service`) | C2 | The board keeps naming the first row after `main` whose served commit holds the need's work, whichever service it runs |
+| Q2 | When no such row serves a need's work, what does the blocked concern's next step name? | C2 | `/loop-prove <need> <its ships-to>`, as today, listed under "Agents can start now" |
+
+**Q1 options**
+- **Rows of its own service**: a row counts only when the part of its name after the `/` matches the concern's
+  `ships-to` (or neither has one, in a project with one row per environment) and it is listed no higher than
+  `ships-to`; `main` counts only for `ships-to: main`. No new front matter, it follows §3's
+  `<environment>/<service>` names, and command-center/D53's `local/<service>` rows come first once they exist. A
+  concern whose code runs in two services is proven only on its own service's rows. (recommended)
+- **A `proves-on:` list in front matter**: each concern names the rows that run its code. Exact across services,
+  but every concern and the `loop-plan` template gain a field, and a concern without one falls back to today's
+  rule.
+- **Its own `ships-to` only**: never look lower. Simplest, but it never names `local/<service>` rows, and a project
+  with `staging` and `production` rows is told to prove on production.
+- **Rows whose service folder it touches**: match `touches` against `services/<service>/`. Exact here, but it
+  writes this repository's layout into a skill that must stand alone (command-center/D14, `LOOP.md` §6).
+
+**Q2 options**
+- **The need's own next step**: `/loop-ship staging/status` while the need is merged, or "Check that
+  staging/status answers" while that row reads unknown, and nothing joins "Agents can start now", since no agent
+  can prove what no row runs. The merged row already works this way. (recommended)
+- **Its `ships-to`, as today**: `/loop-prove <need> <ships-to>` is listed for agents, and a run there finds
+  nothing served and records at most UNPROVEN.
 
 ## Evidence
 
