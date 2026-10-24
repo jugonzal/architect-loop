@@ -4,7 +4,10 @@
     "slug": "architect-loop",
     "scheme": "architectloop",
     "version": "0.1.0",
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "backgroundColor": "#EEF0EC",
@@ -19,11 +22,30 @@
       [
         "expo-router",
         {
-          "redirects": [{ "source": "/index", "destination": "/inbox" }]
+          "redirects": [
+            {
+              "source": "/index",
+              "destination": "/inbox"
+            }
+          ]
         }
       ],
       "expo-font",
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "router": {
+        "redirects": [
+          {
+            "source": "/index",
+            "destination": "/inbox"
+          }
+        ]
+      },
+      "eas": {
+        "projectId": "f4679ac0-89a0-4067-8325-f4e6f5ea057c"
+      }
+    },
+    "owner": "architect-loop"
   }
 }
