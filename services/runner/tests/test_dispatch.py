@@ -9,6 +9,7 @@ import unittest
 
 from runner.api import Api
 from runner.config import SCOPES, SKILLS
+from runner.github import GitHubError
 from tests.contract import ContractClient
 from tests.fakes import CONCERN, ENVIRONMENT, LOOP, OTHER, PROJECT, dispatch_body, make_runner, scoped_body
 
@@ -461,6 +462,55 @@ class ListTest(Base):
         self.store.finish(a, "completed", None, [], self.clock().isoformat())
         self.assertEqual(listed(), [b])
         self.assertEqual(sorted(listed(state="all")), sorted([a, b]))
+
+
+class LatestReleaseTest(Base):
+    """latest-release C1 (command-center/D68): the estimate names the newest release tag, the one a start from the
+    app shows and dispatches, and a dispatch is still checked against the project's tags."""
+
+    def estimate(self, skill="loop-build"):
+        response = self.client.call("GET", "/estimates", token="tok-juan", query={"skill": skill})
+        self.assertEqual(response.status, 200, response)
+        return response.json
+
+    def test_the_estimate_names_the_newest_release_tag(self):
+        self.github.releases = {"v0.3.0", "v0.4.0", "v0.10.0", "v0.9.1"}
+        self.assertEqual(self.estimate()["plugin_release"], "v0.10.0")
+        self.assertEqual(self.estimate("loop-status")["plugin_release"], "v0.10.0")
+
+    def test_the_release_the_estimate_names_is_one_a_dispatch_may_run(self):
+        self.github.releases = {"v0.3.0", "v0.4.0"}
+        release = self.estimate()["plugin_release"]
+        self.assertEqual(self.started(plugin_release=release)["plugin_release"], "v0.4.0")
+
+    def test_a_tag_cut_after_the_estimate_does_not_change_what_was_dispatched(self):
+        self.github.releases = {"v0.3.0", "v0.4.0"}
+        shown = self.estimate()["plugin_release"]
+        self.github.releases.add("v0.5.0")
+        self.assertEqual(self.started(plugin_release=shown)["plugin_release"], "v0.4.0")
+        self.assertEqual(self.estimate()["plugin_release"], "v0.5.0")
+
+    def test_a_dispatch_naming_a_tag_the_project_does_not_have_is_still_refused(self):
+        self.github.releases = {"v0.3.0", "v0.4.0"}
+        response = self.dispatch(plugin_release="v0.5.0")
+        self.assertEqual((response.status, response.json["error"]), (422, "unknown-release"))
+        self.assertEqual(self.launcher.launched, [])
+        self.assertIn(("release_exists", "v0.5.0"), self.github.calls)
+
+    def test_a_project_without_a_release_tag_has_none_to_name(self):
+        self.github.releases = set()
+        self.assertIsNone(self.estimate()["plugin_release"])
+
+    def test_github_failing_while_reading_the_tags_is_a_502(self):
+        original = self.github.latest_release
+
+        def failing():
+            original()
+            raise GitHubError("listing tags answered 500")
+
+        self.github.latest_release = failing
+        response = self.client.call("GET", "/estimates", token="tok-juan", query={"skill": "loop-build"})
+        self.assertEqual((response.status, response.json["error"]), (502, "upstream-failed"))
 
 
 if __name__ == "__main__":

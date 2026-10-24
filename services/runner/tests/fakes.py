@@ -8,7 +8,7 @@ import tempfile
 
 from runner.config import Config
 from runner.dispatch import Dispatcher
-from runner.github import GitHubError
+from runner.github import GitHubError, newest_release
 from runner.store import SqliteStore
 
 PROJECT = "jugonzal/architect-loop"
@@ -63,6 +63,10 @@ class FakeGitHub:
     def release_exists(self, tag):
         self._call("release_exists", tag)
         return tag in self.releases
+
+    def latest_release(self):
+        self._call("latest_release")
+        return newest_release(self.releases)
 
     def loop_exists(self, loop):
         self._call("loop_exists", loop)
