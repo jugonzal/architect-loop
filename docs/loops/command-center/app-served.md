@@ -1,5 +1,5 @@
 ---
-needs: [status-service]
+needs: [status-service, status-callers]
 touches: [services/status/status/apps.py, services/status/tests/test_apps.py, services/status/service.json, services/status/openapi.yaml]
 effects: [an Expo robot account with read access to the app's builds and its token in staging's Secret Manager (the owner creates both; gates: identity, secrets), the staging/app row's served-commit command changed to the status service's URL (the owner merges it once the service serves it; gates: merge)]
 ships-to: staging/status
@@ -32,7 +32,8 @@ on the public repository (per D24, D32). It caches EAS's answer for at most 60 s
 owner merges the row change, after which `/loop-status` and the status service read `staging/app` like any other
 row.
 
-It needs `status-service`, whose folder it shares. Rollback: redeploy the previous revision, and the row reads
+It needs `status-service`, whose folder it shares, and `status-callers`, which changes the same `service.json` and
+`openapi.yaml` (per D66), so the two are never built at once. (Added 2026-10-24.) Rollback: redeploy the previous revision, and the row reads
 `unknown` again.
 
 ## Decisions
