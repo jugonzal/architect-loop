@@ -4,6 +4,7 @@
   "settings": {
     "RUNNER_GCP_PROJECT": "{project}",
     "RUNNER_STORE": "firestore:runner",
+    "RUNNER_THREADS_URL": "https://threads-{number}.{region}.run.app",
     "RUNNER_APP_ID": {"staging": "5447264", "production": "TODO(owner)"},
     "RUNNER_APP_INSTALLATION_ID": {"staging": "174629085", "production": "TODO(owner)"},
     "RUNNER_APP_SLUG": {"staging": "architect-loop-runner", "production": "TODO(owner)"}

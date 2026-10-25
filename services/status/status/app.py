@@ -1,4 +1,5 @@
-"""The status API (../openapi.yaml): a project's status document, for the project's collaborators.
+"""The status API (../openapi.yaml): a project's status document, for the project's collaborators and for the
+services this deployment trusts (command-center/D66).
 
 Run it with `gunicorn 'status.app:create_app()'`; configuration is in config.py.
 """
@@ -10,6 +11,7 @@ import logging
 import re
 import threading
 import time
+from dataclasses import dataclass
 
 from flask import Flask, jsonify, request
 
@@ -29,21 +31,36 @@ class ApiError(Exception):
         self.status, self.error, self.message = status, error, message
 
 
-class Access:
-    """Who is calling and whether they collaborate on the project, with GitHub's answers reused for `ttl` seconds."""
+@dataclass(frozen=True)
+class Person:
+    login: str
 
-    def __init__(self, github, ttl, clock):
-        self.github, self.ttl, self.clock = github, ttl, clock
+
+@dataclass(frozen=True)
+class Service:
+    service_account: str
+
+
+class Access:
+    """Who is calling and whether they collaborate on the project, with GitHub's answers reused for `ttl` seconds.
+    `identity` checks a calling service's ID token, or is None when this deployment trusts no service."""
+
+    def __init__(self, github, identity, ttl, clock):
+        self.github, self.identity, self.ttl, self.clock = github, identity, ttl, clock
         self._cache = {}
         self._lock = threading.Lock()
 
-    def login(self, header):
+    def caller(self, header):
         scheme, _, token = (header or "").partition(" ")
         token = token.strip()
         if scheme.lower() != "bearer" or not token:
             raise InvalidCredentials("send Authorization: Bearer <token>")
+        if self.identity is not None and token.count(".") == 2:
+            # A JWT, where services are trusted: a calling service's Google-signed ID token. It is never sent to
+            # GitHub. A GitHub token is never a JWT.
+            return Service(self.identity.verify(token))
         key = ("user", hashlib.sha256(token.encode()).hexdigest())  # the cache keeps no token
-        return self._cached(key, lambda: self.github.user_login(token))
+        return Person(self._cached(key, lambda: self.github.user_login(token)))
 
     def is_member(self, project, login):
         return self._cached(("member", project, login), lambda: self.github.is_collaborator(project, login))
@@ -71,7 +88,7 @@ def signature_ok(secret, body, header):
     return hmac.compare_digest(expected, header)
 
 
-def create_app(settings=None, *, github=None, ls=None, clock=time.monotonic, now=utcnow):
+def create_app(settings=None, *, github=None, identity=None, ls=None, clock=time.monotonic, now=utcnow):
     """The WSGI app. Tests pass their own settings, clock and time; on Cloud Run everything comes from the
     environment."""
     if settings is None:
@@ -80,13 +97,17 @@ def create_app(settings=None, *, github=None, ls=None, clock=time.monotonic, now
     if github is None:
         from .github import GitHubApp
         github = GitHubApp(settings.github_app_id, settings.github_private_key, api_url=settings.github_api_url)
+    if identity is None and settings.trusts_services:
+        from .identity import GoogleIdentity
+        identity = GoogleIdentity(settings.audience, settings.caller_service_accounts,
+                                  certs_url=settings.caller_keys_url)
     if ls is None:
         ls = derivation.load()
 
     app = Flask(__name__)
     app.json.sort_keys = False
     app.logger.setLevel(logging.INFO)
-    access = Access(github, settings.cache_seconds, clock)
+    access = Access(github, identity, settings.cache_seconds, clock)
     boards = {}
 
     def board_for(project):
@@ -145,9 +166,10 @@ def create_app(settings=None, *, github=None, ls=None, clock=time.monotonic, now
         project = "%s/%s" % (owner, repo)
         if project not in boards:
             raise ApiError(404, "not_found", "%s is not served here" % project)
-        login = access.login(request.headers.get("Authorization"))
-        if not access.is_member(project, login):
-            raise ApiError(403, "forbidden", "%s is not a collaborator on %s" % (login, project))
+        caller = access.caller(request.headers.get("Authorization"))
+        # A trusted service is no person, so it has no collaborator access to check; it reads the whole document.
+        if isinstance(caller, Person) and not access.is_member(project, caller.login):
+            raise ApiError(403, "forbidden", "%s is not a collaborator on %s" % (caller.login, project))
         response = jsonify(boards[project].current())
         response.headers["Cache-Control"] = "no-store"
         return response

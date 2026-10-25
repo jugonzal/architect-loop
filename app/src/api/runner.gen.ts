@@ -72,7 +72,7 @@ export type DispatchRequest1 =
     };
 
 /**
- * The runner service's operations, as services/runner/openapi.yaml (version 0.2.0) declares them: each one's request, and its responses' bodies by status.
+ * The runner service's operations, as services/runner/openapi.yaml (version 0.3.0) declares them: each one's request, and its responses' bodies by status.
  */
 export interface RunnerOperations {
   /**
@@ -244,7 +244,7 @@ export interface RunnerOperations {
     };
   };
   /**
-   * What a skill is likely to spend on its model, before a start.
+   * What a skill is likely to spend on its model, and the release it would run, before a start.
    */
   estimate: {
     request: {
@@ -255,7 +255,7 @@ export interface RunnerOperations {
     };
     responses: {
       /**
-       * The estimate, or null when the pairing has none.
+       * The estimate, or null when the pairing has none, and the newest release.
        */
       '200': EstimateAnswer;
       /**
@@ -419,6 +419,13 @@ export interface EstimateAnswer {
   skill: Skill;
   model: string;
   estimate: Estimate | null;
+  /**
+   * The newest release tag of the project, the highest `vX.Y.Z` by number, which a start from the app
+   * dispatches as its `plugin_release` (command-center/D68). Null when the project has no release tag, so
+   * nothing can be started from it yet.
+   *
+   */
+  plugin_release: string | null;
 }
 /**
  * The median of the pairing's last measured sessions, at most 10 (command-center/D23).
@@ -502,11 +509,16 @@ export interface RunnerClient {
     request: RunnerOperations['stopSession']['request'],
   ): Promise<RunnerOperations['stopSession']['responses']['202']>;
   /**
-   * What a skill is likely to spend on its model, before a start.
+   * What a skill is likely to spend on its model, and the release it would run, before a start.
    *
    * The median of that skill and model's last 10 measured sessions (command-center/D23). A pairing with
    * no measured session has no estimate (`estimate` is null). The model is the one the runner's config maps
    * the skill to, unless `model` names another.
+   *
+   * It also names the newest release tag of the project (`plugin_release`), which a start shows and
+   * dispatches, so a tag the owner cuts reaches every start with no new app build (command-center/D68). The
+   * dispatch still names its release and is checked again, so what the person was shown is what runs, even
+   * if a tag is cut in between.
    *
    * `GET /estimates`
    */

@@ -144,7 +144,8 @@ def create_app(settings=None, *, store=None, github=None, identity=None, clock=t
         github = GitHubApp(settings.github_app_id, settings.github_private_key, api_url=settings.github_api_url)
     if identity is None:
         from .identity import GoogleIdentity
-        identity = GoogleIdentity(settings.audience, settings.runner_service_accounts)
+        identity = GoogleIdentity(settings.audience, settings.runner_service_accounts,
+                                  certs_url=settings.runner_keys_url)
 
     app = Flask(__name__)
     app.json.sort_keys = False

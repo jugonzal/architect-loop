@@ -1,0 +1,53 @@
+---
+needs: []
+touches: [services/status/status/identity.py, services/status/status/app.py, services/status/status/config.py, services/status/tests/test_callers.py, services/status/service.json, services/status/openapi.yaml]
+effects: [the notifier's service account trusted by staging's status service through its manifest (per command-center/D66; the owner deploys it; gates: deploy)]
+ships-to: staging/status
+---
+# A service the status service trusts can read the status document with its own Cloud Run identity
+
+## Done when
+
+- **C1** The status service answers a Google ID token for a service account its manifest trusts, with its own URL
+  as the audience, with the same document a member gets, and refuses with 401 a token from any other account, for
+  another audience, expired, or not signed by Google. A person's GitHub token works as before. Prove: the tests
+  in `services/status/tests/test_callers.py`, by CI on main; then on staging/status, an ID token for the
+  notifier's identity and one for another service account (`gcloud auth print-identity-token
+  --impersonate-service-account=<account> --audiences=<the status URL>`, which needs the owner's credentials).
+
+## Design
+
+### Where we are
+
+- **Verified** (`services/status/status/app.py` on main @603742a, 2026-10-24): `get_status` names the caller with
+  `access.login()` on a GitHub token and then checks collaborator access, so a service identity is refused.
+- **Verified** (`services/threads/threads/identity.py` and `config.py` on main @603742a, 2026-10-24): threads checks
+  the runner's Google ID token against Google's keys, the issuer, its own URL as the audience, the expiry, and a
+  list of trusted service accounts, with the keys' URL configurable so the local harness can sign its own.
+- `status-service` is merged and not proven on staging yet. Per command-center/D51 it is not in `needs`: this
+  concern builds on its code on main, and its staging proof waits until staging/status serves both.
+- `app-served` shares `service.json` and `openapi.yaml` and needs this concern, so the two are never built at once.
+
+### Approach
+
+Per command-center/D66, D28 and D32: a `services/status/status/identity.py` that checks a Google ID token the way
+threads does, configured by the status service's own URL as the audience, the trusted service accounts and the
+keys' URL, all settings in `services/status/service.json` (per D46). `app.py` tries a bearer token as an ID token
+only when its trust is configured and the token is a JWT, and otherwise as a GitHub token, as today. A trusted
+identity skips the collaborator check, since it is no person, and gets the whole document. `openapi.yaml`
+documents the second credential. Staging trusts `notify@<project>`. Rollback: redeploy the previous revision, which
+trusts no service.
+
+## Decisions
+
+| # | Decision | Decided by, date | Closes |
+| --- | --- | --- | --- |
+
+## Questions
+
+| # | Question | Blocks | Default if unanswered |
+| --- | --- | --- | --- |
+
+## Evidence
+
+## Shipped

@@ -58,6 +58,10 @@ DEFAULT_SEEDS = (
 ALLOWED_TOOLS = ("Bash", "Read", "Write", "Edit", "Glob", "Grep", "Skill")
 
 MAX_SPEND_INTERVAL_S = 10.0  # D23: at least every 10 seconds
+# session-narration C1: a milestone reaches the session's thread within 10 seconds of it. The ones the job learns of by
+# looking (a branch pushed, a pull request opened some other way than `gh pr create`) wait up to one look for it, so
+# the looks are at most 5 seconds apart, which leaves the rest for the post.
+MAX_NARRATION_POLL_S = 5.0
 
 
 @dataclass(frozen=True)
@@ -84,11 +88,27 @@ class Config:
     # Where a session's job clones from and works.
     git_url: str = ""
     workdir: str = "/tmp/runner/sessions"
+    # The services outside the runner. Each defaults to the real one; the local harness points them at its fakes
+    # (command-center/D53).
+    github_api_url: str = "https://api.github.com"
+    run_api_url: str = "https://run.googleapis.com"  # Cloud Run's Admin API, which runs a session's job
+    metadata_url: str = "http://metadata.google.internal"  # the metadata server, for the service identity's token
+    # The Agent SDK client a session's job runs, as `<module>:<callable>` on the import path: the SDK's own by default,
+    # or a stand-in, such as the local harness's fake SDK, which spends nothing.
+    sdk_client: str = "runner.session:claude_client"
+    # The threads service, where each session narrates to its own thread and reads its members' messages
+    # (session-narration, per command-center/D1, D6). Unset, a session narrates nowhere. The manifest sets it to
+    # threads' Cloud Run URL, which is also the audience threads checks the runner's ID token against (D28, D46).
+    threads_url: str = ""
+    narration_poll_s: float = 5.0  # how often a session looks for a pushed branch or an opened pull request
 
     def __post_init__(self):
         if not 0 < self.spend_interval_s <= MAX_SPEND_INTERVAL_S:
             raise ValueError(f"spend_interval_s must be above 0 and at most {MAX_SPEND_INTERVAL_S} (D23), "
                              f"not {self.spend_interval_s}")
+        if not 0 < self.narration_poll_s <= MAX_NARRATION_POLL_S:
+            raise ValueError(f"narration_poll_s must be above 0 and at most {MAX_NARRATION_POLL_S} "
+                             f"(session-narration C1), not {self.narration_poll_s}")
         if self.cap_per_sponsor < 1:
             raise ValueError(f"cap_per_sponsor must be at least 1, not {self.cap_per_sponsor}")
         if not (math.isfinite(self.budget_ceiling_usd) and self.budget_ceiling_usd > 0):
@@ -119,6 +139,9 @@ class Config:
             "COMMIT_SHA": "commit", "RUNNER_APP_ID": "app_id", "RUNNER_APP_INSTALLATION_ID": "app_installation_id",
             "RUNNER_APP_SLUG": "app_slug", "RUNNER_GCP_PROJECT": "gcp_project", "RUNNER_REGION": "region",
             "RUNNER_JOB": "job", "RUNNER_GIT_URL": "git_url", "RUNNER_WORKDIR": "workdir",
+            "RUNNER_GITHUB_API_URL": "github_api_url", "RUNNER_RUN_API_URL": "run_api_url",
+            "RUNNER_METADATA_URL": "metadata_url", "RUNNER_SDK_CLIENT": "sdk_client",
+            "RUNNER_THREADS_URL": "threads_url",
         }
         for name, key in plain.items():
             if env.get(name):
@@ -126,7 +149,8 @@ class Config:
         numbers = {"RUNNER_CAP_PER_SPONSOR": ("cap_per_sponsor", int),
                    "RUNNER_SPEND_INTERVAL_S": ("spend_interval_s", float),
                    "RUNNER_LOST_AFTER_S": ("lost_after_s", float),
-                   "RUNNER_BUDGET_CEILING_USD": ("budget_ceiling_usd", float)}
+                   "RUNNER_BUDGET_CEILING_USD": ("budget_ceiling_usd", float),
+                   "RUNNER_NARRATION_POLL_S": ("narration_poll_s", float)}
         for name, (key, kind) in numbers.items():
             if env.get(name):
                 values[key] = kind(env[name])

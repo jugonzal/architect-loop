@@ -172,6 +172,23 @@ person in one terminal can push a loop forward.
   runner hard-codes GitHub's API URL and launches each session as a Cloud Run job. The harness therefore has to
   make both configurable before the runner can run locally (`local-harness`, per D53). The service and its jobs
   need a shared store locally too, so the harness comes after `runner-store`.
+- **Verified** (`services/status/status/app.py` on main @603742a, 2026-10-24): the status service answers
+  `/projects/{owner}/{repo}/status` only for a person's GitHub token. It names the caller with `GET /user` and
+  then checks collaborator access, so no service can read the queue with its Cloud Run identity, as
+  `notifications`' Approach assumed. Threads already trusts the runner's Google ID token
+  (`services/threads/threads/identity.py`), and the status service can do the same (D66).
+- **Verified** (`scripts/gcp/manifest.py` on main @603742a, 2026-10-24): a manifest has no field for scaling, CPU
+  allocation or a schedule, so no service can run work between requests. Read 2026-10-24: Cloud Run runs CPU
+  outside requests only with instance-based billing, and anything under 1 vCPU forces request-based billing
+  (https://cloud.google.com/run/docs/configuring/services/cpu). At list price, one always-on instance with 1 vCPU
+  and 512 MiB costs an estimated $49 per 30-day month before the free tier, a worker pool about $31, and a Cloud
+  Scheduler job $0.10 per 31 days, with the first 3 jobs per billing account free
+  (https://cloud.google.com/run/pricing, https://cloud.google.com/scheduler/pricing). D67 takes the scheduler.
+- **Verified** (`services/runner/runner/dispatch.py` and `app/src/features/` on main @603742a, 2026-10-24): a
+  dispatch must name `plugin_release`, a tag on the project's main, or it is refused. The screens that start
+  sessions each pin `v0.4.0`, the newest tag (`git tag -l`): `agents/starts.ts`, `inbox/dispatch.ts`, and
+  `threads/thread.ts`, whose record sheet takes it as an editable default. A new release reaches none of them
+  without an app change and a store build (D68).
 - **Missing:** a local environment and a smoke test. `LOOP.md` §4's smoke test is `TODO(owner)`, and
   `local-harness` adds both (per D53).
 - **Missing:** `LOOP.md` §3 rows for staging and production, with a `/version` URL for each service (per D8, D9).
@@ -249,6 +266,10 @@ person in one terminal can push a loop forward.
 | D63 | A refused loop-document PR crosses `merge` and waits on that gate's holder. Record, proof and contradiction items cross no gate and wait on the loop's owner: a record's merge is delegated under `LOOP.md` §2.1, and what a proof or a contradiction needs is a design call. | Juan, 2026-10-23 | Closes Q63; refines D59 |
 | D64 | A gated question ends its Question cell with `(gates: <key>)`, the form an effect ends with. The Questions table keeps its four columns, so every file written before still reads, and `questions.py` reads the key from there. | Juan, 2026-10-23 | Closes Q64; refines D60 |
 | D65 | While `LOOP.md` §2 names no gate keys, an item's `gate` still comes from its effect's or question's key when that key is one of D58's thirteen, and the item waits on the loop's owner, since §1 says the owner holds every gate. The board shows one drift line saying §2 names no keys. Once §2 names keys, D58 applies as written: an item waits on its gate's holder, a key §2 does not define is drift, and a key §2 defines with no holder waits on the loop's owner. | Juan, 2026-10-23 | Closes Q65; refines D58 |
+| D66 | The status service also accepts a Google ID token from a Cloud Run service identity it trusts, whose audience is the status service's own URL, and answers it with the same document a member gets. The trusted identities are named in its manifest. It copies how threads trusts the runner. A new concern, `status-callers`, builds it, rather than `notifications`' own branch, and `notifications` is its first caller. | Juan, 2026-10-24 | Closes Q66; refines D28 |
+| D67 | A service's manifest may declare schedules: Cloud Scheduler jobs that call one of its paths on a cron, with an OIDC token for the service's own identity. `deploy.sh` applies them with the service, and `bootstrap.sh` enables Cloud Scheduler. A new concern, `service-schedules`, adds the field, rather than `notifications`' own branch, and `notifications` is its first user. Chosen over an always-on instance (an estimated $44 to $49 a month per environment) and a worker pool (about $26 to $31). | Juan, 2026-10-24 | Closes Q67; refines D46 |
+| D68 | A session started from the app runs the newest release tag on the project's main. The runner's estimate names that tag, each start sheet shows it and dispatches exactly that tag, and no screen holds a release of its own. A tag the owner cuts (per D17) reaches every start from the app with no store build. A new concern, `latest-release`, builds it in the runner, the runner's client and the three screens that start sessions. | Juan, 2026-10-24 | Closes Q68; refines D17 |
+| D69 | The notifier accepts a device only from a person whom the status document names as a loop's owner or member (per D62), and it has no GitHub App of its own. It pushes only to the people items wait on. | Juan, 2026-10-24 | Closes Q69; refines D27 and D28 |
 
 ## Questions
 
@@ -319,6 +340,10 @@ person in one terminal can push a loop forward.
 | ~~Q63~~ | ~~Which gate do record, proof, contradiction and refused-PR items cross? (raised by `addressed-to-people`'s build)~~ → D63 | | |
 | ~~Q64~~ | ~~Where in a Questions row does a gated question name its key? (raised by `addressed-to-people`'s build)~~ → D64 | | |
 | ~~Q65~~ | ~~What do `gate` and `waits_on` read while `LOOP.md` §2 names no keys or holders? (raised by `addressed-to-people`'s build)~~ → D65 | | |
+| ~~Q66~~ | ~~How does the notifier read the queue, when the status service accepts only a person's GitHub token? (raised by `notifications`' build)~~ → D66 | | |
+| ~~Q67~~ | ~~What keeps the notifier's poller running, when Cloud Run throttles CPU between requests and a manifest cannot change that? (raised by `notifications`' build)~~ → D67 | | |
+| ~~Q68~~ | ~~Which skills release does a session started from the app run? (raised by the builds of `app-agents`, `app-inbox` and `app-threads`)~~ → D68 | | |
+| ~~Q69~~ | ~~Who may register a device with the notifier, which has no GitHub App to check collaborator access? (raised by `notifications`' build)~~ → D69 | | |
 
 **Q62 options**
 - **GitHub login**: the app can match items to the signed-in account, and `LOOP.md` §1 already gives it. (recommended)
@@ -345,6 +370,35 @@ person in one terminal can push a loop forward.
   item crosses.
 - **Strict per D58**: every key §2 does not define is drift, item by item; correct to the letter, but noisy on
   every project today.
+
+**Q66 options**
+- **Status trusts the notifier**: the status service accepts the notifier's Google ID token, as threads trusts the
+  runner's; a small concern in `services/status/`. (recommended)
+- **The notifier holds tokens**: each registration hands over the person's GitHub token; no status change, but the
+  notifier stores tokens that expire or are revoked, and reads once per person.
+- **Status pushes changes**: the status service calls the notifier when its board changes; status then depends on
+  notify, and still needs a poll for changes no webhook reports.
+
+**Q67 options**
+- **A scheduler tick every minute**: about $0, a `schedules` field in the manifest, and `notifications` C2 allows two
+  minutes. (recommended)
+- **An always-on instance**: keeps "within a minute", but needs a whole vCPU, an estimated $44 to $49 a month per
+  environment, and scaling fields in the manifest.
+- **A worker pool**: keeps "within a minute" for about $26 to $31 a month, but it is a second resource type that the
+  manifest and `deploy.sh` must learn.
+
+**Q68 options**
+- **The runner names the newest**: the estimate names the newest tag, the sheet sends it back, and a release reaches
+  the app with no store build. (recommended)
+- **The status document carries it**: the schema and `loop_status.py` grow a field that only the app uses.
+- **A build setting**: one `EXPO_PUBLIC_` setting replaces three pins, but each release still needs a store build.
+- **Keep the pins**: three edits and a store build for every release.
+
+**Q69 options**
+- **From the status document**: only logins named as a loop's owner or member; no new app, key or secret.
+  (recommended)
+- **Its own GitHub App**: as D27 and D28 say, with identity and secrets effects for the owner.
+- **Anyone, documented**: any GitHub user can register, but only people items wait on get real pushes.
 
 ## Evidence
 

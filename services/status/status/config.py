@@ -14,15 +14,21 @@
 | `STATUS_MAX_AGE_SECONDS` | How long a document is reused when GitHub delivers nothing. Default 20; under 30 (C1): a regather that cannot read an environment answers it unknown, and that answer is reused as long again, so even then a change is in the answer within a minute. |
 | `STATUS_CACHE_SECONDS` | How long a caller's login and membership are reused before GitHub is asked again. Default 60. |
 | `STATUS_SERVED_TIMEOUT_SECONDS` | How long a GET of an environment's `/version` may take before it reads as unknown. Default 5. |
+| `STATUS_AUDIENCE` | This service's own URL, the audience a calling service's ID token must name (D66). Unset, no service is trusted. |
+| `STATUS_CALLER_SERVICE_ACCOUNTS` | The service accounts trusted to read every project's document, comma-separated. Unset, none is. |
+| `STATUS_CALLER_KEYS_URL` | The keys a calling service's ID token is checked against. Default Google's; the local harness's own. |
 
 The secrets reach the service as environment variables that Cloud Run fills from Secret Manager. A service missing
 the project or its app still starts: `GET /version` answers, and every other request is refused with 503 naming
-what is missing. Every outside endpoint is a setting, so a local harness can point the service at its fakes
+what is missing. A service that trusts no service account still serves people, so the trust is never a problem
+here. Every outside endpoint is a setting, so a local harness can point the service at its fakes
 (command-center/D53).
 """
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+GOOGLE_CERTS = "https://www.googleapis.com/oauth2/v3/certs"
 
 # Every variable the service reads, with what it is for.
 VARIABLES = {
@@ -37,9 +43,14 @@ VARIABLES = {
     "STATUS_MAX_AGE_SECONDS": "how long a document is reused",
     "STATUS_CACHE_SECONDS": "how long a caller's membership is reused",
     "STATUS_SERVED_TIMEOUT_SECONDS": "how long a served-commit read may take",
+    "STATUS_AUDIENCE": "the audience a calling service's ID token names",
+    "STATUS_CALLER_SERVICE_ACCOUNTS": "the services trusted to read",
+    "STATUS_CALLER_KEYS_URL": "the keys a calling service's ID token is checked against",
 }
 # What every deployment sets, in services/status/service.json; COMMIT_SHA is deploy.sh's. The rest have defaults.
-REQUIRED = ("STATUS_PROJECTS", "STATUS_GITHUB_APP_ID", "STATUS_GITHUB_APP_PRIVATE_KEY", "STATUS_GITHUB_WEBHOOK_SECRET")
+# The trust is set by every deployment too (D66), though a service without it still serves people.
+REQUIRED = ("STATUS_PROJECTS", "STATUS_GITHUB_APP_ID", "STATUS_GITHUB_APP_PRIVATE_KEY", "STATUS_GITHUB_WEBHOOK_SECRET",
+            "STATUS_AUDIENCE", "STATUS_CALLER_SERVICE_ACCOUNTS")
 SECRETS = ("STATUS_GITHUB_APP_PRIVATE_KEY", "STATUS_GITHUB_WEBHOOK_SECRET")
 
 
@@ -60,6 +71,9 @@ class Settings:
     max_age_seconds: float = 20.0
     cache_seconds: float = 60.0
     served_timeout_seconds: float = 5.0
+    audience: str | None = None
+    caller_service_accounts: tuple = field(default_factory=tuple)
+    caller_keys_url: str = GOOGLE_CERTS
 
     @classmethod
     def from_env(cls, environ=None):
@@ -77,7 +91,15 @@ class Settings:
             max_age_seconds=float(env.get("STATUS_MAX_AGE_SECONDS") or 20),
             cache_seconds=float(env.get("STATUS_CACHE_SECONDS") or 60),
             served_timeout_seconds=float(env.get("STATUS_SERVED_TIMEOUT_SECONDS") or 5),
+            audience=env.get("STATUS_AUDIENCE") or None,
+            caller_service_accounts=tuple(_list(env.get("STATUS_CALLER_SERVICE_ACCOUNTS"))),
+            caller_keys_url=env.get("STATUS_CALLER_KEYS_URL") or GOOGLE_CERTS,
         )
+
+    @property
+    def trusts_services(self):
+        """Whether a bearer token that is a JWT is checked as a calling service's Google ID token."""
+        return bool(self.audience and self.caller_service_accounts)
 
     def problems(self):
         """What keeps the service from serving any status at all; empty when it can."""

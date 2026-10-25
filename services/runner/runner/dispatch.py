@@ -191,4 +191,7 @@ class Dispatcher:
         if skill not in SKILLS:
             raise invalid(f"skill must be one of {', '.join(SKILLS)}")
         model = model or self.config.skill_models[skill]
-        return {"skill": skill, "model": model, "estimate": estimate_from(self.store.measurements(skill, model, 10))}
+        # The release a start from the app shows and sends back (latest-release C1, command-center/D68). The dispatch
+        # still names it and is still checked, so a tag cut in between changes nothing that was shown.
+        return {"skill": skill, "model": model, "estimate": estimate_from(self.store.measurements(skill, model, 10)),
+                "plugin_release": self._github(self.github.latest_release)}

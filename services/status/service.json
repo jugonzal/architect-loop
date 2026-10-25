@@ -2,7 +2,9 @@
   "identity": {"name": "status", "roles": []},
   "settings": {
     "STATUS_PROJECTS": "jugonzal/architect-loop",
-    "STATUS_GITHUB_APP_ID": {"staging": "5447513", "production": "TODO(owner)"}
+    "STATUS_GITHUB_APP_ID": {"staging": "5447513", "production": "TODO(owner)"},
+    "STATUS_AUDIENCE": "https://status-{number}.{region}.run.app",
+    "STATUS_CALLER_SERVICE_ACCOUNTS": "notify@{project}.iam.gserviceaccount.com"
   },
   "secrets": {
     "STATUS_GITHUB_APP_PRIVATE_KEY": "status-github-app-private-key",

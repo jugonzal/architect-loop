@@ -13,8 +13,16 @@
 # settings, secrets and Cloud SQL instance and no others, plus the commit in COMMIT_SHA (command-center/D47).
 # /version is open to anyone, and the deploy fails unless /version then answers that commit.
 #
+# Only once /version answers the commit does it apply the manifest's schedules (command-center/service-schedules C2,
+# per command-center/D67): it creates or updates the Cloud Scheduler job <service>-<name> for each one, calling the
+# service's URL with an OIDC token for the service's own identity and that URL as the audience, and deletes the
+# service's jobs the manifest no longer declares. A deploy that fails earlier leaves the old schedules calling the
+# old revision. A manifest with schedules, in a project whose bootstrap has not enabled Cloud Scheduler, is refused
+# before anything is built.
+#
 # The owner runs it: a deploy to a shared environment is gated (LOOP.md §2). See docs/runbooks/deploy.md.
-# To roll back, deploy the previous commit with the same command: that restores its image and its config.
+# To roll back, deploy the previous commit with the same command: that restores its image, its config and its
+# schedules.
 #
 # Usage: sh scripts/gcp/deploy.sh <service> <staging|production> <sha>
 set -eu
@@ -75,27 +83,48 @@ registry=$REGION-docker.pkg.dev
 image=$registry/$project/$REPOSITORY/$service:$commit
 echo "deploy $service to $env: commit $commit, project $project, region $REGION"
 
-# 3. What the manifest means in this environment: the flags for each job and for the service. {number} is the
-# project's number, read only when the manifest uses it.
+# 3. The Cloud Scheduler jobs in the region, so that the schedules a manifest no longer declares can be deleted
+# (service-schedules C1). Where Cloud Scheduler is not enabled no job can call the service, so there is none to
+# read; a manifest that declares schedules there is refused, since its bootstrap has not run.
+: >"$tmp/scheduled"
+scheduler=
+enabled=$(gcloud services list --enabled --project="$project" --format='value(config.name)')
+if printf '%s\n' "$enabled" | grep -qx "$SCHEDULER_API"; then
+  scheduler=yes
+elif python3 "$here/scripts/gcp/manifest.py" fields "$tmp/service.json" --name="$manifest" >"$tmp/fields" &&
+    grep -qx schedules "$tmp/fields"; then
+  echo "deploy: $manifest declares schedules, but Cloud Scheduler is not enabled in $project;" \
+    "run sh scripts/gcp/bootstrap.sh $env first (docs/runbooks/deploy.md)" >&2
+  exit 1
+fi
+
+# 4. What the manifest means in this environment: the flags for each job and for the service, and what to do to each
+# schedule. {number} is the project's number, read only when the manifest uses it or Cloud Scheduler may hold jobs
+# that call the service's URL.
 number=
-if grep -q '{number}' "$tmp/service.json"; then
+if [ -n "$scheduler" ] || grep -q '{number}' "$tmp/service.json"; then
   number=$(gcloud projects describe "$project" --format='value(projectNumber)')
 fi
+if [ -n "$scheduler" ]; then
+  gcloud scheduler jobs list --location="$REGION" --project="$project" --impersonate-service-account="$sa" \
+    --format='value(name,httpTarget.uri)' >"$tmp/scheduled"
+fi
 python3 "$here/scripts/gcp/manifest.py" render "$tmp/service.json" --name="$manifest" --env="$env" \
-  --project="$project" --region="$REGION" --number="$number" --commit="$commit" --out="$tmp/config"
+  --project="$project" --region="$REGION" --number="$number" --commit="$commit" --out="$tmp/config" \
+  --service="$service" --scheduled="$tmp/scheduled"
 
-# 4. Build from the commit's own tree, with the repository root as the context.
+# 5. Build from the commit's own tree, with the repository root as the context.
 mkdir "$tmp/tree"
 git -C "$here" archive --format=tar "$commit" | tar -x -C "$tmp/tree"
 docker build --platform=linux/amd64 --file="$tmp/tree/$dockerfile" --tag="$image" \
   --label="org.opencontainers.image.revision=$commit" "$tmp/tree"
 
-# 5. Push as the deploy identity. The token lasts an hour, and docker keeps it for this registry only.
+# 6. Push as the deploy identity. The token lasts an hour, and docker keeps it for this registry only.
 token=$(gcloud auth print-access-token --impersonate-service-account="$sa")
 printf '%s\n' "$token" | docker login --username=oauth2accesstoken --password-stdin "$registry"
 docker push "$image"
 
-# 6. Deploy the jobs, then the service, so the service never starts a job left at an earlier commit. Their variables
+# 7. Deploy the jobs, then the service, so the service never starts a job left at an earlier commit. Their variables
 # and secrets replace whatever they had, so each ends with exactly what the manifest says. A failed deploy leaves
 # the previous revision serving. Job names are checked to be words, so the loop splits them safely.
 for job in $(cat "$tmp/config/jobs"); do
@@ -109,8 +138,23 @@ while IFS= read -r flag; do set -- "$@" "$flag"; done <"$tmp/config/service.flag
 gcloud run deploy "$service" --image="$image" --region="$REGION" --project="$project" "$@" \
   --allow-unauthenticated --impersonate-service-account="$sa" --quiet
 
-# 7. Read /version back.
+# 8. Read /version back.
 url=$(gcloud run services describe "$service" --region="$REGION" --project="$project" \
   --impersonate-service-account="$sa" --format='value(status.url)')
 sh "$here/scripts/gcp/served.sh" "$url/version" "$commit" >/dev/null
+
+# 9. Only now, with the new revision answering, the schedules: each declared one created or updated to call it, and
+# each of the service's that the manifest no longer declares deleted (service-schedules C2). The steps are read on
+# descriptor 3, so that no gcloud call can read them from its standard input.
+while read -r action job <&3; do
+  if [ "$action" = delete ]; then
+    gcloud scheduler jobs delete "$job" --location="$REGION" --project="$project" \
+      --impersonate-service-account="$sa" --quiet
+    continue
+  fi
+  set --
+  while IFS= read -r flag; do set -- "$@" "$flag"; done <"$tmp/config/schedule-$job.flags"
+  gcloud scheduler jobs "$action" http "$job" --location="$REGION" --project="$project" "$@" \
+    --impersonate-service-account="$sa" --quiet
+done 3<"$tmp/config/schedules"
 echo "deployed $service to $env: $url/version answers $commit"
