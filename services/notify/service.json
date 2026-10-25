@@ -1,0 +1,16 @@
+{
+  "identity": {"name": "notify", "roles": ["roles/datastore.user"]},
+  "apis": ["firestore.googleapis.com"],
+  "settings": {
+    "NOTIFY_PROJECTS": "jugonzal/architect-loop",
+    "NOTIFY_STORE": "firestore:notify",
+    "NOTIFY_GCP_PROJECT": "{project}",
+    "NOTIFY_STATUS_URL": "https://status-{number}.{region}.run.app",
+    "NOTIFY_AUDIENCE": "https://notify-{number}.{region}.run.app",
+    "NOTIFY_TICK_SERVICE_ACCOUNTS": "notify@{project}.iam.gserviceaccount.com"
+  },
+  "firestore": ["notify"],
+  "schedules": {
+    "tick": {"cron": "* * * * *", "time_zone": "Etc/UTC", "path": "/tick"}
+  }
+}

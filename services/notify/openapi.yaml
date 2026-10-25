@@ -1,0 +1,472 @@
+openapi: 3.1.0
+info:
+  title: Notify
+  version: 1.0.0
+  summary: Each person's devices, digest time and quiet hours, so they hear about the items waiting on them.
+  description: |
+    The command center's notifier (command-center/notifications, per command-center/D35). It keeps each person's
+    devices and settings in a store of its own (command-center/D26, D44). A Cloud Scheduler job ticks it every
+    minute (`POST /tick`, notifications D3 and command-center/D67), and on each tick it reads the status service's
+    queue with its Cloud Run service identity (command-center/D66), so a push goes out within two minutes of the
+    status changing.
+
+    **What it sends.** A queue item that waits on a person (`waits_on`) and whose `unblocks` names at least one
+    concern is blocking: it is pushed at once to that person's devices, once (notifications D2). Everything else
+    waits for the digest, one push at the time the person chose, saying how many items wait on them, which opens
+    the inbox (notifications D1). Nothing is pushed in a person's quiet hours: a blocking item that arrives then
+    is pushed when they end, if it still stands. The items of a loop in the backlog carry no notifications. These
+    are sent by the service itself, never through this API; the only push a caller asks for is a test to their
+    own devices.
+
+    **Callers.** A person sends `Authorization: Bearer <token>`, the GitHub token from the app's sign-in, which
+    asks for no repository access. The service identifies them with `GET /user` on that token
+    (command-center/D28), and each person sees and changes only their own devices and settings. Only a person the
+    status document names as a loop's owner or member may register a device (command-center/D69). A device is
+    only ever one person's: registering its push token again, from another account, moves it there. A tick
+    sends an OIDC token for the notifier's own service identity instead, which is never sent to GitHub.
+
+    **Projects.** Every path keys a project as `{owner}/{repo}` (command-center/D48), and so does every record.
+  license:
+    name: MIT
+paths:
+  /version:
+    get:
+      operationId: getVersion
+      summary: The commit this deployment was built from (command-center/D32).
+      security: []
+      responses:
+        "200":
+          description: The commit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Version"
+
+  /tick:
+    post:
+      operationId: tick
+      summary: Read each project's queue once, and send what is due (C2, C3).
+      description: |
+        The notifier's Cloud Scheduler job calls this every minute, with an OIDC token for the notifier's own
+        service identity whose audience is the notifier's URL (notifications D3, command-center/D67). Any other
+        token is refused. The app never calls it.
+      security:
+        - scheduler: []
+      responses:
+        "200":
+          description: What the tick read and sent, for each project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tick"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+  /projects/{owner}/{repo}/devices:
+    parameters:
+      - $ref: "#/components/parameters/owner"
+      - $ref: "#/components/parameters/repo"
+    get:
+      operationId: listDevices
+      summary: The caller's devices registered for push in the project, oldest first.
+      security:
+        - person: []
+      responses:
+        "200":
+          description: The caller's devices, and no one else's.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+    post:
+      operationId: registerDevice
+      summary: Register this device's Expo push token for the caller.
+      description: |
+        Registering a token that is already registered keeps one device: it stays the caller's, or moves to the
+        caller from whoever registered it before. When the caller has saved no settings yet and the request names
+        a time zone, their settings start as the defaults in that time zone.
+      security:
+        - person: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewDevice"
+      responses:
+        "200":
+          description: The device, registered to the caller.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+  /projects/{owner}/{repo}/devices/{device}:
+    parameters:
+      - $ref: "#/components/parameters/owner"
+      - $ref: "#/components/parameters/repo"
+      - name: device
+        in: path
+        required: true
+        description: The device's id, as registering it answered.
+        schema:
+          type: string
+          pattern: "^[0-9a-f]{32}$"
+    delete:
+      operationId: unregisterDevice
+      summary: Stop pushing to one of the caller's devices.
+      security:
+        - person: []
+      responses:
+        "204":
+          description: The device is no longer registered.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+  /projects/{owner}/{repo}/test-notification:
+    parameters:
+      - $ref: "#/components/parameters/owner"
+      - $ref: "#/components/parameters/repo"
+    post:
+      operationId: sendTestNotification
+      summary: Push a test notification to the caller's own devices, and no one else's (C1).
+      description: At most one a minute for each person.
+      security:
+        - person: []
+      responses:
+        "200":
+          description: What Expo said of the push to each of the caller's devices.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Delivery"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+  /projects/{owner}/{repo}/settings/me:
+    parameters:
+      - $ref: "#/components/parameters/owner"
+      - $ref: "#/components/parameters/repo"
+    get:
+      operationId: getSettings
+      summary: The caller's digest time, time zone and quiet hours, or the defaults until they save some.
+      security:
+        - person: []
+      responses:
+        "200":
+          $ref: "#/components/responses/Settings"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+    put:
+      operationId: putSettings
+      summary: Save the caller's digest time, time zone and quiet hours, all three at once (C3).
+      security:
+        - person: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsInput"
+      responses:
+        "200":
+          $ref: "#/components/responses/Settings"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+components:
+  securitySchemes:
+    person:
+      type: http
+      scheme: bearer
+      description: The GitHub token from the app's sign-in. The service asks GitHub who it belongs to.
+    scheduler:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: A Google-signed OIDC token for a service identity this deployment trusts to tick.
+  parameters:
+    owner:
+      name: owner
+      in: path
+      required: true
+      description: The project's owner on GitHub.
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$"
+    repo:
+      name: repo
+      in: path
+      required: true
+      description: The project's repository name.
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9._-]{1,100}$"
+  schemas:
+    Version:
+      type: object
+      required: [commit]
+      additionalProperties: false
+      properties:
+        commit:
+          description: The commit this deployment was built from, or `unknown` when the build did not say.
+          type: string
+    Platform:
+      description: The device's operating system.
+      type: string
+      enum: [ios, android]
+    Device:
+      description: A device registered for push. Its push token is never answered.
+      type: object
+      required: [id, platform, name, registered_at]
+      additionalProperties: false
+      properties:
+        id:
+          description: The device's id, the same whenever its push token is registered.
+          type: string
+          pattern: "^[0-9a-f]{32}$"
+        platform:
+          $ref: "#/components/schemas/Platform"
+        name:
+          description: What the person calls the device, or null.
+          type: [string, "null"]
+        registered_at:
+          description: When the caller first registered it.
+          type: string
+          format: date-time
+    DeviceList:
+      type: object
+      required: [devices]
+      additionalProperties: false
+      properties:
+        devices:
+          type: array
+          items:
+            $ref: "#/components/schemas/Device"
+    NewDevice:
+      type: object
+      required: [token, platform]
+      additionalProperties: false
+      properties:
+        token:
+          description: The device's Expo push token.
+          type: string
+          pattern: "^Expo(nent)?PushToken\\[[A-Za-z0-9_-]{1,200}\\]$"
+        platform:
+          $ref: "#/components/schemas/Platform"
+        name:
+          description: What the person calls the device, or null.
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 100
+        timezone:
+          description: The device's IANA time zone, which the caller's settings start in if they have saved none.
+          type: string
+    Clock:
+      description: A time of day, HH:MM, in the person's time zone.
+      type: string
+      pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+    QuietHours:
+      description: >-
+        From `start`, up to but not including `end`, every day; it may run past midnight. Nothing is pushed then.
+      type: object
+      required: [start, end]
+      additionalProperties: false
+      properties:
+        start:
+          $ref: "#/components/schemas/Clock"
+        end:
+          $ref: "#/components/schemas/Clock"
+    SettingsInput:
+      description: >-
+        All three, every time. The digest time may not fall in the quiet hours, and their start and end differ.
+      type: object
+      required: [timezone, digest_time, quiet_hours]
+      additionalProperties: false
+      properties:
+        timezone:
+          description: An IANA time zone, such as America/New_York or UTC, that the two times are in.
+          type: string
+          minLength: 1
+        digest_time:
+          description: When the digest arrives each day, or null for no digest.
+          oneOf:
+            - $ref: "#/components/schemas/Clock"
+            - type: "null"
+        quiet_hours:
+          description: When nothing is pushed, or null for no quiet hours.
+          oneOf:
+            - $ref: "#/components/schemas/QuietHours"
+            - type: "null"
+    Settings:
+      type: object
+      required: [timezone, digest_time, quiet_hours, saved]
+      additionalProperties: false
+      properties:
+        timezone:
+          type: string
+        digest_time:
+          oneOf:
+            - $ref: "#/components/schemas/Clock"
+            - type: "null"
+        quiet_hours:
+          oneOf:
+            - $ref: "#/components/schemas/QuietHours"
+            - type: "null"
+        saved:
+          description: Whether the person saved these; false while they are the defaults.
+          type: boolean
+    Delivery:
+      type: object
+      required: [devices, accepted, gone]
+      additionalProperties: false
+      properties:
+        devices:
+          description: How many devices the caller has registered; 0 means nothing was sent.
+          type: integer
+          minimum: 0
+        accepted:
+          description: How many of them Expo accepted the push for.
+          type: integer
+          minimum: 0
+        gone:
+          description: How many Expo said no longer exist; they are no longer registered.
+          type: integer
+          minimum: 0
+    Tick:
+      type: object
+      required: [reads]
+      additionalProperties: false
+      properties:
+        reads:
+          type: array
+          items:
+            type: object
+            required: [project, read, error, baseline, pushed, deferred, digests]
+            additionalProperties: false
+            properties:
+              project:
+                type: string
+              read:
+                description: Whether the project's status document was read; nothing is sent from a failed read.
+                type: boolean
+              error:
+                description: Why it was not read, or null.
+                type: [string, "null"]
+              baseline:
+                description: Whether this was the project's first read, which marks what stands and sends none of it.
+                type: boolean
+              pushed:
+                description: How many blocking items were pushed, each to the person it waits on.
+                type: integer
+                minimum: 0
+              deferred:
+                description: How many blocking items wait for their person's quiet hours to end.
+                type: integer
+                minimum: 0
+              digests:
+                description: How many people's digests came due on this tick.
+                type: integer
+                minimum: 0
+    Error:
+      type: object
+      required: [error, message]
+      additionalProperties: false
+      properties:
+        error:
+          type: string
+          enum: [bad_request, unauthorized, forbidden, not_found, too_many_requests, unavailable, internal]
+        message:
+          description: What went wrong, for people.
+          type: string
+  responses:
+    Settings:
+      description: The caller's settings.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Settings"
+    BadRequest:
+      description: The request is malformed, or its settings cannot be saved.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: No token, or a token GitHub does not accept.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: The status document names the caller as no loop's owner or member, so no device is registered.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: The project is not served here, the caller has no such device, or there is no such path.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TooManyRequests:
+      description: A test notification was sent to the caller less than a minute ago.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unavailable:
+      description: >-
+        GitHub, the status service, Google's keys or Expo cannot be reached, or the service is not configured.
+        Nothing is sent instead.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

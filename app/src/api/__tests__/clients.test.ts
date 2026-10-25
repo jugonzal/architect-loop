@@ -115,13 +115,13 @@ describe('the clients are generated from the OpenAPI files (command-center/D55)'
     () => {
       // Runs the check as `npm run check:clients` does, so CI's `npm test` runs it too.
       const out = execFileSync(process.execPath, [GENERATOR, '--check'], { encoding: 'utf8' });
-      expect(out).toBe('src/api/runner.gen.ts, src/api/threads.gen.ts match their OpenAPI files\n');
+      expect(out).toBe('src/api/runner.gen.ts, src/api/threads.gen.ts, src/api/notify.gen.ts match their OpenAPI files\n');
     },
     SLOW,
   );
 
   it('say which OpenAPI file each was generated from', () => {
-    for (const service of ['runner', 'threads']) {
+    for (const service of ['runner', 'threads', 'notify']) {
       const source = fs.readFileSync(path.join(API_DIR, `${service}.gen.ts`), 'utf8');
       expect(source).toContain(`// Generated from services/${service}/openapi.yaml by src/api/generate-clients.js.`);
     }
@@ -160,12 +160,19 @@ describe('the clients are generated from the OpenAPI files (command-center/D55)'
     SLOW,
   );
 
-  it('generate notify with the same generator once its OpenAPI file exists, and never status', () => {
-    expect(Object.keys(SERVICES)).toEqual(['runner', 'threads', 'notify']);
-    const result = runCheck(REPO, 'notify');
-    expect(result.status).toBe(1);
-    expect(result.stderr).toBe('services/notify/openapi.yaml does not exist, so src/api/notify.gen.ts cannot be generated\n');
-  });
+  it(
+    'generate notify with the same generator now that its OpenAPI file exists, and never status',
+    () => {
+      // command-center/notifications wrote services/notify/openapi.yaml and generated src/api/notify.gen.ts (D55).
+      expect(Object.keys(SERVICES)).toEqual(['runner', 'threads', 'notify']);
+      const result = runCheck(REPO, 'notify');
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe('src/api/notify.gen.ts match their OpenAPI files\n');
+      expect(fs.existsSync(path.join(API_DIR, 'status.gen.ts'))).toBe(true);
+      expect(Object.keys(SERVICES)).not.toContain('status');
+    },
+    SLOW,
+  );
 
   it.each([
     ['runner', RUNNER_OPERATIONS, () => createRunnerClient({ baseUrl: RUNNER, fetch: fakeService().fetch })],
