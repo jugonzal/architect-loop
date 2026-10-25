@@ -29,6 +29,25 @@ export interface NotifyOperations {
     };
   };
   /**
+   * Read each project's queue once, and send what is due (C2, C3).
+   */
+  tick: {
+    responses: {
+      /**
+       * What the tick read and sent, for each project.
+       */
+      '200': Tick;
+      /**
+       * No token, or a token GitHub does not accept.
+       */
+      '401': Error;
+      /**
+       * GitHub, the status service, Google's keys or Expo cannot be reached, or the service is not configured. Nothing is sent instead.
+       */
+      '503': Error;
+    };
+  };
+  /**
    * The caller's devices registered for push in the project, oldest first.
    */
   listDevices: {
@@ -62,7 +81,7 @@ export interface NotifyOperations {
        */
       '404': Error;
       /**
-       * GitHub or Expo cannot be reached, or the service is not configured. Nothing is sent instead.
+       * GitHub, the status service, Google's keys or Expo cannot be reached, or the service is not configured. Nothing is sent instead.
        */
       '503': Error;
     };
@@ -98,11 +117,15 @@ export interface NotifyOperations {
        */
       '401': Error;
       /**
+       * The status document names the caller as no loop's owner or member, so no device is registered.
+       */
+      '403': Error;
+      /**
        * The project is not served here, the caller has no such device, or there is no such path.
        */
       '404': Error;
       /**
-       * GitHub or Expo cannot be reached, or the service is not configured. Nothing is sent instead.
+       * GitHub, the status service, Google's keys or Expo cannot be reached, or the service is not configured. Nothing is sent instead.
        */
       '503': Error;
     };
@@ -145,7 +168,7 @@ export interface NotifyOperations {
        */
       '404': Error;
       /**
-       * GitHub or Expo cannot be reached, or the service is not configured. Nothing is sent instead.
+       * GitHub, the status service, Google's keys or Expo cannot be reached, or the service is not configured. Nothing is sent instead.
        */
       '503': Error;
     };
@@ -188,7 +211,7 @@ export interface NotifyOperations {
        */
       '429': Error;
       /**
-       * GitHub or Expo cannot be reached, or the service is not configured. Nothing is sent instead.
+       * GitHub, the status service, Google's keys or Expo cannot be reached, or the service is not configured. Nothing is sent instead.
        */
       '503': Error;
     };
@@ -227,7 +250,7 @@ export interface NotifyOperations {
        */
       '404': Error;
       /**
-       * GitHub or Expo cannot be reached, or the service is not configured. Nothing is sent instead.
+       * GitHub, the status service, Google's keys or Expo cannot be reached, or the service is not configured. Nothing is sent instead.
        */
       '503': Error;
     };
@@ -267,7 +290,7 @@ export interface NotifyOperations {
        */
       '404': Error;
       /**
-       * GitHub or Expo cannot be reached, or the service is not configured. Nothing is sent instead.
+       * GitHub, the status service, Google's keys or Expo cannot be reached, or the service is not configured. Nothing is sent instead.
        */
       '503': Error;
     };
@@ -278,6 +301,42 @@ export interface Version {
    * The commit this deployment was built from, or `unknown` when the build did not say.
    */
   commit: string;
+}
+export interface Tick {
+  reads: {
+    project: string;
+    /**
+     * Whether the project's status document was read; nothing is sent from a failed read.
+     */
+    read: boolean;
+    /**
+     * Why it was not read, or null.
+     */
+    error: string | null;
+    /**
+     * Whether this was the project's first read, which marks what stands and sends none of it.
+     */
+    baseline: boolean;
+    /**
+     * How many blocking items were pushed, each to the person it waits on.
+     */
+    pushed: number;
+    /**
+     * How many blocking items wait for their person's quiet hours to end.
+     */
+    deferred: number;
+    /**
+     * How many people's digests came due on this tick.
+     */
+    digests: number;
+  }[];
+}
+export interface Error {
+  error: 'bad_request' | 'unauthorized' | 'forbidden' | 'not_found' | 'too_many_requests' | 'unavailable' | 'internal';
+  /**
+   * What went wrong, for people.
+   */
+  message: string;
 }
 export interface DeviceList {
   devices: Device[];
@@ -299,13 +358,6 @@ export interface Device {
    * When the caller first registered it.
    */
   registered_at: string;
-}
-export interface Error {
-  error: 'bad_request' | 'unauthorized' | 'not_found' | 'too_many_requests' | 'unavailable' | 'internal';
-  /**
-   * What went wrong, for people.
-   */
-  message: string;
 }
 export interface NewDevice {
   /**
@@ -375,6 +427,7 @@ export interface SettingsInput {
  */
 export const NOTIFY_OPERATIONS: { readonly [Operation in keyof NotifyOperations]: OperationSpec } = {
   getVersion: { method: 'GET', path: '/version', ok: { 200: 'json' } },
+  tick: { method: 'POST', path: '/tick', ok: { 200: 'json' } },
   listDevices: { method: 'GET', path: '/projects/{owner}/{repo}/devices', ok: { 200: 'json' } },
   registerDevice: { method: 'POST', path: '/projects/{owner}/{repo}/devices', ok: { 200: 'json' } },
   unregisterDevice: { method: 'DELETE', path: '/projects/{owner}/{repo}/devices/{device}', ok: { 204: 'empty' } },
@@ -398,6 +451,16 @@ export interface NotifyClient {
    * `GET /version`
    */
   getVersion(): Promise<NotifyOperations['getVersion']['responses']['200']>;
+  /**
+   * Read each project's queue once, and send what is due (C2, C3).
+   *
+   * The notifier's Cloud Scheduler job calls this every minute, with an OIDC token for the notifier's own
+   * service identity whose audience is the notifier's URL (notifications D3, command-center/D67). Any other
+   * token is refused. The app never calls it.
+   *
+   * `POST /tick`
+   */
+  tick(): Promise<NotifyOperations['tick']['responses']['200']>;
   /**
    * The caller's devices registered for push in the project, oldest first.
    *
@@ -462,6 +525,7 @@ export function createNotifyClient(options: ServiceClientOptions): NotifyClient 
   const call = operationCaller('notify', NOTIFY_OPERATIONS, options);
   return {
     getVersion: () => call<NotifyOperations['getVersion']['responses']['200']>('getVersion'),
+    tick: () => call<NotifyOperations['tick']['responses']['200']>('tick'),
     listDevices: (request) => call<NotifyOperations['listDevices']['responses']['200']>('listDevices', request),
     registerDevice: (request) =>
       call<NotifyOperations['registerDevice']['responses']['200']>('registerDevice', request),

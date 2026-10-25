@@ -1,6 +1,7 @@
 // The strip above every tab: the project, the environment when it is not production, and who is signed in. Each
 // screen draws its own title below it, as the design's artboards do.
 
+import { useRouter } from 'expo-router';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -12,11 +13,14 @@ export function ShellHeader() {
   const insets = useSafeAreaInsets();
   const { config, signIn } = useSession();
   const user = useSignedInUser();
+  const router = useRouter();
   const name = displayName(user);
   const environment = config.environment === 'production/app' ? null : config.environment.replace(/\/app$/, '');
 
+  // The account sheet: notifications (command-center/notifications D4) and signing out.
   const confirmSignOut = () =>
     Alert.alert(`Signed in as ${name}`, `GitHub account ${user.login}`, [
+      { text: 'Notifications', onPress: () => router.navigate('/notifications') },
       { text: 'Cancel', style: 'cancel' },
       { text: 'Sign out', style: 'destructive', onPress: () => void signIn.signOut() },
     ]);
@@ -30,7 +34,7 @@ export function ShellHeader() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Signed in as ${name}`}
-        accessibilityHint="Shows your account and lets you sign out"
+        accessibilityHint="Shows your account, your notifications, and signing out"
         onPress={confirmSignOut}
         hitSlop={6}
         style={styles.person}
