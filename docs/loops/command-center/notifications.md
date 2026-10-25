@@ -99,4 +99,8 @@ merges. Rollback: redeploy the previous revision. A push that was sent cannot be
 
 ## Evidence
 
+- 2026-10-25 · C1 · CONTRADICTS · rung 1 · staging/notify @633cbe4 · The status document staging serves names no loop's `owner` or `members` (the fields are absent, though the schema says `owner` falls back to `LOOP.md`'s owner), and `loop_status.py --json` on the same main omits them too. The notifier's `members()` reads only those fields, so per command-center/D69 every device registration is refused with 403. Read from the document and the code; no registration was attempted, since a device would be a write to staging. Contradicts the premise of command-center/D69 that the document names each loop's owner
+- 2026-10-25 · C2 · UNPROVEN · rung 1 · staging/notify @633cbe4 · Cloud Scheduler's `notify-tick` is enabled at `* * * * *` and ticked 3 times with 200 (latency 4.6 s to 13.8 s). The first tick (13:44:14 UTC) was the baseline and pushed nothing. The second (13:45:10) pushed the 5 `ship/staging/runner*` items to jugonzal, to 0 devices; whether they already waited at the baseline is not known from the logs, and if they did this departs from D7. Not done: two accounts with a blocking and a non-blocking item in the sandbox loop, which does not exist yet (per command-center/D61)
+- 2026-10-25 · C3 · UNPROVEN · rung 1 · staging/notify @633cbe4 · Not run: it needs a registered device and a test schedule, and no device can register (C1)
+
 ## Shipped

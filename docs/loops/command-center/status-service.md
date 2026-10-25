@@ -58,4 +58,7 @@ redeploy the previous Cloud Run revision; it writes no data.
 
 ## Evidence
 
+- 2026-10-25 · C2 · UNPROVEN · rung 1 · staging/status @633cbe4 · Half observed: the document read at 13:45:32 UTC answers each row without a URL (`staging/app`, the four `production/*`) and each row whose GET fails (the four `local/*`, connection refused) with no served commit and the reason, and serves no older value. Not done: pointing a row at a failing endpoint and revoking the app's token, which need the owner
+- 2026-10-25 · C3 · UNPROVEN · rung 1 · staging/status @633cbe4 · Not run: wiping the cache and restarting the service is a write to staging, which agents may not do. The owner can run it
+
 ## Shipped
