@@ -1,19 +1,19 @@
-"""C2: within a minute of the status changing, a push goes out for each blocking item that waits on the person, once,
-and everything else waits for the digest.
+"""C2: within two minutes of the status changing, a push goes out for each blocking item that waits on the person,
+once, and everything else waits for the digest.
 
 Here against a fake status service and a fake Expo, with two accounts and one blocking and one non-blocking item, as
-the staging proof will have. "Within a minute" is the poller's interval, at most 30 s (test_config.py), on top of
-the status service's own freshness; the staging proof measures it end to end.
+the staging proof will have. "Within two minutes" is one tick (every minute, by the Cloud Scheduler job the manifest
+declares, D3) on top of the status service's own freshness; here a push goes out on the first tick after the
+change, and the staging proof measures it end to end.
 """
 
 import threading
 import unittest
 
 from notify.notifier import Notifier
-from notify.poller import Poller
 from notify.store import MemoryStore
 
-from support import PROJECT, FakeExpo, FakeStatus, Harness, item, push_token
+from support import PROJECT, TICK_TOKEN, UNTRUSTED_JWT, Harness, item, push_token
 
 BLOCKING = item("command-center/notifications/Q3", waits_on="alice", unblocks=["command-center/app-inbox"])
 QUIET = item("command-center/notifications/Q4", waits_on="bob", title="Answer Q4")
@@ -144,38 +144,51 @@ class FirstReadTest(Harness, unittest.TestCase):
         self.assertFalse(self.store.has_baseline(PROJECT))
 
 
-class PollerTest(unittest.TestCase):
-    def test_it_reads_again_and_again_and_survives_a_failure(self):
-        calls = []
-        done = threading.Event()
+class TickTest(Harness, unittest.TestCase):
+    """D3: the queue is read, and anything pushed, only on a tick from the notifier's own identity."""
 
-        class Flaky:
-            def tick(self):
-                calls.append(1)
-                if len(calls) == 1:
-                    raise RuntimeError("one bad read (test)")
-                if len(calls) >= 3:
-                    done.set()
+    def setUp(self):
+        self.make()
+        self.register("alice", "alice-phone")
+        self.first_read()
+        self.queue(BLOCKING)
+        self.status.reads.clear()
+        self.github.calls.clear()
 
-        with self.assertLogs("notify.poller", level="ERROR") as logged:
-            poller = Poller(Flaky(), 0.01).start()
-            self.assertTrue(done.wait(5))
-            poller.stop(timeout=5)
-        self.assertIn("one bad read (test)", "\n".join(logged.output))
-        self.assertGreaterEqual(len(calls), 3)
+    def post_tick(self, token=TICK_TOKEN, **kw):
+        return self.api.post("/tick", token=token, **kw)
 
-    def test_it_reads_each_project_through_the_notifier(self):
-        status, expo = FakeStatus(), FakeExpo()
-        notifier = Notifier([PROJECT], MemoryStore(), status, expo)
-        poller = Poller(notifier, 0.01).start()
-        try:
-            for _ in range(500):
-                if len(status.reads) >= 2:
-                    break
-                threading.Event().wait(0.01)
-        finally:
-            poller.stop(timeout=5)
-        self.assertGreaterEqual(status.reads.count(PROJECT), 2)
+    def test_a_tick_from_the_notifiers_identity_reads_and_pushes(self):
+        response = self.post_tick()
+        self.assertEqual(response.status_code, 200, response.get_json())
+        reads = {r["project"]: r for r in response.get_json()["reads"]}
+        self.assertEqual(reads[PROJECT], {"project": PROJECT, "read": True, "error": None, "baseline": False,
+                                          "pushed": 1, "deferred": 0, "digests": 0})
+        self.assertEqual(len(self.expo.to(push_token("alice-phone"))), 1)
+        self.assertEqual(self.identity.calls, [TICK_TOKEN])
+
+    def test_any_other_caller_reads_nothing_and_pushes_nothing(self):
+        for token, valid in ((None, False), (UNTRUSTED_JWT, True), ("alice-token", False)):
+            with self.subTest(token=token):
+                response = self.post_tick(token=token, valid_request=valid)
+                self.assertEqual(response.status_code, 401)
+                self.assertEqual(response.get_json()["error"], "unauthorized")
+        self.assertEqual(self.status.reads, [])
+        self.assertEqual(self.expo.sent, [])
+        self.assertEqual(self.github.calls, [], "a tick's token is never sent to GitHub")
+
+    def test_a_tick_that_cannot_read_a_project_says_so_and_sends_nothing(self):
+        self.status.down = True
+        reads = {r["project"]: r for r in self.post_tick().get_json()["reads"]}
+        self.assertFalse(reads[PROJECT]["read"])
+        self.assertIn("503", reads[PROJECT]["error"])
+        self.assertEqual(self.expo.sent, [])
+
+    def test_ticks_every_minute_push_the_item_once(self):
+        for _ in range(3):
+            self.assertEqual(self.post_tick().status_code, 200)
+            self.clock.advance(minutes=1)
+        self.assertEqual(len(self.expo.to(push_token("alice-phone"))), 1)
 
 
 if __name__ == "__main__":

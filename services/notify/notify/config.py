@@ -8,20 +8,22 @@
 | `NOTIFY_STORE` | Where devices, settings and what was pushed are kept: `firestore:<database>`, the notifier's own Firestore database (command-center/D44), or `memory`, which forgets everything on restart (tests and local runs). |
 | `NOTIFY_GCP_PROJECT` | The GCP project of that Firestore database. Unset, the client library finds it from Cloud Run. |
 | `NOTIFY_STATUS_URL` | The status service the queue is read from, `https://status-<project number>.us-east1.run.app`. It is also the audience of the ID token the notifier sends it (command-center/D28). |
-| `NOTIFY_POLL_SECONDS` | How often the queue is read and the digests are checked. Default 20; at most 30, so a push goes out within a minute of the status changing (C2). 0 reads nothing (tests and local runs). |
+| `NOTIFY_AUDIENCE` | This service's own URL, `https://notify-<project number>.us-east1.run.app`: the audience of the OIDC token a tick must carry (D3, command-center/D67). |
+| `NOTIFY_TICK_SERVICE_ACCOUNTS` | The service accounts whose tick is accepted, comma-separated: the notifier's own identity, which its Cloud Scheduler job sends as. |
+| `NOTIFY_TICK_KEYS_URL` | The keys a tick's token is checked against. Default Google's; a local harness's own. |
 | `NOTIFY_GITHUB_API_URL` | GitHub's REST API, where a caller is identified with `GET /user`. Default `https://api.github.com`. |
 | `NOTIFY_EXPO_PUSH_URL` | Expo's push service. Default `https://exp.host/--/api/v2/push/send`. |
 | `NOTIFY_EXPO_ACCESS_TOKEN` | Optional. A secret: Expo's access token, needed only once the Expo project turns on enhanced push security. The manifest does not name it yet. |
 | `NOTIFY_METADATA_URL` | Cloud Run's metadata server, which mints the ID token. Default `http://metadata.google.internal`. |
 | `NOTIFY_CACHE_SECONDS` | How long a caller's login is reused before GitHub is asked again. Default 60. |
 
-A service missing its projects, store or status URL still starts: `GET /version` answers, every other request is
-refused with 503 naming what is missing, and nothing is read or pushed. Every outside endpoint is a setting, so a
+A service missing any of the required ones still starts: `GET /version` answers, every other request (a tick
+included) is refused with 503 naming what is missing, and nothing is read or pushed. Every outside endpoint is a setting, so a
 local harness can point the service at its fakes (command-center/D53).
 """
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # Every variable the service reads, with what it is for.
 VARIABLES = {
@@ -30,7 +32,9 @@ VARIABLES = {
     "NOTIFY_STORE": "where devices, settings and what was pushed are kept",
     "NOTIFY_GCP_PROJECT": "the Firestore database's project",
     "NOTIFY_STATUS_URL": "the status service",
-    "NOTIFY_POLL_SECONDS": "how often the queue is read",
+    "NOTIFY_AUDIENCE": "the audience a tick's token names",
+    "NOTIFY_TICK_SERVICE_ACCOUNTS": "the identities whose tick is accepted",
+    "NOTIFY_TICK_KEYS_URL": "the keys a tick's token is checked against",
     "NOTIFY_GITHUB_API_URL": "GitHub's API",
     "NOTIFY_EXPO_PUSH_URL": "Expo's push service",
     "NOTIFY_EXPO_ACCESS_TOKEN": "Expo's access token, for enhanced push security",
@@ -39,11 +43,11 @@ VARIABLES = {
 }
 # What every deployment sets, in services/notify/service.json; COMMIT_SHA is deploy.sh's. The rest have defaults or
 # are optional.
-REQUIRED = ("NOTIFY_PROJECTS", "NOTIFY_STORE", "NOTIFY_STATUS_URL")
+REQUIRED = ("NOTIFY_PROJECTS", "NOTIFY_STORE", "NOTIFY_STATUS_URL", "NOTIFY_AUDIENCE", "NOTIFY_TICK_SERVICE_ACCOUNTS")
 SECRETS = ("NOTIFY_EXPO_ACCESS_TOKEN",)
 FIRESTORE = "firestore:"
 MEMORY = "memory"
-MAX_POLL_SECONDS = 30
+GOOGLE_CERTS = "https://www.googleapis.com/oauth2/v3/certs"
 
 
 def _list(value):
@@ -57,7 +61,9 @@ class Settings:
     store: str | None = None
     gcp_project: str | None = None
     status_url: str | None = None
-    poll_seconds: float = 20.0
+    audience: str | None = None
+    tick_service_accounts: tuple = field(default_factory=tuple)
+    tick_keys_url: str = GOOGLE_CERTS
     github_api_url: str = "https://api.github.com"
     expo_push_url: str = "https://exp.host/--/api/v2/push/send"
     expo_access_token: str | None = None
@@ -73,7 +79,9 @@ class Settings:
             store=env.get("NOTIFY_STORE") or None,
             gcp_project=env.get("NOTIFY_GCP_PROJECT") or None,
             status_url=(env.get("NOTIFY_STATUS_URL") or "").rstrip("/") or None,
-            poll_seconds=float(env.get("NOTIFY_POLL_SECONDS") or 20),
+            audience=(env.get("NOTIFY_AUDIENCE") or "").rstrip("/") or None,
+            tick_service_accounts=tuple(_list(env.get("NOTIFY_TICK_SERVICE_ACCOUNTS"))),
+            tick_keys_url=env.get("NOTIFY_TICK_KEYS_URL") or GOOGLE_CERTS,
             github_api_url=(env.get("NOTIFY_GITHUB_API_URL") or "https://api.github.com").rstrip("/"),
             expo_push_url=env.get("NOTIFY_EXPO_PUSH_URL") or "https://exp.host/--/api/v2/push/send",
             expo_access_token=env.get("NOTIFY_EXPO_ACCESS_TOKEN") or None,
@@ -96,7 +104,8 @@ class Settings:
             found.append("NOTIFY_STORE=%s is neither firestore:<database> nor memory" % self.store)
         if not self.status_url:
             found.append("NOTIFY_STATUS_URL is not set")
-        if not 0 <= self.poll_seconds <= MAX_POLL_SECONDS:
-            found.append("NOTIFY_POLL_SECONDS must be from 0 to %d, so that a push goes out within a minute of the "
-                         "status changing (C2)" % MAX_POLL_SECONDS)
+        if not self.audience:
+            found.append("NOTIFY_AUDIENCE is not set, so no tick can be checked")
+        if not self.tick_service_accounts:
+            found.append("NOTIFY_TICK_SERVICE_ACCOUNTS names no identity whose tick is accepted")
         return found

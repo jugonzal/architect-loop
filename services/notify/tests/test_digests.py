@@ -1,7 +1,8 @@
 """C3: the digest arrives at the time the person set, and nothing is pushed during their quiet hours.
 
-Here with one account on a test schedule, the poller's reads played by tick() every 20 s across a day, and each
-message's time compared with the settings, as the staging proof will compare delivery times.
+Here with one account on a test schedule, ticks played by tick() every 20 s across a day (finer than the scheduler's
+minute, so a time is pinned to the read it went out on), and each message's time compared with the settings, as the
+staging proof will compare delivery times.
 """
 
 import unittest

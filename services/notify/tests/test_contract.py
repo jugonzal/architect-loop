@@ -11,7 +11,7 @@ import unittest
 
 from openapi_core import OpenAPI
 
-from support import COMMIT, EXERCISED, SPEC_PATH, Harness, base, push_token, spec_operations
+from support import COMMIT, EXERCISED, SPEC_PATH, TICK_TOKEN, Harness, base, push_token, spec_operations
 
 
 def routed_operations(app):
@@ -55,6 +55,9 @@ class ContractTest(Harness, unittest.TestCase):
         call("DELETE", f"{base()}/devices/{device['id']}", 204, token="alice-token")
         call("DELETE", f"{base()}/devices/{device['id']}", 404, token="alice-token")
         call("GET", f"{base()}/devices", 401, valid_request=False)
+        call("POST", f"{base()}/devices", 403, token="dave-token", json_body={"token": push_token("d"), "platform": "ios"})
+        call("POST", "/tick", 200, token=TICK_TOKEN)
+        call("POST", "/tick", 401, token="alice-token")
         call("GET", f"{base('example/unknown')}/devices", 404, token="alice-token")
         self.assertTrue(spec_operations() <= EXERCISED, spec_operations() - EXERCISED)
 

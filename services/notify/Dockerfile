@@ -19,7 +19,7 @@ ENV COMMIT_SHA=${COMMIT_SHA}
 RUN useradd --system --create-home notify
 USER notify
 
-# Cloud Run sets PORT. One process, so one poller per instance reads the queue (notify/poller.py), with threads for
-# the API. The access log timestamps every request.
+# Cloud Run sets PORT. One process with threads, as Cloud Run recommends for a synchronous app. The access log
+# timestamps every request, each tick included.
 CMD exec gunicorn --bind ":${PORT:-8080}" --workers 1 --threads 8 --timeout 0 --access-logfile - \
     "notify.app:create_app()"

@@ -5,8 +5,10 @@ info:
   summary: Each person's devices, digest time and quiet hours, so they hear about the items waiting on them.
   description: |
     The command center's notifier (command-center/notifications, per command-center/D35). It keeps each person's
-    devices and settings in a store of its own (command-center/D26, D44), and reads the status service's queue
-    with its Cloud Run service identity, often enough to push within a minute of the status changing.
+    devices and settings in a store of its own (command-center/D26, D44). A Cloud Scheduler job ticks it every
+    minute (`POST /tick`, notifications D3 and command-center/D67), and on each tick it reads the status service's
+    queue with its Cloud Run service identity (command-center/D66), so a push goes out within two minutes of the
+    status changing.
 
     **What it sends.** A queue item that waits on a person (`waits_on`) and whose `unblocks` names at least one
     concern is blocking: it is pushed at once to that person's devices, once (notifications D2). Everything else
@@ -18,8 +20,10 @@ info:
 
     **Callers.** A person sends `Authorization: Bearer <token>`, the GitHub token from the app's sign-in, which
     asks for no repository access. The service identifies them with `GET /user` on that token
-    (command-center/D28), and each person sees and changes only their own devices and settings. A device is
-    only ever one person's: registering its push token again, from another account, moves it there.
+    (command-center/D28), and each person sees and changes only their own devices and settings. Only a person the
+    status document names as a loop's owner or member may register a device (command-center/D69). A device is
+    only ever one person's: registering its push token again, from another account, moves it there. A tick
+    sends an OIDC token for the notifier's own service identity instead, which is never sent to GitHub.
 
     **Projects.** Every path keys a project as `{owner}/{repo}` (command-center/D48), and so does every record.
   license:
@@ -37,6 +41,28 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Version"
+
+  /tick:
+    post:
+      operationId: tick
+      summary: Read each project's queue once, and send what is due (C2, C3).
+      description: |
+        The notifier's Cloud Scheduler job calls this every minute, with an OIDC token for the notifier's own
+        service identity whose audience is the notifier's URL (notifications D3, command-center/D67). Any other
+        token is refused. The app never calls it.
+      security:
+        - scheduler: []
+      responses:
+        "200":
+          description: What the tick read and sent, for each project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tick"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/Unavailable"
 
   /projects/{owner}/{repo}/devices:
     parameters:
@@ -88,6 +114,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "503":
@@ -198,6 +226,11 @@ components:
       type: http
       scheme: bearer
       description: The GitHub token from the app's sign-in. The service asks GitHub who it belongs to.
+    scheduler:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: A Google-signed OIDC token for a service identity this deployment trusts to tick.
   parameters:
     owner:
       name: owner
@@ -346,6 +379,41 @@ components:
           description: How many Expo said no longer exist; they are no longer registered.
           type: integer
           minimum: 0
+    Tick:
+      type: object
+      required: [reads]
+      additionalProperties: false
+      properties:
+        reads:
+          type: array
+          items:
+            type: object
+            required: [project, read, error, baseline, pushed, deferred, digests]
+            additionalProperties: false
+            properties:
+              project:
+                type: string
+              read:
+                description: Whether the project's status document was read; nothing is sent from a failed read.
+                type: boolean
+              error:
+                description: Why it was not read, or null.
+                type: [string, "null"]
+              baseline:
+                description: Whether this was the project's first read, which marks what stands and sends none of it.
+                type: boolean
+              pushed:
+                description: How many blocking items were pushed, each to the person it waits on.
+                type: integer
+                minimum: 0
+              deferred:
+                description: How many blocking items wait for their person's quiet hours to end.
+                type: integer
+                minimum: 0
+              digests:
+                description: How many people's digests came due on this tick.
+                type: integer
+                minimum: 0
     Error:
       type: object
       required: [error, message]
@@ -353,7 +421,7 @@ components:
       properties:
         error:
           type: string
-          enum: [bad_request, unauthorized, not_found, too_many_requests, unavailable, internal]
+          enum: [bad_request, unauthorized, forbidden, not_found, too_many_requests, unavailable, internal]
         message:
           description: What went wrong, for people.
           type: string
@@ -376,6 +444,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: The status document names the caller as no loop's owner or member, so no device is registered.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     NotFound:
       description: The project is not served here, the caller has no such device, or there is no such path.
       content:
@@ -390,7 +464,8 @@ components:
             $ref: "#/components/schemas/Error"
     Unavailable:
       description: >-
-        GitHub or Expo cannot be reached, or the service is not configured. Nothing is sent instead.
+        GitHub, the status service, Google's keys or Expo cannot be reached, or the service is not configured.
+        Nothing is sent instead.
       content:
         application/json:
           schema:

@@ -147,7 +147,7 @@ class FirestoreStoreTest(StoreContract, unittest.TestCase):
         return FirestoreStore(DATABASE, project=self.project)
 
     def test_two_instances_reading_one_queue_push_each_item_once(self):
-        # C2 on the store Cloud Run's instances share: each instance has its own client and its own poller.
+        # C2 on the store Cloud Run's instances share: each instance has its own client, and a tick may reach any of them.
         from notify.notifier import Notifier
 
         status, expo = FakeStatus(), FakeExpo()

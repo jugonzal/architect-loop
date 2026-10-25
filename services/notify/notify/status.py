@@ -1,10 +1,11 @@
 """The status service, as the notifier reads it: each project's status document, whose queue says what waits on whom
 (command-center/status-service, D48).
 
-The notifier calls it with its own Cloud Run service identity (command-center/D28): it asks the metadata server for
-a Google-signed ID token whose audience is the status service's URL, and sends it as a bearer token. A document
-that cannot be read, or that describes another project, is never replaced by an earlier one: the poller pushes
-nothing from that read.
+The notifier calls it with its own Cloud Run service identity (command-center/D28, D66): it asks the metadata
+server for a Google-signed ID token whose audience is the status service's URL, and sends it as a bearer token. The
+status service trusts that identity (its STATUS_AUDIENCE and STATUS_CALLER_SERVICE_ACCOUNTS). A document that cannot
+be read, or that describes another project, is never replaced by an earlier one: the tick pushes nothing from that
+read.
 """
 
 import base64

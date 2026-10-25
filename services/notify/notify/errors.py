@@ -1,4 +1,4 @@
-"""Errors that the API turns into answers, and the ones the poller logs."""
+"""Errors that the API turns into answers, and the ones a tick logs."""
 
 
 class InvalidCredentials(Exception):
@@ -7,4 +7,4 @@ class InvalidCredentials(Exception):
 
 class Unavailable(Exception):
     """GitHub, the status service, the metadata server or Expo cannot be reached or does not answer as expected (503
-    for a caller; for the poller, nothing is pushed from that read)."""
+    for a caller; for a tick, nothing is pushed from that read)."""

@@ -32,6 +32,12 @@ SPEC = OpenAPI.from_file_path(SPEC_PATH)
 PROJECT = "jugonzal/architect-loop"
 OTHER_PROJECT = "example/other"
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
+NOTIFY_IDENTITY = "notify@notify-test.iam.gserviceaccount.com"
+# Shaped like a JWT, so the service checks it as a tick's token and never sends it to GitHub.
+TICK_TOKEN = "eyJhbGciOiJSUzI1NiJ9.eyJ0aWNrIjp0cnVlfQ.c2lnbmF0dXJl"
+UNTRUSTED_JWT = "eyJhbGciOiJSUzI1NiJ9.eyJzb21lb25lIjoiZWxzZSJ9.c2lnbmF0dXJl"
+# The loop the documents describe: alice owns it, bob and carol are members, and dave is neither (D69).
+LOOP = {"id": "command-center", "state": "active", "owner": "alice", "members": ["bob", "carol"]}
 # Monday 2026-10-26, 14:00 UTC: 10:00 in New York, 15:00 in Lisbon's winter time.
 NOON = datetime(2026, 10, 26, 14, 0, tzinfo=timezone.utc)
 
@@ -131,6 +137,20 @@ class FakeExpo:
         return [m for m in self.sent if m["to"] == token]
 
 
+class FakeIdentity:
+    """Stands in for the Google OIDC token check of a tick: accepts only the tokens it was given."""
+
+    def __init__(self, tokens):
+        self.tokens = dict(tokens)
+        self.calls = []
+
+    def verify(self, token):
+        self.calls.append(token)
+        if token not in self.tokens:
+            raise InvalidCredentials("not a service identity this deployment trusts to tick")
+        return self.tokens[token]
+
+
 class FakeClock:
     """An aware UTC time that tests move on."""
 
@@ -163,7 +183,7 @@ def item(ident, waits_on="alice", unblocks=(), loop="command-center", kind="ques
 
 def document(*items, project=PROJECT, loops=None):
     """A status document whose queue holds these items; every other field is as small as the schema allows."""
-    loops = loops if loops is not None else [{"id": "command-center", "state": "active"}]
+    loops = loops if loops is not None else [LOOP]
     return {"schema_version": 1, "project": project, "as_of": "2026-10-26T14:00:00Z",
             "main": {}, "environments": [], "loops": loops, "queue": list(items), "agents_can_start": [],
             "drift": [], "missing": []}
@@ -212,22 +232,27 @@ def base(project=PROJECT):
 
 
 class Harness:
-    """A service wired to fakes on one MemoryStore, with alice, bob and carol signed in to GitHub. The notifier is
-    the one the API uses; tests call its tick() as the poller would."""
+    """A service wired to fakes on one MemoryStore, with alice, bob, carol and dave signed in to GitHub; the status
+    documents name the first three as the loop's owner and members (D69), and dave as neither. The notifier is
+    the one the API uses; tests call its tick() as POST /tick does."""
 
     def make(self, store=None):
         self.github = FakeGitHub()
-        for login in ("alice", "bob", "carol"):
+        for login in ("alice", "bob", "carol", "dave"):
             self.github.add(f"{login}-token", login)
         self.status = FakeStatus()
+        for project in (PROJECT, OTHER_PROJECT):
+            self.status.documents[project] = document(project=project)
+        self.identity = FakeIdentity({TICK_TOKEN: NOTIFY_IDENTITY})
         self.expo = FakeExpo()
         self.clock = FakeClock()
         self.store = store if store is not None else MemoryStore()
         self.settings = Settings(projects=frozenset({PROJECT, OTHER_PROJECT}), commit=COMMIT, store="memory",
-                                 status_url="https://status.example", poll_seconds=0)
+                                 status_url="https://status.example", audience="https://notify.example",
+                                 tick_service_accounts=(NOTIFY_IDENTITY,))
         self.notifier = Notifier(self.settings.projects, self.store, self.status, self.expo, clock=self.clock)
         self.app = create_app(self.settings, store=self.store, github=self.github, notifier=self.notifier,
-                              clock=lambda: 0.0, now=self.clock)
+                              identity=self.identity, clock=lambda: 0.0, now=self.clock)
         self.api = ContractClient(self.app, self)
 
     def register(self, login, device, project=PROJECT, **fields):

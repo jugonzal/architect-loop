@@ -1,5 +1,6 @@
 # The notifier's own tests, with its own dependencies (command-center/D30). The root `check` stays standard library
-# only and does not run these. Its manifest is checked with scripts/gcp/manifest.py, so a change there runs them too.
+# only and does not run these. Its manifest is checked with scripts/gcp/manifest.py, and against the identity the
+# status service trusts in services/status/service.json, so a change to either runs them too.
 #
 # Then the store's tests again, against the Firestore emulator (per command-center/D44), the store every instance
 # shares on Cloud Run. The first run skips them, having no emulator; the second sets NOTIFY_FIRESTORE_TESTS=required,
@@ -9,9 +10,9 @@ name: notify
 on:
   push:
     branches: [main]
-    paths: ["services/notify/**", ".github/workflows/notify.yml", "scripts/gcp/manifest.py"]
+    paths: ["services/notify/**", ".github/workflows/notify.yml", "scripts/gcp/manifest.py", "services/status/service.json"]
   pull_request:
-    paths: ["services/notify/**", ".github/workflows/notify.yml", "scripts/gcp/manifest.py"]
+    paths: ["services/notify/**", ".github/workflows/notify.yml", "scripts/gcp/manifest.py", "services/status/service.json"]
 permissions:
   contents: read
 jobs:

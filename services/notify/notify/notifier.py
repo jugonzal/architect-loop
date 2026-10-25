@@ -1,7 +1,7 @@
 """What goes out, and when (C2, C3).
 
-Each read of a project's status document takes the queue items that wait on a person (`waits_on`), leaving out the
-items of a loop in the backlog, which carry no notifications (proposal §5). Then:
+Each tick (D3) reads each project's status document once, and takes the queue items that wait on a person
+(`waits_on`), leaving out the items of a loop in the backlog, which carry no notifications (proposal §5). Then:
 
 - **A blocking item**, one whose `unblocks` names at least one concern (notifications D2), is pushed at once to the
   devices of the person it waits on, once: a mark keyed by the item's id and that person is taken first, so the next
@@ -10,12 +10,12 @@ items of a loop in the backlog, which carry no notifications (proposal §5). The
   is pushed to them too, since the mark names the person.
 - **Everything else waits for the digest**: one push at the time the person chose, saying how many items wait on
   them, which opens the inbox (notifications D1). It is marked by the person and their local date, so it goes out
-  once a day, and not at all on a day nothing waits.
+  once a day, not at all on a day nothing waits, and not at all more than 15 minutes late (D5).
 
 The first read of a project with no baseline in the store (a new store, or one just wiped) marks every blocking
-item already standing as seen without pushing it: those are not changes, and a wipe must not push them all again
-(G4). A read that fails pushes nothing; a push that Expo did not take gives its mark back, so the next read tries
-again. A ticket that Expo refused for any other reason keeps its mark: it is logged, never retried every read.
+item already standing as seen without pushing it (D7): those are not changes, and a wipe must not push them all
+again (G4). A read that fails pushes nothing; a push that Expo did not take gives its mark back, so the next read
+tries again. A ticket that Expo refused for any other reason keeps its mark: it is logged, never retried every read.
 """
 
 import logging
@@ -47,6 +47,16 @@ def waiting(doc):
     return [item for item in doc["queue"]
             if isinstance(item, dict) and isinstance(item.get("waits_on"), str) and item["waits_on"]
             and isinstance(item.get("id"), str) and item.get("loop") not in quiet]
+
+
+def members(doc):
+    """Every login the document names as a loop's owner or member (command-center/D62, D69)."""
+    found = set()
+    for loop in doc.get("loops") or []:
+        if isinstance(loop.get("owner"), str) and loop["owner"]:
+            found.add(loop["owner"])
+        found.update(m for m in loop.get("members") or [] if isinstance(m, str) and m)
+    return found
 
 
 def push_key(item):
@@ -196,6 +206,11 @@ class Notifier:
                 log.warning("%s: Expo refused a message to %s's %s device: %s %s", project, login, device.platform,
                             ticket.error, ticket.message)
         return Delivery(len(devices), sum(1 for t in tickets if t.ok), gone)
+
+    def is_member(self, project, login):
+        """Whether the project's status document names the login as a loop's owner or member (command-center/D69).
+        Logins are compared as GitHub compares them, without regard to case. Unavailable when it cannot be read."""
+        return login.lower() in {m.lower() for m in members(self.status.document(project))}
 
     def test(self, project, login):
         """A test notification to the person's own devices, and no one else's (C1)."""

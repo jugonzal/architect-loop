@@ -1,5 +1,6 @@
-"""The notifier's API (../openapi.yaml): a person's devices and settings, and a test notification to their own
-devices. The poller (poller.py) reads the queue and pushes; nothing here pushes anything but a test.
+"""The notifier's API (../openapi.yaml): a person's devices and settings, a test notification to their own devices,
+and the tick its Cloud Scheduler job sends every minute, on which it reads the queue and pushes (notifications D3,
+command-center/D67). Only a tick from a trusted service identity pushes anything but a test.
 
 Run it with `gunicorn 'notify.app:create_app()'`; configuration is in config.py.
 """
@@ -86,13 +87,11 @@ def notifier_from(settings, store):
     return Notifier(settings.projects, store, status, Expo(settings.expo_push_url, settings.expo_access_token))
 
 
-def create_app(settings=None, *, store=None, github=None, notifier=None, clock=time.monotonic, now=None, poll=None):
-    """The WSGI app. Tests pass fakes; on Cloud Run everything comes from the environment, and the poller starts."""
-    from_env = settings is None
+def create_app(settings=None, *, store=None, github=None, notifier=None, identity=None, clock=time.monotonic,
+               now=None):
+    """The WSGI app. Tests pass fakes; on Cloud Run everything comes from the environment."""
     if settings is None:
         settings = Settings.from_env()
-    if poll is None:
-        poll = from_env and settings.poll_seconds > 0
     now = now or (lambda: datetime.now(timezone.utc))
     problems = [] if store is not None else settings.problems()
     if store is None and not problems:
@@ -102,6 +101,9 @@ def create_app(settings=None, *, store=None, github=None, notifier=None, clock=t
         github = GitHub(settings.github_api_url)
     if notifier is None and store is not None:
         notifier = notifier_from(settings, store)
+    if identity is None:
+        from .identity import GoogleIdentity
+        identity = GoogleIdentity(settings.audience, settings.tick_service_accounts, certs_url=settings.tick_keys_url)
 
     app = Flask(__name__)
     app.json.sort_keys = False
@@ -116,9 +118,6 @@ def create_app(settings=None, *, store=None, github=None, notifier=None, clock=t
         def not_configured():
             if request.path != "/version":
                 return jsonify(error="unavailable", message="not configured: " + "; ".join(problems)), 503
-    elif poll:
-        from .poller import Poller
-        app.extensions["notify.poller"] = Poller(notifier, settings.poll_seconds).start()
 
     @app.errorhandler(ApiError)
     def api_error(error):
@@ -190,6 +189,9 @@ def create_app(settings=None, *, store=None, github=None, notifier=None, clock=t
             raise bad_request(f"platform must be one of {', '.join(PLATFORMS)}")
         if name is not None and (not isinstance(name, str) or not 1 <= len(name) <= MAX_NAME):
             raise bad_request(f"name must be a string of 1 to {MAX_NAME} characters, or null")
+        # command-center/D69: only a person the status document names as a loop's owner or member registers a device.
+        if not notifier.is_member(project, login):
+            raise ApiError(403, "forbidden", f"{login} is not an owner or member of any loop in {project}")
         first = None
         if "timezone" in body and store.settings_of(project, login) is None:
             try:
@@ -226,6 +228,22 @@ def create_app(settings=None, *, store=None, github=None, notifier=None, clock=t
         delivery = notifier.test(project, login)
         app.logger.info("%s: test notification to %s: %s", project, login, delivery)
         return jsonify(devices=delivery.devices, accepted=delivery.accepted, gone=delivery.gone)
+
+    # The tick (C2, C3): the Cloud Scheduler job's call, every minute, as the notifier's own identity.
+
+    @app.post("/tick")
+    def tick():
+        scheme, _, token = (request.headers.get("Authorization") or "").partition(" ")
+        token = token.strip()
+        if scheme.lower() != "bearer" or token.count(".") != 2:
+            raise InvalidCredentials("a tick sends Authorization: Bearer <an OIDC token for a trusted identity>")
+        caller = identity.verify(token)  # a Google token, never sent to GitHub
+        reads = notifier.tick()
+        for read in reads:
+            app.logger.info("tick by %s: %s", caller, read)
+        return jsonify(reads=[{"project": r.project, "read": r.ok, "error": r.error, "baseline": r.baseline,
+                               "pushed": len(r.pushed), "deferred": len(r.deferred), "digests": len(r.digests)}
+                              for r in reads])
 
     # Settings (C3).
 

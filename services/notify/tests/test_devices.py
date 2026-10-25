@@ -79,6 +79,26 @@ class RegistrationTest(Harness, unittest.TestCase):
         response = self.api.get(f"{base()}/devices", token="alice-token")
         self.assertEqual(response.status_code, 503)
 
+    def test_only_a_loops_owner_or_member_registers_a_device(self):
+        # command-center/D69: the status document names alice as the loop's owner, bob and carol as members.
+        response = self.api.post(f"{base()}/devices", token="dave-token",
+                                 json_body={"token": push_token("dave-phone"), "platform": "ios"})
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.get_json()["error"], "forbidden")
+        self.assertEqual(self.devices("dave"), [])
+        self.assertEqual(self.register("carol", "carol-phone")["platform"], "ios")
+        # A login is matched as GitHub matches it, without regard to case.
+        self.github.add("Dave-token", "Dave")
+        self.queue(loops=[{"id": "command-center", "state": "active", "owner": "alice", "members": ["dave"]}])
+        self.assertEqual(self.register("Dave", "dave-phone")["platform"], "ios")
+
+    def test_registering_needs_the_status_document(self):
+        self.status.down = True
+        response = self.api.post(f"{base()}/devices", token="alice-token",
+                                 json_body={"token": push_token("phone"), "platform": "ios"})
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(self.devices("alice"), [], "nothing is registered on a guess")
+
     def test_a_project_not_served_here_is_not_found(self):
         response = self.api.get(f"{base('example/unknown')}/devices", token="alice-token")
         self.assertEqual(response.status_code, 404)
