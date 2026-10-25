@@ -51,6 +51,7 @@ holds them, so a staging proof never dispatches on real work. It is wanted now b
 | D1 | The loop is parked, so its concerns stay off the owner's queue and the ready list. Parking does not stop a dispatch (the runner never reads it). | Juan, 2026-10-25 | Closes Q3 |
 | D2 | `gated-target` crosses a new gate key `sandbox`. A PR will propose it in `LOOP.md` §2 with the second person as holder, and the owner's merge makes it real. No existing gate changes holder. | Juan, 2026-10-25 | Closes Q2 |
 | D3 | A build target is used once. A merged build, even a reverted one, leaves its merge commit on `main`, so `/loop-status` derives the concern as shipped and `/loop-build` refuses it. The next staging build proof dispatches on a fresh target (`build-target-2`), and later ones add another. | Juan, 2026-10-25 | Adds `build-target-2` |
+| D4 | A docs commit that adds or edits a sandbox target carries no `Concern:` trailer (per command-center/D45), because `/loop-status` counts any commit with it as the concern's work and derives the concern as shipped. `build-target-2` was lost that way, so `build-target-3` replaces it as the target. | agent, delegated by Juan, 2026-10-25 | Refines D3 |
 
 ## Questions
 
