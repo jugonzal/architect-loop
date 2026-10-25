@@ -11,7 +11,7 @@ from .config import Config
 from .dispatch import Dispatcher
 from .github import AppAuth, RestGitHub
 from .launcher import CloudRunJobs
-from .session import SessionJob
+from .session import SessionJob, SessionThread
 from .store import SqliteStore
 from .workspace import Workspace
 
@@ -54,6 +54,14 @@ def sdk_client_from(config):
     return getattr(importlib.import_module(module), name)
 
 
+def threads_from(config):
+    """Each session's thread on the threads service RUNNER_THREADS_URL names, which the job posts to with an ID token
+    from the metadata server (session-narration, per command-center/D28), or None when it names none."""
+    if not config.threads_url:
+        return None
+    return lambda session: SessionThread(config.threads_url, session, metadata=config.metadata_url)
+
+
 def service_from_env(env):
     config = Config.from_env(env)
     store = store_from(config)
@@ -86,7 +94,9 @@ def job_from_env(env):
     identity = (login, f"{github.bot_user_id()}+{login}@users.noreply.github.com")
     workspace = Workspace(config.clone_url, config.workdir, identity, main_branch=config.main_branch,
                           credential_helper="!gh auth git-credential")
-    return SessionJob(config, store_from(config), github, workspace, client_factory=sdk_client_from(config)), session_id
+    job = SessionJob(config, store_from(config), github, workspace, client_factory=sdk_client_from(config),
+                     threads=threads_from(config))
+    return job, session_id
 
 
 def run_job():
