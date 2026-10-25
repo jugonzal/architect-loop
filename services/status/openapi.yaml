@@ -34,6 +34,12 @@ info:
     **Callers.** A person sends `Authorization: Bearer <token>`, the GitHub token from the app's sign-in, which
     asks for no repository access. The service identifies them with `GET /user` on that token, and answers only a
     collaborator on the project's repository, checked with its own read-only GitHub App (command-center/D27, D28).
+    A service sends `Authorization: Bearer <ID token>`, the Google-signed ID token Cloud Run's metadata server
+    gives it with the status service's own URL (`STATUS_AUDIENCE`) as the audience. The service checks it against
+    Google's keys, and answers it only when its email is a service account named in
+    `STATUS_CALLER_SERVICE_ACCOUNTS`, which the manifest sets: in staging, the notifier (command-center/D66). Such
+    a service is no person, so it reads every served project's document without a collaborator check. An ID
+    token is never sent to GitHub. A deployment that trusts no service treats every token as a GitHub token.
   license:
     name: MIT
 paths:
@@ -59,6 +65,7 @@ paths:
       summary: The project's status document, gathered at most a minute ago (command-center/D48).
       security:
         - person: []
+        - service: []
       responses:
         "200":
           description: >-
@@ -135,6 +142,13 @@ components:
       type: http
       scheme: bearer
       description: The GitHub token from the app's sign-in. The service asks GitHub who it belongs to.
+    service:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >-
+        A Google-signed ID token for a Cloud Run service identity this deployment trusts, whose audience is the
+        status service's own URL (command-center/D66).
   parameters:
     owner:
       name: owner
@@ -191,7 +205,9 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
     Unauthorized:
-      description: No token, a token GitHub does not accept, or a delivery whose signature does not match.
+      description: >-
+        No token, a token GitHub does not accept, an ID token that is not a trusted service's for this service's
+        URL, or a delivery whose signature does not match.
       content:
         application/json:
           schema:
@@ -210,8 +226,8 @@ components:
             $ref: "#/components/schemas/Error"
     Unavailable:
       description: >-
-        GitHub cannot be reached, the service's app cannot get a token, or the service is not configured. Nothing
-        older is served instead.
+        GitHub cannot be reached, the service's app cannot get a token, Google's keys cannot be fetched to check a
+        service's ID token, or the service is not configured. Nothing older is served instead.
       content:
         application/json:
           schema:
