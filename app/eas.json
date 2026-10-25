@@ -10,7 +10,7 @@
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_ENVIRONMENT": "staging/app",
-        "EXPO_PUBLIC_GITHUB_CLIENT_ID": "TODO(owner): the GitHub OAuth app's client ID",
+        "EXPO_PUBLIC_GITHUB_CLIENT_ID": "Ov23liIB7Aud7TtO9eGD",
         "EXPO_PUBLIC_STATUS_URL": "https://status-665570365697.us-east1.run.app",
         "EXPO_PUBLIC_RUNNER_URL": "https://runner-665570365697.us-east1.run.app",
         "EXPO_PUBLIC_THREADS_URL": "https://threads-665570365697.us-east1.run.app",
