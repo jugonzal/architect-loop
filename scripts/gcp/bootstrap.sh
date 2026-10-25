@@ -11,6 +11,10 @@
 # the secrets its own manifest names, and creates the Firestore databases they declare. It never creates a secret:
 # the owner creates each one and its value (docs/runbooks/deploy.md), and the run names the ones still missing.
 #
+# When a manifest declares schedules (command-center/service-schedules C2, per command-center/D67), it also enables
+# Cloud Scheduler, lets the deploy identity manage its jobs, and lets Cloud Scheduler's service agent mint OIDC
+# tokens as each identity whose manifest declares one, so that each job calls its service as the service itself.
+#
 # Every step reads first, changes only what is missing, and prints what it found or changed, so a second run
 # changes nothing and says "0 changes". It never relinks billing, deletes anything or removes a grant. It ends by
 # printing each service's /version URL for LOOP.md §3.
@@ -62,7 +66,7 @@ manifest() { python3 "$here/scripts/gcp/manifest.py" "$@"; }
 manifest check-all "$here" || exit 1
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/bootstrap.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
-for kind in apis identities secrets firestore; do
+for kind in apis identities secrets firestore scheduled; do
   manifest list "$here" "$kind" >"$tmp/$kind"
 done
 apis=$APIS
@@ -151,7 +155,10 @@ else
 fi
 held=$(gcloud projects get-iam-policy "$project" --flatten='bindings[].members' \
   --filter="bindings.members:serviceAccount:$sa" --format='value(bindings.role)')
-for role in $DEPLOY_ROLES; do
+deploy_roles=$DEPLOY_ROLES
+# deploy.sh creates, updates and deletes the Cloud Scheduler jobs a manifest declares (service-schedules C2).
+[ ! -s "$tmp/scheduled" ] || deploy_roles="$deploy_roles $SCHEDULER_DEPLOY_ROLE"
+for role in $deploy_roles; do
   if printf '%s\n' "$held" | grep -qx "$role"; then
     ok "$sa holds $role"
   else
@@ -198,7 +205,28 @@ while read -r name label roles <&3; do
   done
 done 3<"$tmp/identities"
 
-# 7. Each runtime identity may read the secrets its own manifest names, one grant per secret, and no others. The
+# 7. Cloud Scheduler's service agent may mint OIDC tokens as each identity whose manifest declares schedules, so
+# that each job calls its service as that service's own identity (service-schedules C2, per command-center/D67).
+# Google creates the agent when the API is enabled (step 3), and the retry covers the seconds that can take.
+if [ -s "$tmp/scheduled" ]; then
+  agent=$(scheduler_agent_of "$number")
+  while read -r name label <&3; do
+    runtime=$name@$project.iam.gserviceaccount.com
+    creators=$(gcloud iam service-accounts get-iam-policy "$runtime" --project="$project" \
+      --flatten='bindings[].members' --filter='bindings.role:roles/iam.serviceAccountTokenCreator' \
+      --format='value(bindings.members)')
+    if printf '%s\n' "$creators" | grep -qix "serviceAccount:$agent"; then
+      ok "Cloud Scheduler may call as $runtime ($label)"
+    else
+      retry gcloud iam service-accounts add-iam-policy-binding "$runtime" --project="$project" \
+        --member="serviceAccount:$agent" --role=roles/iam.serviceAccountTokenCreator --condition=None \
+        --format=none --quiet
+      changed "let Cloud Scheduler mint tokens as $runtime ($label; roles/iam.serviceAccountTokenCreator)"
+    fi
+  done 3<"$tmp/scheduled"
+fi
+
+# 8. Each runtime identity may read the secrets its own manifest names, one grant per secret, and no others. The
 # owner creates the secrets and their values; one that does not exist yet is named, and granted on a later run.
 missing_secrets=
 while read -r name secret label <&3; do
@@ -219,7 +247,7 @@ while read -r name secret label <&3; do
   fi
 done 3<"$tmp/secrets"
 
-# 8. The Firestore databases the manifests declare, each in the region, in native mode (command-center/D44).
+# 9. The Firestore databases the manifests declare, each in the region, in native mode (command-center/D44).
 while read -r database label <&3; do
   if gcloud firestore databases describe --database="$database" --project="$project" --format='value(name)' \
       >/dev/null 2>&1; then
@@ -231,7 +259,7 @@ while read -r database label <&3; do
   fi
 done 3<"$tmp/firestore"
 
-# 9. The budget (environments/D2). It is found by its display name, which the project ID makes unique.
+# 10. The budget (environments/D2). It is found by its display name, which the project ID makes unique.
 budget_name="$project-monthly"
 budgets=$(retry gcloud billing budgets list --billing-account="$billing" --billing-project="$project" \
   --format='value(displayName,name,amount.specifiedAmount.units,amount.specifiedAmount.currencyCode)')

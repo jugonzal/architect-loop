@@ -35,14 +35,18 @@ sh scripts/gcp/deploy.sh <service> production <SHA>
 - A checkout of `main` that is up to date (`git switch main && git pull`), because the scripts,
   `scripts/gcp/projects.txt` and the manifests the bootstrap reads come from the working tree, while a deploy
   always builds and configures from the commit it names. After a merge that changes a manifest's identity, roles,
-  APIs, secrets or Firestore databases, run the bootstrap again before deploying that commit.
+  APIs, secrets or Firestore databases, or gives a service its first schedule, run the bootstrap again before
+  deploying that commit.
 - `gcloud` signed in as the owner: `gcloud auth list` marks the account active. The account must be able to link
   the billing account (Billing Account Administrator or User on it). Budget emails go to those roles.
 - Docker running, able to build for linux/amd64 (Docker Desktop does this on Apple silicon). `git`, `curl`, `sh`,
   and `python3` (3.8 or later, standard library only), which reads the manifests.
 - Expected cost at idle: close to nothing for Cloud Run, Artifact Registry and Firestore, per Google's published
   pricing rather than anything measured here. Cloud Run scales to zero, and Artifact Registry charges for stored
-  images beyond its free tier. A Cloud SQL instance (step 10) is billed while it exists, whether used or not. The
+  images beyond its free tier. Cloud Scheduler, once a manifest declares a schedule, costs $0.10 per job per 31
+  days, with the first 3 jobs per billing account free (read 2026-10-24 from
+  https://cloud.google.com/scheduler/pricing), and each call it makes is a Cloud Run request. A Cloud SQL instance
+  (step 10) is billed while it exists, whether used or not. The
   budget is the backstop (environments/D2).
 
 ## The manifest
@@ -61,6 +65,7 @@ and both scripts refuse a manifest that does not fit before they call gcloud, na
 | `cloudsql` | The Cloud SQL instance the service connects to, by name, in the environment's project and region. | The owner creates it (step 10). Every deploy attaches exactly it, or none. |
 | `firestore` | The Firestore databases the service uses, by ID (command-center/D44). | The bootstrap creates each in us-east1, in native mode. |
 | `jobs` | `{"<job>": {"command": [...], "tasks": n, "max_retries": n, "task_timeout_s": n, "settings": {...}, "secrets": {...}}}`: Cloud Run jobs from the service's image. A job runs as the service's identity, with the service's settings, secrets and Cloud SQL instance plus its own. | Every deploy deploys each job, before the service. |
+| `schedules` | `{"<name>": {"cron": "* * * * *", "time_zone": "Etc/UTC", "path": "/tick"}}`: Cloud Scheduler jobs that call the service (command-center/D67). `cron` is five fields; `time_zone` a tz database name; `path` starts with `/`. Each is the Cloud Scheduler job `<service>-<name>` in us-east1, which POSTs to `https://<service>-<PROJECT_NUMBER>.us-east1.run.app<path>` with an OIDC token for the service's identity and that URL as the audience, so the service checks the token as it checks any caller's. Its finest schedule is once a minute. | The bootstrap enables Cloud Scheduler (no need to list it in `apis`), gives the deploy identity `roles/cloudscheduler.admin`, and lets Cloud Scheduler's service agent mint tokens as the identity. Every deploy, once `/version` answers the commit, creates or updates each one and deletes the service's jobs (those calling its URL) the manifest no longer declares (step 16). |
 
 Nothing else is allowed. No manifest may set `COMMIT_SHA`, `PORT` or Cloud Run's other own variables, or a
 setting whose name says it holds a secret (`KEY`, `SECRET`, `PASSWORD`, `TOKEN`, `CREDENTIAL`, `DATABASE_URL`).
@@ -349,7 +354,7 @@ To see what each export must hold, render the manifest the way `deploy.sh` does,
 preconditions keep it up to date). It only reads, and needs no credentials:
 
 ```bash
-python3 scripts/gcp/manifest.py render services/<service>/service.json --name=<service> --env=staging --project=<PROJECT_ID> --region=us-east1 --number=<PROJECT_NUMBER> --commit="$sha" --out=<DIR>
+python3 scripts/gcp/manifest.py render services/<service>/service.json --name=<service> --env=staging --project=<PROJECT_ID> --region=us-east1 --number=<PROJECT_NUMBER> --commit="$sha" --service=<service> --out=<DIR>
 ```
 
 It prints the summary the deploy prints, and writes every setting's value to `<DIR>/service.env.yaml` (and, for the
@@ -407,9 +412,52 @@ If no such commit exists yet, this step waits for the next commit on main that c
 
 ### 15. Production
 
-Repeat steps 3 to 14 with `production` in place of `staging`. Its budget may be a different amount, and its secrets
+Repeat steps 3 to 14, and step 16 once a manifest declares a schedule, with `production` in place of
+`staging`. Its budget may be a different amount, and its secrets
 and Cloud SQL instance are its own. Step 14 meets the same wait there: the commit that first names production's
 values has no earlier commit production can deploy (see Traps, 2026-10-23).
+
+### 16. Deploy a service with schedules, and read them back (service-schedules C2)
+
+Only once a service's manifest declares `schedules` (the first is `notify`'s, per command-center/D67). Run step 3
+again first, from a checkout that has that manifest, then deploy it as in step 13:
+
+```bash
+sh scripts/gcp/bootstrap.sh staging --billing-account=<BILLING_ACCOUNT_ID> --budget=<AMOUNT>
+git fetch origin && sha=$(git rev-parse origin/main)
+sh scripts/gcp/deploy.sh <service> staging "$sha"
+gcloud scheduler jobs list --location=us-east1 --project=<PROJECT_ID>
+gcloud scheduler jobs describe <service>-<name> --location=us-east1 --project=<PROJECT_ID>
+```
+
+- **Success prints:** the bootstrap's first run after the manifest adds `changed  enabled cloudscheduler.googleapis.com`
+  (with any other new API), `changed  granted roles/cloudscheduler.admin to deploy@<PROJECT_ID>...` and
+  `changed  let Cloud Scheduler mint tokens as <identity> (<service>; roles/iam.serviceAccountTokenCreator)`; its
+  next run prints `ok       Cloud Scheduler may call as <identity> (<service>)`. The deploy prints, in its config
+  summary, `schedule <service>-<name>: create, <cron> <time zone>, POST https://<service>-<PROJECT_NUMBER>.us-east1.run.app<path> as <identity>`
+  (`update` on later deploys), then, after `/version` answers, gcloud's output for each job, and last `deployed
+  <service> to staging: ... answers <SHA>`. `describe` shows `httpTarget.uri` that URL, `httpMethod: POST`,
+  `oidcToken.serviceAccountEmail` the service's identity, `oidcToken.audience` its URL without the path, the
+  manifest's `schedule` and `timeZone`, and `state: ENABLED`. The service's logs then show a POST to the path at
+  each tick, from `Google-Cloud-Scheduler`.
+- **Failure looks like:**
+  - `deploy: services/<service>/service.json declares schedules, but Cloud Scheduler is not enabled in
+    <PROJECT_ID>`: the bootstrap has not run since the manifest gained its first schedule. Nothing was built. Run
+    step 3, then this step.
+  - `gcloud scheduler jobs list` denied `cloudscheduler.jobs.list` to the deploy identity: its
+    `roles/cloudscheduler.admin` grant has not reached IAM yet, or the bootstrap ran from a checkout without a
+    schedule. Nothing was built. Re-run step 3 from an up-to-date checkout, wait, and re-run.
+  - A scheduler call fails after `/version` answers (for instance `iam.serviceAccounts.actAs` on the identity):
+    the new revision serves, but its schedules are as the failing call left them. Fix the cause and deploy the
+    same commit again, which creates or updates every job.
+  - The bootstrap's token grant fails with `INVALID_ARGUMENT` on
+    `service-<PROJECT_NUMBER>@gcp-sa-cloudscheduler.iam.gserviceaccount.com` after its retries: Google has not
+    created Cloud Scheduler's service agent yet. Wait a few minutes and re-run step 3.
+  - The job runs but its `status` shows an error: a 401 or 403 means the service refused the token (check that it
+    expects `https://<service>-<PROJECT_NUMBER>.us-east1.run.app` as the audience and the service's own identity
+    as the caller); a 404 means the path is wrong.
+- **Safe to re-run:** yes. A deploy updates each declared job in place and deletes only the service's jobs that its
+  manifest does not declare; jobs that call other services, or live in another region, are left alone.
 
 ## Verify
 
@@ -431,6 +479,11 @@ yet deployed.
   commit's manifest, and checks `/version`. A deploy that fails leaves the previous revision serving. Do not roll
   back with `gcloud run services update-traffic --to-revisions`: traffic stays pinned to that revision, and later
   deploys then receive none.
+- **Schedules** roll back with the deploy: deploying the previous commit creates or updates the jobs its
+  manifest declares and deletes the service's jobs it does not. A deploy that fails before `/version` answers
+  changes no schedule. To stop one at once without a deploy, `gcloud scheduler jobs pause <service>-<name>
+  --location=us-east1 --project=<PROJECT_ID>`. Whether a later deploy's update resumes a paused job is unproven
+  here: read its `state` with `describe` afterwards, and `gcloud scheduler jobs resume` it when it should run.
 - **A bad manifest:** revert it in a pull request and deploy the revert. A commit from before the manifests
   existed cannot be deployed: `deploy.sh` refuses a commit without one. Nor can a commit whose manifest leaves a
   value `TODO(owner)` for that environment: on staging, that is every runner or threads commit before 1bdb337.
@@ -438,7 +491,8 @@ yet deployed.
   `gcloud run services delete probe --region=us-east1 --project=<PROJECT_ID>`.
 - **What does not roll back:**
   - The bootstrap: the project, its billing link, the APIs, the repository, the identities, their grants, the
-    Firestore databases and the budget stay until removed by hand. A role or secret a manifest stops naming keeps
+    Firestore databases, Cloud Scheduler's API and its grants, and the budget stay until removed by hand. A
+    role or secret a manifest stops naming keeps
     its grant, and a job or a database it stops naming is not deleted.
   - Secrets' values: a deploy points at each secret's latest version, whatever the commit.
   - A Cloud SQL instance a job's manifest stops naming stays attached to the job: Cloud Run jobs have no flag that

@@ -17,6 +17,12 @@ A manifest is `services/<service>/service.json` (the probe's is `scripts/gcp/pro
   jobs       {"<job>": {"command": [...], "tasks": n, "max_retries": n, "task_timeout_s": n, "settings": {...},
              "secrets": {...}}}: Cloud Run jobs deployed with the service from the same image. A job runs as the
              service's identity, with the service's settings, secrets and Cloud SQL instance, plus its own.
+  schedules  {"<name>": {"cron": "* * * * *", "time_zone": "Etc/UTC", "path": "/tick"}}: Cloud Scheduler jobs that
+             POST to one of the service's paths on a cron (command-center/D67). Each is the Cloud Scheduler job
+             <service>-<name> in the region, and calls https://<service>-<number>.<region>.run.app<path> with an
+             OIDC token for the service's own identity and that URL as its audience. bootstrap.sh enables Cloud
+             Scheduler and lets it mint those tokens; deploy.sh creates or updates each declared job, and deletes
+             the service's jobs the manifest no longer declares, once the new revision answers /version.
 
 deploy.sh applies the manifest of the commit it deploys; bootstrap.sh creates what the manifests in the working tree
 declare. Both refuse a manifest that does not fit this format before they call gcloud. deploy.sh sets COMMIT_SHA
@@ -29,7 +35,13 @@ Usage:
   python3 manifest.py check-all <repository root>
   python3 manifest.py render <file> --name=<path> --env=<environment> --project=<id> --region=<region>
                              --commit=<sha> [--number=<project number>] --out=<directory>
-  python3 manifest.py list <repository root> apis|identities|secrets|firestore
+                             [--service=<service> --scheduled=<file>]
+  python3 manifest.py fields <file>
+  python3 manifest.py list <repository root> apis|identities|secrets|firestore|scheduled
+
+render's --scheduled names the Cloud Scheduler jobs that exist in the region, one per line as
+`gcloud scheduler jobs list --format='value(name,httpTarget.uri)'` prints them. It needs --service and --number when
+the manifest declares schedules or the file names any job.
 """
 
 import glob
@@ -40,8 +52,11 @@ import sys
 
 ENVIRONMENTS = ("staging", "production")
 TODO = "TODO(owner)"
-FIELDS = ("identity", "apis", "settings", "secrets", "cloudsql", "firestore", "jobs")
+FIELDS = ("identity", "apis", "settings", "secrets", "cloudsql", "firestore", "jobs", "schedules")
 JOB_FIELDS = ("command", "tasks", "max_retries", "task_timeout_s", "settings", "secrets")
+SCHEDULE_FIELDS = ("cron", "time_zone", "path")
+# The API a manifest with schedules needs. bootstrap.sh enables it for such a manifest, which need not list it.
+SCHEDULER_API = "cloudscheduler.googleapis.com"
 PLACEHOLDERS = ("project", "number", "region")
 PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
 # Set by deploy.sh or by Cloud Run itself, never by a manifest.
@@ -67,6 +82,11 @@ SECRET_NAME = re.compile(r"^[A-Za-z0-9_-]{1,255}$")
 INSTANCE = re.compile(r"^[a-z]([a-z0-9-]{0,78}[a-z0-9])?$")
 DATABASE = re.compile(r"^[a-z][a-z0-9-]{2,61}[a-z0-9]$")
 JOB = re.compile(r"^[a-z]([a-z0-9-]{0,47}[a-z0-9])?$")
+SCHEDULE = re.compile(r"^[a-z]([a-z0-9-]{0,46}[a-z0-9])?$")
+# One field of a cron: digits, names (JAN, MON), *, ranges, steps and lists. Cloud Scheduler checks the rest.
+CRON_FIELD = re.compile(r"^[0-9A-Za-z*/,-]+$")
+TIME_ZONE = re.compile(r"^(UTC|[A-Z][A-Za-z_]*(/[A-Za-z0-9_+-]+)+)$")
+URL_PATH = re.compile(r"^/[A-Za-z0-9._~!$&'()*+,;=:@%/?-]*$")
 # A field that cannot work without APIs the service must then list. gcloud checks both Cloud SQL APIs before it
 # attaches an instance, and a --quiet deploy is cancelled when one is not enabled.
 NEEDS_API = {"cloudsql": ("sqladmin.googleapis.com", "sql-component.googleapis.com"),
@@ -225,7 +245,48 @@ def problems(manifest):
         names = dict(seen)
         _variables(at + ".settings", job.get("settings", {}), "settings", names, found)
         _variables(at + ".secrets", job.get("secrets", {}), "secrets", names, found)
+
+    schedules = manifest.get("schedules", {})
+    if not isinstance(schedules, dict):
+        found.append('schedules: an object, {"<name>": {"cron": ..., "time_zone": ..., "path": ...}}')
+        schedules = {}
+    for name, schedule in schedules.items():
+        at = "schedules.%s" % name
+        if not SCHEDULE.match(name):
+            found.append("%s: a schedule's name is lowercase letters, digits and hyphens, at most 48" % at)
+            continue
+        if not isinstance(schedule, dict):
+            found.append("%s: an object with %s" % (at, ", ".join(SCHEDULE_FIELDS)))
+            continue
+        for key in schedule:
+            if key not in SCHEDULE_FIELDS:
+                found.append("%s.%s: not a field of a schedule (%s)" % (at, key, ", ".join(SCHEDULE_FIELDS)))
+        for key in SCHEDULE_FIELDS:
+            if key not in schedule:
+                found.append("%s.%s: missing; a schedule states its cron, its time zone and the path it calls"
+                             % (at, key))
+        cron = schedule.get("cron", "* * * * *")
+        if not isinstance(cron, str) or len(cron.split()) != 5 or cron != " ".join(cron.split()) or not all(
+                CRON_FIELD.match(f) for f in cron.split()):
+            found.append('%s.cron: five fields separated by single spaces, as in "*/5 * * * *"' % at)
+        time_zone = schedule.get("time_zone", "UTC")
+        if not isinstance(time_zone, str) or not TIME_ZONE.match(time_zone) or not _known_zone(time_zone):
+            found.append('%s.time_zone: a time zone from the tz database, such as "Etc/UTC" or "America/New_York"'
+                         % at)
+        path = schedule.get("path", "/")
+        if not isinstance(path, str) or not URL_PATH.match(path) or len(path) > 2000:
+            found.append("%s.path: a path on the service, starting with /, without spaces or #" % at)
     return found
+
+
+def _known_zone(name):
+    """Whether the tz database knows the zone, when this Python can read one; the pattern alone otherwise."""
+    try:
+        import zoneinfo
+        known = zoneinfo.available_timezones()
+    except ImportError:
+        return True
+    return not known or name in known
 
 
 def _each_setting(manifest):
@@ -269,8 +330,19 @@ def identity_of(manifest, project):
     return "%s@%s.iam.gserviceaccount.com" % (manifest["identity"]["name"], project)
 
 
-def render(manifest, env, facts, commit):
-    """What the manifest means in one environment: the identity, and each target's variables and secrets."""
+def service_url(service, facts):
+    """Cloud Run's URL for the service, which LOOP.md §3 reads and the status service calls (command-center/D32)."""
+    return "https://%s-%s.%s.run.app" % (service, facts["number"], facts["region"])
+
+
+def render(manifest, env, facts, commit, service_name=None, scheduled=()):
+    """What the manifest means in one environment: the identity, each target's variables and secrets, and what to
+    do to each Cloud Scheduler job (command-center/D67).
+
+    `scheduled` is every Cloud Scheduler job in the region, as (job ID, the URI it calls). The service's own are the
+    ones that call its URL, or that carry a name its manifest declares; each declared one is created or updated,
+    and each other one of the service's is deleted. Jobs that call other services are left alone.
+    """
 
     def resolve(where, name, value):
         value = value[env] if isinstance(value, dict) else value
@@ -303,7 +375,33 @@ def render(manifest, env, facts, commit):
             "max_retries": job["max_retries"],
             "task_timeout_s": job["task_timeout_s"],
         }
-    return {"identity": identity_of(manifest, project), "service": service, "jobs": jobs}
+    schedules = manifest.get("schedules", {})
+    plan = []
+    if schedules or scheduled:
+        if not service_name or not facts.get("number"):
+            raise Refused("schedules need the service's name and the project's number, which deploy.sh did not give")
+        url = service_url(service_name, facts)
+        declared = {"%s-%s" % (service_name, name): schedule for name, schedule in sorted(schedules.items())}
+        existing = dict(scheduled)
+        for job_id, schedule in declared.items():
+            plan.append({"action": "update" if job_id in existing else "create", "id": job_id,
+                         "cron": schedule["cron"], "time_zone": schedule["time_zone"],
+                         "uri": url + schedule["path"], "audience": url})
+        for job_id, uri in sorted(existing.items()):
+            if job_id not in declared and (uri == url or uri.startswith(url + "/")):
+                plan.append({"action": "delete", "id": job_id, "uri": uri})
+    return {"identity": identity_of(manifest, project), "service": service, "jobs": jobs, "schedules": plan}
+
+
+def parse_scheduled(text):
+    """The jobs `gcloud scheduler jobs list --format='value(name,httpTarget.uri)'` printed, as (job ID, URI)."""
+    found = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        name, _, uri = line.partition("\t")
+        found.append((name.strip().rsplit("/", 1)[-1], uri.strip()))
+    return found
 
 
 def _secrets_flag(secrets):
@@ -345,6 +443,14 @@ def write_flags(config, out):
                   "--task-timeout=%ds" % job["task_timeout_s"]]
         _write(os.path.join(out, "job-%s.flags" % name), "".join(f + "\n" for f in flags))
     _write(os.path.join(out, "jobs"), "".join(name + "\n" for name in config["jobs"]))
+    # What to do to each Cloud Scheduler job, one `<action> <job ID>` per line; create and update read their flags.
+    for step in config["schedules"]:
+        if step["action"] != "delete":
+            flags = ["--schedule=" + step["cron"], "--time-zone=" + step["time_zone"], "--uri=" + step["uri"],
+                     "--http-method=POST", "--oidc-service-account-email=" + config["identity"],
+                     "--oidc-token-audience=" + step["audience"]]
+            _write(os.path.join(out, "schedule-%s.flags" % step["id"]), "".join(f + "\n" for f in flags))
+    _write(os.path.join(out, "schedules"), "".join("%s %s\n" % (s["action"], s["id"]) for s in config["schedules"]))
 
 
 def summary(config, label):
@@ -358,6 +464,12 @@ def summary(config, label):
         lines.append("  job %s: %s; tasks %d, retries %d, timeout %d s; settings %s; secrets %s" % (
             name, " ".join(job["command"]), job["tasks"], job["max_retries"], job["task_timeout_s"],
             ", ".join(sorted(job["env"])), ", ".join(sorted(job["secrets"])) or "none"))
+    for step in config["schedules"]:
+        if step["action"] == "delete":
+            lines.append("  schedule %s: delete, no longer declared (it called %s)" % (step["id"], step["uri"]))
+        else:
+            lines.append("  schedule %s: %s, %s %s, POST %s as %s" % (
+                step["id"], step["action"], step["cron"], step["time_zone"], step["uri"], config["identity"]))
     return "\n".join(lines)
 
 
@@ -392,7 +504,7 @@ def listing(root, kind):
     for label, rel, m in manifests(root):
         name = m["identity"]["name"]
         if kind == "apis":
-            lines += m.get("apis", [])
+            lines += m.get("apis", []) + ([SCHEDULER_API] if m.get("schedules") else [])
         elif kind == "identities":
             lines.append(" ".join([name, label] + m["identity"].get("roles", [])))
         elif kind == "secrets":
@@ -402,8 +514,10 @@ def listing(root, kind):
             lines += ["%s %s %s" % (name, secret, label) for secret in sorted(secrets)]
         elif kind == "firestore":
             lines += ["%s %s" % (database, label) for database in m.get("firestore", [])]
+        elif kind == "scheduled":
+            lines += ["%s %s" % (name, label)] if m.get("schedules") else []
         else:
-            raise Refused("list what? apis, identities, secrets or firestore, not %r" % kind)
+            raise Refused("list what? apis, identities, secrets, firestore or scheduled, not %r" % kind)
     unique = []
     for line in lines:
         if line not in unique:
@@ -428,13 +542,20 @@ def main(argv):
     try:
         if command == "check" and len(args) == 2:
             checked(args[1], opts.get("name"), opts.get("env"))
+        elif command == "fields" and len(args) == 2:
+            for field in sorted(checked(args[1], opts.get("name"))):
+                print(field)
         elif command == "check-all" and len(args) == 2:
             manifests(args[1])
         elif command == "render" and len(args) == 2:
             label = opts.get("name", args[1])
             manifest = checked(args[1], label, opts["env"])
             facts = {"project": opts["project"], "region": opts["region"], "number": opts.get("number", "")}
-            config = render(manifest, opts["env"], facts, opts["commit"])
+            scheduled = []
+            if opts.get("scheduled"):
+                with open(opts["scheduled"], encoding="utf-8") as f:
+                    scheduled = parse_scheduled(f.read())
+            config = render(manifest, opts["env"], facts, opts["commit"], opts.get("service"), scheduled)
             write_flags(config, opts["out"])
             print(summary(config, label))
         elif command == "list" and len(args) == 3:

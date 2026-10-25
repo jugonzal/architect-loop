@@ -11,6 +11,12 @@ DEPLOY_ACCOUNT=deploy
 DEPLOY_ROLES="roles/run.admin roles/artifactregistry.writer roles/iam.serviceAccountUser"
 # The APIs each project enables. Budgets are created through the project, so it enables their API too.
 APIS="run.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com iamcredentials.googleapis.com billingbudgets.googleapis.com"
+# Cloud Scheduler, for a manifest that declares schedules (command-center/D67). bootstrap.sh enables its API, gives
+# the deploy identity this role so that deploy.sh can create, update and delete the jobs, and lets the API's service
+# agent, service-<project number>@gcp-sa-cloudscheduler.iam.gserviceaccount.com, mint OIDC tokens as each identity
+# whose manifest declares one. A project with no such manifest gets none of these.
+SCHEDULER_API=cloudscheduler.googleapis.com
+SCHEDULER_DEPLOY_ROLE=roles/cloudscheduler.admin
 # The environment variable that carries the commit a service was built from. Its GET /version answers it.
 COMMIT_VAR=COMMIT_SHA
 # The services in services/<name>/. Each has one LOOP.md §3 row per environment.
@@ -38,4 +44,9 @@ project_of() {
 
 deploy_account_of() {
   printf '%s@%s.iam.gserviceaccount.com\n' "$DEPLOY_ACCOUNT" "$1"
+}
+
+# Cloud Scheduler's service agent in the project with this number.
+scheduler_agent_of() {
+  printf 'service-%s@gcp-sa-cloudscheduler.iam.gserviceaccount.com\n' "$1"
 }
