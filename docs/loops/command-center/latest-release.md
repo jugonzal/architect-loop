@@ -53,4 +53,6 @@ pins still dispatch `v0.4.0`.
 
 ## Evidence
 
+- 2026-10-25 · ship · verified · staging @633cbe4 · the owner ran `deploy.sh runner staging 633cbe4`; I then `served.sh https://runner-665570365697.us-east1.run.app/version 633cbe4` printed 633cbe477c987414bd151302c6a23728684f4e90 and exited 0, as did the threads (1eae0a3), status and notify reads. `gcloud run services describe runner` read back image tag 633cbe4, COMMIT_SHA 633cbe4, runtime identity runner@loops-512401, Ready True, and RUNNER_THREADS_URL https://threads-665570365697.us-east1.run.app; the `runner-session` job has the same image, COMMIT_SHA and RUNNER_THREADS_URL. The only WARNING in the last 2 hours was an unauthenticated GET /estimates (401) made while verifying. No session was dispatched, so the runner half of C1 (estimate naming the newest release) is not yet proven on staging; the app half ships to staging/app
+
 ## Shipped
