@@ -49,7 +49,6 @@ import {
   sessionInitials,
   sessionThreadHref,
   sessionTitle,
-  SKILLS_RELEASE,
   targetName,
   threadCalls,
   threadErrorText,
@@ -675,7 +674,8 @@ type EstimateRead = { kind: 'reading' } | { kind: 'read'; answer: EstimateAnswer
 
 /**
  * Accepting a mark (C2): what will run, as whom, with what budget and which release of the skills, before anything
- * starts. Start dispatches /loop-design through the runner with the signed-in person as its sponsor, and opens the
+ * starts. The release field starts from the one the runner's estimate names, the newest release tag (latest-release
+ * C2, command-center/D68), so the screen holds no release of its own; the person sees it, and can change it. Start dispatches /loop-design through the runner with the signed-in person as its sponsor, and opens the
  * new session's thread, where the skill asks them to confirm the decision before it writes the D#.
  */
 function RecordSheet({
@@ -698,8 +698,16 @@ function RecordSheet({
   onStarted: (session: Session) => void;
 }) {
   const [budget, setBudget] = useState(String(DEFAULT_BUDGET_USD));
-  const [release, setRelease] = useState(SKILLS_RELEASE);
+  const [release, setRelease] = useState('');
+  // Whether the person typed a release, which the estimate's then no longer replaces.
+  const [releaseTyped, setReleaseTyped] = useState(false);
   const [estimate, setEstimate] = useState<EstimateRead>({ kind: 'reading' });
+  // A runner deployed before latest-release names no release at all, which is none.
+  const named = estimate.kind === 'read' ? (estimate.answer.plugin_release ?? null) : null;
+
+  useEffect(() => {
+    if (named && !releaseTyped) setRelease(named);
+  }, [named, releaseTyped]);
   const [starting, setStarting] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -716,6 +724,14 @@ function RecordSheet({
 
   const usd = parseBudget(budget);
   const releaseOk = validRelease(release);
+  const releaseNotice =
+    releaseOk || (estimate.kind === 'reading' && !releaseTyped)
+      ? null
+      : estimate.kind === 'read' && !named && !releaseTyped
+        ? 'The runner names no release of the skills yet. Type the tag to run, as vX.Y.Z.'
+        : estimate.kind === 'failed' && !releaseTyped
+          ? 'The runner did not name a release of the skills. Type the tag to run, as vX.Y.Z.'
+          : 'The release is a tag of the skills, as vX.Y.Z.';
   const canStart = usd !== null && releaseOk && !starting;
 
   const start = async () => {
@@ -764,7 +780,12 @@ function RecordSheet({
         <TextInput
           accessibilityLabel="Skills release"
           value={release}
-          onChangeText={setRelease}
+          onChangeText={(text) => {
+            setReleaseTyped(true);
+            setRelease(text);
+          }}
+          placeholder={estimate.kind === 'reading' ? 'asking the runner…' : 'vX.Y.Z'}
+          placeholderTextColor={colors.inkSubtle}
           autoCapitalize="none"
           autoCorrect={false}
           editable={!starting}
@@ -772,7 +793,7 @@ function RecordSheet({
         />
       </View>
       {usd === null && <Notice text="The budget must be a number of dollars above 0." alert />}
-      {!releaseOk && <Notice text="The release is a tag of the skills, such as v0.4.0." alert />}
+      {releaseNotice && <Notice text={releaseNotice} alert />}
       {failure && <Notice text={failure} alert />}
       <View style={styles.sheetActions}>
         <SmallButton label={starting ? 'Starting…' : 'Start /loop-design'} onPress={() => void start()} disabled={!canStart} primary />

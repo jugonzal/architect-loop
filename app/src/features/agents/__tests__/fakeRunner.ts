@@ -63,11 +63,21 @@ export type FakeRunnerOptions = {
   ceiling?: number;
   /** The estimate for each skill, or null for a skill with none; a skill not named has none. */
   estimates?: Partial<Record<Skill, { usd: number; wall_clock_s: number; sessions: number } | null>>;
+  /** The newest release tag the estimate names, or null for a project with none (latest-release C1). */
+  release?: string | null;
+  /** The release tags a dispatch may name; by default only the newest. */
+  releases?: string[];
   /** Who each token belongs to. */
   tokens?: Record<string, string>;
   /** An answer to give instead, for a call, before the fake's own. */
   answer?: (call: RunnerCall) => { status: number; body: unknown } | undefined;
 };
+
+/**
+ * The newest release the fake runner names. Not the release any screen was written with, so a test that passes with
+ * it shows the screen sent what the runner named and nothing of its own (latest-release C2).
+ */
+export const FAKE_RELEASE = 'v0.7.0';
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -82,6 +92,8 @@ export function fakeRunner({
   cap = 3,
   ceiling = 10,
   estimates = {},
+  release = FAKE_RELEASE,
+  releases = release ? [release] : [],
   tokens = { gho_stored: 'octocat', gho_octocat: 'octocat' },
   answer,
 }: FakeRunnerOptions = {}) {
@@ -130,11 +142,19 @@ export function fakeRunner({
       const skill = call.query.skill as Skill;
       const found = estimates[skill];
       const estimate = found ? { kind: 'estimate' as const, ...found } : null;
-      return json(200, { skill, model: call.query.model ?? 'claude-opus-5-5', estimate } satisfies EstimateAnswer);
+      return json(200, {
+        skill,
+        model: call.query.model ?? 'claude-opus-5-5',
+        estimate,
+        plugin_release: release,
+      } satisfies EstimateAnswer);
     }
 
     if (method === 'POST' && call.path === '/sessions') {
       const request = body as DispatchRequest;
+      if (!releases.includes(request.plugin_release)) {
+        return problem(422, 'unknown-release', `${request.plugin_release} is not a release tag of ${request.project}`);
+      }
       if (request.budget_usd > ceiling) {
         return json(409, {
           refused: 'budget-ceiling',

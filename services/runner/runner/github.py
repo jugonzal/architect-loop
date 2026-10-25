@@ -35,6 +35,7 @@ class GitHub(Protocol):
     def is_collaborator(self, login: str) -> bool: ...
     def concern_exists(self, loop: str, concern: str) -> bool: ...
     def release_exists(self, tag: str) -> bool: ...
+    def latest_release(self) -> str | None: ...
     def loop_exists(self, loop: str) -> bool: ...
     def environments(self) -> list: ...
     def open_pull_requests(self) -> list: ...
@@ -49,6 +50,16 @@ def concern_pull_requests(pulls, concern):
     trailer = re.compile(rf"^Concern:\s*{re.escape(concern)}\s*$", re.MULTILINE | re.IGNORECASE)
     return [{"number": p["number"], "url": p["url"], "head": p["head"]} for p in pulls
             if p["head"] == concern or trailer.search(p.get("body") or "")]
+
+
+RELEASE_TAG = re.compile(r"^v([0-9]+)\.([0-9]+)\.([0-9]+)$")
+
+
+def newest_release(tags):
+    """The highest release tag, vX.Y.Z compared by number (v0.10.0 is newer than v0.9.0), or None when there is
+    none. Any other tag, a pre-release such as v1.0.0-rc.1 included, is not a release (command-center/D17, D68)."""
+    found = [(tuple(int(n) for n in m.groups()), tag) for tag in tags for m in [RELEASE_TAG.match(tag)] if m]
+    return max(found)[1] if found else None
 
 
 ENVIRONMENTS_HEADING = re.compile(r"^#{1,6}\s+(?:\d+(?:\.\d+)*\.?\s+)?Environments\s*$", re.IGNORECASE)
@@ -157,6 +168,19 @@ class RestGitHub:
 
     def release_exists(self, tag):
         return self._exists(f"{self._repo}/git/ref/tags/{urllib.parse.quote(tag)}")
+
+    def latest_release(self):
+        """The newest release tag of the project, the one a start from the app runs (latest-release C1). The same
+        tags `release_exists` accepts, so what the estimate names a dispatch may run."""
+        names, page = [], 1
+        while True:
+            status, answer = self._as_app("GET", f"{self._repo}/tags?per_page=100&page={page}")
+            if status != 200 or not isinstance(answer, list):
+                raise GitHubError(f"listing tags answered {status}")
+            names += [t["name"] for t in answer]
+            if len(answer) < 100:
+                return newest_release(names)
+            page += 1
 
     def loop_exists(self, loop):
         return self._exists(f"{self._repo}/contents/docs/loops/{loop}/README.md?ref={self.main_branch}")

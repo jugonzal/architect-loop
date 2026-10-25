@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 from runner.dispatch import ENVIRONMENT
 from runner.github import (JOB_PERMISSIONS, SERVICE_PERMISSIONS, AppAuth, GitHubError, RestGitHub,
-                           concern_pull_requests, environments_in)
+                           concern_pull_requests, environments_in, newest_release)
 
 KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 PEM = KEY.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
@@ -132,6 +132,33 @@ class GitHubTest(unittest.TestCase):
         self.assertFalse(self.github.release_exists("v9.9.9"))
         self.assertTrue(self.transport.requests[-1]["url"].endswith("/git/ref/tags/v9.9.9"))
 
+    def test_the_latest_release_is_the_highest_release_tag_read_page_by_page(self):
+        """latest-release C1: the newest release is the highest vX.Y.Z by number, not by name or by date."""
+        self.token_answer()
+        self.transport.answer(200, [{"name": f"v0.{n}.0"} for n in range(100)])
+        self.transport.answer(200, [{"name": "v0.100.0"}, {"name": "v1.0.0-rc.1"}, {"name": "nightly"}])
+        self.assertEqual(self.github.latest_release(), "v0.100.0")
+        first, second = self.transport.requests[1:]
+        self.assertTrue(first["url"].endswith("/repos/jugonzal/architect-loop/tags?per_page=100&page=1"))
+        self.assertIn("page=2", second["url"])
+        self.assertEqual(first["headers"]["Authorization"], "Bearer ghs_installation")
+
+    def test_a_release_ten_is_newer_than_a_release_nine(self):
+        self.token_answer()
+        self.transport.answer(200, [{"name": "v0.9.0"}, {"name": "v0.10.0"}, {"name": "v0.4.0"}])
+        self.assertEqual(self.github.latest_release(), "v0.10.0")
+
+    def test_without_a_release_tag_there_is_no_latest_release(self):
+        self.token_answer()
+        self.transport.answer(200, [{"name": "nightly"}, {"name": "0.4.0"}])
+        self.assertIsNone(self.github.latest_release())
+
+    def test_listing_tags_failing_is_an_error(self):
+        self.token_answer()
+        self.transport.answer(500, {"message": "boom"})
+        with self.assertRaises(GitHubError):
+            self.github.latest_release()
+
     def test_a_loop_exists_when_its_readme_is_on_main(self):
         self.token_answer()
         self.transport.answer(200, {"type": "file"})
@@ -186,6 +213,16 @@ class EnvironmentsInTest(unittest.TestCase):
 
     def test_no_section_means_no_environments(self):
         self.assertEqual(environments_in("# Nothing here\n\n| a | b |\n| - | - |\n| c | d |\n"), [])
+
+
+class NewestReleaseTest(unittest.TestCase):
+    def test_the_newest_is_the_highest_release_tag_by_number(self):
+        self.assertEqual(newest_release(["v0.3.0", "v0.10.0", "v0.9.9", "v1.0.0-rc.1", "latest"]), "v0.10.0")
+        self.assertEqual(newest_release(["v2.0.0", "v10.0.0"]), "v10.0.0")
+
+    def test_no_release_tag_means_none(self):
+        self.assertIsNone(newest_release([]))
+        self.assertIsNone(newest_release(["main", "0.4.0", "v0.4"]))
 
 
 class ConcernPullRequestsTest(unittest.TestCase):

@@ -254,6 +254,19 @@ class RoundTripTest(unittest.TestCase):
                 self.assertEqual((one["concern"], one["branch"], one["final_message"]), (None, "main", None))
                 self.assertEqual(one[scope], LOOP if scope == "loop" else ENVIRONMENT)
 
+    def test_the_estimate_names_a_release_a_dispatch_accepts(self):
+        """latest-release C1: what the estimate names is what the app sends back, so the two schemas agree."""
+        schemas = SPEC["components"]["schemas"]
+        self.assertIn("plugin_release", schemas["EstimateAnswer"]["required"])
+        self.assertEqual(schemas["EstimateAnswer"]["properties"]["plugin_release"]["pattern"],
+                         schemas["DispatchRequest"]["properties"]["plugin_release"]["pattern"])
+        client, _, _, github, _, _ = runner(self)
+        github.releases = {"v0.3.0", "v0.4.0"}
+        answer = client.call("GET", "/estimates", token="tok-juan", query={"skill": "loop-build"}).json
+        body = dispatch_body(plugin_release=answer["plugin_release"])
+        self.assertEqual(request_errors("POST", "/sessions", body), [])
+        self.assertEqual(client.call("POST", "/sessions", body, token="tok-juan").json["plugin_release"], "v0.4.0")
+
     def test_the_location_header_names_the_session(self):
         client = runner(self)[0]
         response = client.call("POST", "/sessions", dispatch_body(), token="tok-juan")

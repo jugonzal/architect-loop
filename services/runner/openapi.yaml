@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: architect-loop session runner
-  version: 0.2.0
+  version: 0.3.0
   summary: Start a loop skill on a concern, a loop or an environment as a session that names its sponsor and stops at a budget.
   description: |
     The runner starts one session per dispatch, each in its own Cloud Run job, on its own fresh clone of the
@@ -183,11 +183,16 @@ paths:
   /estimates:
     get:
       operationId: estimate
-      summary: What a skill is likely to spend on its model, before a start.
+      summary: What a skill is likely to spend on its model, and the release it would run, before a start.
       description: |
         The median of that skill and model's last 10 measured sessions (command-center/D23). A pairing with
         no measured session has no estimate (`estimate` is null). The model is the one the runner's config maps
         the skill to, unless `model` names another.
+
+        It also names the newest release tag of the project (`plugin_release`), which a start shows and
+        dispatches, so a tag the owner cuts reaches every start with no new app build (command-center/D68). The
+        dispatch still names its release and is checked again, so what the person was shown is what runs, even
+        if a tag is cut in between.
       parameters:
         - name: skill
           in: query
@@ -198,7 +203,7 @@ paths:
           schema: {type: string, minLength: 1}
       responses:
         "200":
-          description: The estimate, or null when the pairing has none.
+          description: The estimate, or null when the pairing has none, and the newest release.
           content:
             application/json:
               schema: {$ref: "#/components/schemas/EstimateAnswer"}
@@ -422,7 +427,7 @@ components:
     EstimateAnswer:
       type: object
       additionalProperties: false
-      required: [skill, model, estimate]
+      required: [skill, model, estimate, plugin_release]
       properties:
         skill: {$ref: "#/components/schemas/Skill"}
         model: {type: string}
@@ -430,6 +435,13 @@ components:
           oneOf:
             - {$ref: "#/components/schemas/Estimate"}
             - {type: "null"}
+        plugin_release:
+          description: |
+            The newest release tag of the project, the highest `vX.Y.Z` by number, which a start from the app
+            dispatches as its `plugin_release` (command-center/D68). Null when the project has no release tag, so
+            nothing can be started from it yet.
+          type: [string, "null"]
+          pattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
     Estimate:
       description: The median of the pairing's last measured sessions, at most 10 (command-center/D23).
       type: object

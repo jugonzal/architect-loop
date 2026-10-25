@@ -21,7 +21,6 @@ import { SignIn } from '../../../shell/auth/signIn';
 import { fakeClock, fakeGitHub } from '../../../shell/auth/__tests__/fakeGitHub';
 import { AppRoot } from '../../../shell/AppRoot';
 import type { AppConfig } from '../../../shell/config';
-import { PLUGIN_RELEASE } from '../dispatch';
 import { POLL_MS } from '../sessions';
 import { NO_RUNNER_MESSAGE } from '../StartSheet';
 
@@ -44,6 +43,9 @@ function configFor(runnerUrl: string | null = RUNNER_URL): AppConfig {
 
 type Call = { method: string; url: string; auth: string | null; body: unknown };
 
+/** The newest release the fake runner names, and the only one it accepts: not one any card was written with. */
+const RELEASE = 'v0.7.0';
+
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
@@ -52,7 +54,12 @@ const json = (status: number, body: unknown) =>
  * as the real one does from GET /user (command-center/D28), and keeps what it was asked to start so a test can end
  * it. It never runs anything.
  */
-function services(doc: StatusDocument, login: string, options: { refuse?: Session; earlier?: Session[] } = {}) {
+function services(
+  doc: StatusDocument,
+  login: string,
+  options: { refuse?: Session; earlier?: Session[]; release?: string | null; oldRunner?: boolean } = {},
+) {
+  const release = options.release === undefined ? RELEASE : options.release;
   const calls: Call[] = [];
   const sessions: Session[] = [...(options.earlier ?? [])];
   let next = 1;
@@ -67,7 +74,8 @@ function services(doc: StatusDocument, login: string, options: { refuse?: Sessio
     if (method === 'GET' && pathname === '/estimates') {
       const skill = searchParams.get('skill');
       const estimate = skill === 'loop-design' ? { kind: 'estimate', usd: 0.84, wall_clock_s: 540, sessions: 7 } : null;
-      return json(200, { skill, model: 'claude-test', estimate });
+      // A runner deployed before latest-release answers no plugin_release at all.
+      return json(200, { skill, model: 'claude-test', estimate, ...(options.oldRunner ? {} : { plugin_release: release }) });
     }
     if (method === 'POST' && pathname === '/sessions') {
       if (options.refuse) {
@@ -79,6 +87,9 @@ function services(doc: StatusDocument, login: string, options: { refuse?: Sessio
         });
       }
       const request = body as DispatchRequest;
+      if (request.plugin_release !== release) {
+        return json(422, { error: 'unknown-release', message: `${request.plugin_release} is not a release tag` });
+      }
       const session: Session = {
         id: `s_${next++}`,
         project: request.project,
@@ -177,9 +188,19 @@ async function open(
     runnerUrl = RUNNER_URL as string | null,
     refuse,
     earlier,
-  }: { login?: string; doc?: StatusDocument; runnerUrl?: string | null; refuse?: Session; earlier?: Session[] } = {},
+    release,
+    oldRunner,
+  }: {
+    login?: string;
+    doc?: StatusDocument;
+    runnerUrl?: string | null;
+    refuse?: Session;
+    earlier?: Session[];
+    release?: string | null;
+    oldRunner?: boolean;
+  } = {},
 ) {
-  const fake = services(doc, login, { refuse, earlier });
+  const fake = services(doc, login, { refuse, earlier, release, oldRunner });
   const result = renderRouter(
     {
       _layout: () => <AppRoot signIn={signedIn(login)} config={configFor(runnerUrl)} fetch={fake.fetch} />,
@@ -342,7 +363,7 @@ describe('the question card (C1, C2; D3, D4)', () => {
     expect(screen.getByTestId('start-sponsor')).toHaveTextContent(/^Sponsored by @ana:/);
     expect(screen.getByLabelText('Budget, in dollars').props.value).toBe('2.00');
     expect(screen.getByTestId('start-estimate')).toHaveTextContent('Estimated $0.84 and 9 min, the median of its last 7 on claude-test.');
-    expect(screen.getByText(`Runs the skills released as ${PLUGIN_RELEASE}.`)).toBeTruthy();
+    expect(screen.getByTestId('start-release')).toHaveTextContent(`Runs the skills released as ${RELEASE}, the newest release.`);
     expect(fake.starts()).toEqual([]);
 
     await press('Start · budget $2.00');
@@ -357,7 +378,7 @@ describe('the question card (C1, C2; D3, D4)', () => {
           concern: 'report-pipeline/dashboard',
           arguments: 'Q1',
           budget_usd: 2,
-          plugin_release: PLUGIN_RELEASE,
+          plugin_release: RELEASE,
         },
       },
     ]);
@@ -380,7 +401,7 @@ describe('the question card (C1, C2; D3, D4)', () => {
         loop: 'report-pipeline',
         arguments: 'Q2',
         budget_usd: 3.5,
-        plugin_release: PLUGIN_RELEASE,
+        plugin_release: RELEASE,
       },
     ]);
   });
@@ -461,7 +482,7 @@ describe('the ship card (C1, C2; D1)', () => {
     expect(screen.getByTestId('start-estimate')).toHaveTextContent('No estimate yet: no loop-ship session on claude-test has been measured.');
     await press('Start · budget $2.00');
     expect(fake.starts().map((c) => c.body)).toEqual([
-      { project: 'example/reports', skill: 'loop-ship', environment: 'production', arguments: '', budget_usd: 2, plugin_release: PLUGIN_RELEASE },
+      { project: 'example/reports', skill: 'loop-ship', environment: 'production', arguments: '', budget_usd: 2, plugin_release: RELEASE },
     ]);
     expect(screen.getByTestId('brief-session-summary')).toHaveTextContent('starting · sponsored by @carla · budget $2.00');
 
@@ -530,7 +551,7 @@ describe('the record card (C1, C2; D2)', () => {
         loop: 'report-pipeline',
         arguments: 'record: yes to "Add a Shipped note to job-contract" in docs/loops/report-pipeline/job-contract.md',
         budget_usd: 2,
-        plugin_release: PLUGIN_RELEASE,
+        plugin_release: RELEASE,
       },
     ]);
     expect(screen.getByTestId('record-session-summary')).toHaveTextContent('starting · sponsored by @ana · budget $2.00');
@@ -550,7 +571,7 @@ function sessionLike(over: Partial<Session>): Session {
     model: 'claude-test',
     sponsor: 'ana',
     budget_usd: 2,
-    plugin_release: PLUGIN_RELEASE,
+    plugin_release: RELEASE,
     branch: 'main',
     state: 'running',
     outcome: null,
@@ -563,3 +584,33 @@ function sessionLike(over: Partial<Session>): Session {
     ...over,
   };
 }
+
+describe('the release a card starts (latest-release C2)', () => {
+  it('shows and dispatches the tag the estimate named, so a tag cut later reaches the card with no new build', async () => {
+    const { fake } = await open(itemUrl('report-pipeline/dashboard/Q1'), { release: 'v0.9.0' });
+    await press('Answer in a session');
+    expect(screen.getByTestId('start-release')).toHaveTextContent('Runs the skills released as v0.9.0, the newest release.');
+    await press('Start · budget $2.00');
+    expect(fake.starts().map((c) => (c.body as DispatchRequest).plugin_release)).toEqual(['v0.9.0']);
+  });
+
+  it('starts nothing on a runner that names no release, as one deployed before this concern', async () => {
+    const { fake } = await open(itemUrl('report-pipeline/dashboard/Q1'), { oldRunner: true });
+    await press('Answer in a session');
+    expect(screen.getByTestId('start-release')).toHaveTextContent(
+      'The project has no release of the skills yet, so nothing can start.',
+    );
+    expect(screen.getByRole('button', { name: 'Start · budget $2.00' })).toBeDisabled();
+    expect(fake.starts()).toEqual([]);
+  });
+
+  it('starts nothing while the project has no release', async () => {
+    const { fake } = await open(itemUrl('ship/production'), { login: 'carla', release: null });
+    await press('Prepare the brief');
+    expect(screen.getByTestId('start-release')).toHaveTextContent(
+      'The project has no release of the skills yet, so nothing can start.',
+    );
+    expect(screen.getByRole('button', { name: 'Start · budget $2.00' })).toBeDisabled();
+    expect(fake.starts()).toEqual([]);
+  });
+});

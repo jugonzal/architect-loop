@@ -2,6 +2,10 @@
 // command it would run, that the person sponsors it, the budget, the runner's estimate and the release of the
 // skills. Nothing starts until the person presses Start, and every press starts exactly one session.
 //
+// The release is the one the runner's estimate names, the newest release tag (latest-release C2,
+// command-center/D68), and the start sends exactly that tag, so what the sheet shows is what runs. Until the runner
+// names one, nothing starts.
+//
 // The sponsor is whoever is signed in: the dispatch goes through the signed-in fetch, and the runner names its
 // caller as the sponsor and takes no sponsor from the request (command-center/D28). A budget is a target the
 // session may pass by one model response (command-center/D21), and every figure is an estimate
@@ -13,7 +17,7 @@ import { ActivityIndicator, Text, TextInput, View } from 'react-native';
 import type { Refusal, Session } from '../../api/runner.gen';
 import { ServiceError, serviceNotConfiguredMessage } from '../../api/service';
 import { colors } from '../../theme';
-import { DEFAULT_BUDGET_USD, dispatchRequest, formatUsd, parseBudget, PLUGIN_RELEASE, type SessionPlan } from './dispatch';
+import { DEFAULT_BUDGET_USD, dispatchRequest, formatUsd, parseBudget, type SessionPlan } from './dispatch';
 import { useInbox } from './InboxStatus';
 import { serviceMessage, useEstimate, type EstimateRead } from './sessions';
 import { Button, Card, Notice, SectionLabel, styles } from './ui';
@@ -45,6 +49,21 @@ function estimateLine(read: EstimateRead, skill: string): string {
   }
 }
 
+function releaseLine(read: EstimateRead): string {
+  switch (read.kind) {
+    case 'no-runner':
+      return 'No release: this build cannot reach the runner.';
+    case 'loading':
+      return 'Asking the runner for the newest release of the skills…';
+    case 'failed':
+      return 'The runner did not say which release of the skills to run, so nothing can start.';
+    case 'read':
+      return read.release
+        ? `Runs the skills released as ${read.release}, the newest release.`
+        : 'The project has no release of the skills yet, so nothing can start.';
+  }
+}
+
 export function StartSheet({
   plan,
   intro,
@@ -64,13 +83,14 @@ export function StartSheet({
   const [failure, setFailure] = useState<Failure | null>(null);
   const estimate = useEstimate(runner, plan.target.skill);
   const budget = parseBudget(budgetText);
+  const release = estimate.kind === 'read' ? estimate.release : null;
 
   const start = async () => {
-    if (!runner || budget === null || starting) return;
+    if (!runner || budget === null || release === null || starting) return;
     setStarting(true);
     setFailure(null);
     try {
-      const session = await runner.dispatch({ body: dispatchRequest(plan, { project, budgetUsd: budget }) });
+      const session = await runner.dispatch({ body: dispatchRequest(plan, { project, budgetUsd: budget, release }) });
       onStarted(session);
     } catch (error) {
       setFailure(failureOf(error));
@@ -109,7 +129,9 @@ export function StartSheet({
       <Text style={styles.bodyMuted} testID="start-estimate">
         {estimateLine(estimate, plan.target.skill)}
       </Text>
-      <Text style={styles.bodyMuted}>{`Runs the skills released as ${PLUGIN_RELEASE}.`}</Text>
+      <Text style={styles.bodyMuted} testID="start-release">
+        {releaseLine(estimate)}
+      </Text>
       {!runner && <Notice text={NO_RUNNER_MESSAGE} alert />}
       {failure && (
         <View style={styles.tight}>
@@ -129,7 +151,7 @@ export function StartSheet({
           label={budget === null ? 'Start' : `Start · budget ${formatUsd(budget)}`}
           hint={`Starts ${plan.command}, sponsored by you`}
           onPress={() => void start()}
-          disabled={!runner || budget === null || starting}
+          disabled={!runner || budget === null || release === null || starting}
         />
       </View>
       {starting && <ActivityIndicator color={colors.accent} accessibilityLabel="Starting" />}

@@ -13,8 +13,7 @@ import { StatusError, type StatusClient } from '../../../api/status';
 import { createFixtureStatusClient } from '../../../api/statusFixtures';
 import { AgentsScreen, BUDGET_NOTE, NO_STATUS_SERVICE_MESSAGE } from '../AgentsScreen';
 import { REFRESH_MS } from '../sessions';
-import { PLUGIN_RELEASE } from '../starts';
-import { fakeRunner, RUNNER_URL, session, type FakeRunnerOptions } from './fakeRunner';
+import { FAKE_RELEASE, fakeRunner, RUNNER_URL, session, type FakeRunnerOptions } from './fakeRunner';
 
 const NOW = Date.parse('2026-10-24T12:00:00Z');
 
@@ -305,7 +304,7 @@ describe('can start now (C2)', () => {
     );
     expect(confirmation.getByLabelText('Budget in dollars').props.value).toBe('2');
     expect(confirmation.getByText(BUDGET_NOTE)).toBeTruthy();
-    expect(confirmation.getByText(`Sponsored by you, octocat. It runs the skills of release ${PLUGIN_RELEASE}.`)).toBeTruthy();
+    expect(confirmation.getByText(`Sponsored by you, octocat. It runs the skills of release ${FAKE_RELEASE}.`)).toBeTruthy();
     expect(fake.callsTo('POST', '/sessions')).toHaveLength(0);
 
     fireEvent.press(confirmation.getByRole('button', { name: 'Cancel' }));
@@ -329,7 +328,7 @@ describe('can start now (C2)', () => {
       skill: 'loop-build',
       concern: 'report-pipeline/exporter',
       budget_usd: 3.5,
-      plugin_release: PLUGIN_RELEASE,
+      plugin_release: FAKE_RELEASE,
     });
     expect(fake.callsTo('POST', '/sessions')).toHaveLength(1);
 
@@ -469,5 +468,74 @@ describe('can start now (C2)', () => {
     const start = screen.getByRole('button', { name: 'Start report-pipeline/exporter' });
     expect(start.props.accessibilityState).toMatchObject({ disabled: true });
     expect(textIn('start-report-pipeline/exporter-build')).toContain('no estimate');
+  });
+});
+
+describe('the release a start runs (latest-release C2)', () => {
+  const ESTIMATES: FakeRunnerOptions['estimates'] = { 'loop-build': { usd: 1.6, wall_clock_s: 14 * 60, sessions: 7 } };
+
+  it('shows and dispatches the tag the estimate named, so a tag cut later reaches the tab with no new build', async () => {
+    const { fake } = await shown({ estimates: ESTIMATES, release: 'v0.9.0' });
+    fireEvent.press(screen.getByRole('button', { name: 'Start report-pipeline/exporter' }));
+    expect(screen.getByTestId('start-release')).toHaveTextContent(
+      'Sponsored by you, octocat. It runs the skills of release v0.9.0.',
+    );
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: 'Start with a $2.00 budget' }));
+    });
+    await flush();
+    expect(fake.callsTo('POST', '/sessions').map((c) => (c.body as { plugin_release: string }).plugin_release)).toEqual([
+      'v0.9.0',
+    ]);
+    expect(fake.state.sessions[0]?.plugin_release).toBe('v0.9.0');
+  });
+
+  it('starts nothing when the runner names no release', async () => {
+    const { fake } = await shown({ estimates: ESTIMATES, release: null });
+    fireEvent.press(screen.getByRole('button', { name: 'Start report-pipeline/exporter' }));
+    expect(screen.getByTestId('start-release')).toHaveTextContent(
+      'Sponsored by you, octocat. The runner names no release of the skills, so it cannot start yet.',
+    );
+    const start = screen.getByRole('button', { name: 'Start with a $2.00 budget' });
+    expect(start.props.accessibilityState).toMatchObject({ disabled: true });
+    fireEvent.press(start);
+    await flush();
+    expect(fake.callsTo('POST', '/sessions')).toHaveLength(0);
+  });
+
+  it('starts nothing on a runner that names no release, as one deployed before this concern', async () => {
+    const { fake } = await shown({
+      answer: (call) =>
+        call.path === '/estimates'
+          ? { status: 200, body: { skill: call.query.skill, model: 'claude-opus-5-5', estimate: null } }
+          : undefined,
+    });
+    fireEvent.press(screen.getByRole('button', { name: 'Start report-pipeline/exporter' }));
+    expect(screen.getByTestId('start-release')).toHaveTextContent(
+      'Sponsored by you, octocat. The runner names no release of the skills, so it cannot start yet.',
+    );
+    fireEvent.changeText(screen.getByLabelText('Budget in dollars'), '2');
+    const start = screen.getByRole('button', { name: 'Start with a $2.00 budget' });
+    expect(start.props.accessibilityState).toMatchObject({ disabled: true });
+    fireEvent.press(start);
+    await flush();
+    expect(fake.callsTo('POST', '/sessions')).toHaveLength(0);
+  });
+
+  it('starts nothing when the estimate, and so the release, cannot be read', async () => {
+    const { fake } = await shown({
+      answer: (call) =>
+        call.path === '/estimates' ? { status: 502, body: { error: 'upstream-failed', message: 'GitHub is down' } } : undefined,
+    });
+    fireEvent.press(screen.getByRole('button', { name: 'Start report-pipeline/exporter' }));
+    expect(screen.getByTestId('start-release')).toHaveTextContent(
+      'Sponsored by you, octocat. The release of the skills could not be read, so it cannot start.',
+    );
+    fireEvent.changeText(screen.getByLabelText('Budget in dollars'), '2');
+    const start = screen.getByRole('button', { name: 'Start with a $2.00 budget' });
+    expect(start.props.accessibilityState).toMatchObject({ disabled: true });
+    fireEvent.press(start);
+    await flush();
+    expect(fake.callsTo('POST', '/sessions')).toHaveLength(0);
   });
 });

@@ -11,18 +11,16 @@
 // Each start is a runner dispatch on the concern, sponsored by the signed-in person: the runner takes the sponsor
 // from the caller's token, never from the request (command-center/D28), and refuses a budget above its ceiling, a
 // start past the sponsor's cap, and a build on a concern that is already held (runner-dispatch C2).
+//
+// The release of the skills a start runs, never a clone's own plugin/ (command-center/D17), is the one the runner's
+// estimate names: the newest release tag of the project (latest-release C2, command-center/D68). The tab holds no
+// release of its own, so a tag the owner cuts reaches the next start with no new build, and the confirmation shows
+// the tag it sends.
 
 import type { DispatchRequest, Estimate, EstimateAnswer, Refusal } from '../../api/runner.gen';
 import { ServiceError } from '../../api/service';
 import type { Concern, ConcernState, StatusDocument } from '../../api/status';
 import { duration, money } from './sessions';
-
-/**
- * The release of the skills every session started here runs, never a clone's own plugin/ (command-center/D17). It
- * is the latest release tag when this was written; a later release reaches this screen when this line changes and
- * the owner ships a build with it.
- */
-export const PLUGIN_RELEASE = 'v0.4.0';
 
 const SKILL_OF = { build: 'loop-build', prove: 'loop-prove' } as const;
 
@@ -108,6 +106,13 @@ export function estimateLong(answer: EstimateAnswer): string {
   );
 }
 
+/** The release a start would run, in a sentence for its confirmation, or why there is none to run. */
+export function releaseLine(answer: EstimateAnswer): string {
+  return answer.plugin_release
+    ? `It runs the skills of release ${answer.plugin_release}.`
+    : 'The runner names no release of the skills, so it cannot start yet.';
+}
+
 /**
  * The budget the confirmation starts from: the estimate rounded up to a whole dollar, at least $1, or nothing when
  * there is no estimate, so the person types one. The person sees it and confirms it, or changes it, every time.
@@ -130,15 +135,18 @@ export function parseBudget(text: string): Budget {
   return { ok: true, usd };
 }
 
-/** The dispatch that starts a row's work with a confirmed budget. The runner names the sponsor from the token. */
-export function dispatchFor(row: StartRow, project: string, budgetUsd: number): DispatchRequest {
+/**
+ * The dispatch that starts a row's work with a confirmed budget, on the release its estimate named. The runner names
+ * the sponsor from the token.
+ */
+export function dispatchFor(row: StartRow, project: string, budgetUsd: number, release: string): DispatchRequest {
   return {
     project,
     skill: row.skill,
     concern: row.concern,
     ...(row.arguments ? { arguments: row.arguments } : {}),
     budget_usd: budgetUsd,
-    plugin_release: PLUGIN_RELEASE,
+    plugin_release: release,
   };
 }
 

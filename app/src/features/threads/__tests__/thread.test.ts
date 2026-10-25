@@ -1,6 +1,9 @@
 // app-threads, the rules under the screens: the routes command-center/D52 fixes, reading a thread whole, collapsing
 // narration, who wrote what, and the /loop-design dispatch that accepting a "record this?" mark sends (C2).
 
+import * as fs from 'fs';
+import * as path from 'path';
+
 import type { Session } from '../../../api/runner.gen';
 import { ServiceError } from '../../../api/service';
 import type { Message } from '../../../api/threads.gen';
@@ -140,6 +143,18 @@ describe('who wrote a message', () => {
   it("names a session by the runner's account of it, or by its id", () => {
     expect(sessionTitle('a1b2c3d4e5f6', fakeSession({ id: 'a1b2c3d4e5f6' }))).toBe('loop-build on report-pipeline/queue');
     expect(sessionTitle('a1b2c3d4e5f6', null)).toBe('Session a1b2c3d4');
+  });
+});
+
+describe('no release of its own (latest-release C2)', () => {
+  it('names no release tag anywhere in the threads’ code: the runner’s estimate names it', () => {
+    const dir = path.join(__dirname, '..');
+    const sources = fs.readdirSync(dir).filter((name) => /\.tsx?$/.test(name));
+    expect(sources.length).toBeGreaterThan(0);
+    for (const name of sources) {
+      const text = fs.readFileSync(path.join(dir, name), 'utf8');
+      expect([name, text.match(/v[0-9]+\.[0-9]+\.[0-9]+/g)]).toEqual([name, null]);
+    }
   });
 });
 
