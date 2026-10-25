@@ -1,3 +1,6 @@
+---
+parked: D1
+---
 # Staging proofs have somewhere safe to dispatch real sessions
 
 **Intent.** Several concerns of `command-center` are proven on staging by dispatching a real session on "a test
@@ -32,24 +35,32 @@ holds them, so a staging proof never dispatches on real work. It is wanted now b
   a dispatch on staging/runner has nothing safe to target.
 - Verified (`LOOP.md` §2): every gate's holder is `jugonzal`. A gate held by a second person does not exist yet,
   and adding one changes `LOOP.md`, which only the owner merges.
-- Assumed: a loop's concerns that never merge stay open in `/loop-status` for good, since their PRs are closed
-  unmerged. Check by reading the board once a concern exists (Q3).
+- Verified (`services/runner/runner/dispatch.py` on main @c4895ff, 2026-10-25): the runner never reads `parked`.
+  It refuses a dispatch only when the concern is not on `main` (`unknown-concern`, line 155), or the sponsor is not a
+  collaborator on the repository (`not-a-collaborator`, line 96). So parking this loop does not stop a dispatch
+  (per D1), and the second person must also be invited to `jugonzal/architect-loop` as a collaborator.
+- Verified (`plugin/skills/loop-status/scripts/addressing.py`): who sees an item comes from the README's `owner:`
+  and `members:` front matter. This loop has neither, so no third signed-in member can be shown the card yet.
+- Assumed: concerns that never merge would stay open in `/loop-status` for good. Parking avoids it, and the board
+  shows whether it does once a concern exists.
 
 ## Shared decisions
 
 | # | Decision | Decided by, date | Notes |
 | --- | --- | --- | --- |
+| D1 | The loop is parked, so its concerns stay off the owner's queue and the ready list. Parking does not stop a dispatch (the runner never reads it). | Juan, 2026-10-25 | Closes Q3 |
+| D2 | `gated-target` crosses a new gate key `sandbox`. A PR will propose it in `LOOP.md` §2 with the second person as holder, and the owner's merge makes it real. No existing gate changes holder. | Juan, 2026-10-25 | Closes Q2 |
 
 ## Questions
 
 | # | Question | Blocks | Default if unanswered |
 | --- | --- | --- | --- |
-| Q1 | Who is the second person: which GitHub login signs in as the holder of the sandbox gate? | `gated-target`, G2 | No second login, so `gated-target` cannot be dispatched and G2 stays unproven |
-| Q2 | Which gate key does `gated-target` cross, since §2's keys all name the owner as holder? | `gated-target`, G2 | The proposed key `sandbox`, which `addressing.py` reads as drift until `LOOP.md` §2 defines it |
-| Q3 | How do the sandbox's concerns show in `/loop-status`, given their PRs never merge? | G1 | Left as open backlog, which shows them as work agents may start |
+| Q1 | Who is the second person: which GitHub login, invited as a collaborator on the repository, signs in as the holder of the sandbox gate? (deferred by Juan, 2026-10-25: none for now) | `gated-target`, G2, D2's `LOOP.md` change | No second login, so `gated-target` cannot be dispatched, D2's key has no holder and G2 stays unproven |
+| ~~Q2~~ | ~~Which gate key does `gated-target` cross, since §2's keys all name the owner as holder?~~ → D2 | | |
+| ~~Q3~~ | ~~How do the sandbox's concerns show in `/loop-status`, given their PRs never merge?~~ → D1 | | |
 
 **Q1 options**
-- **A second GitHub account of the owner's**: no one else is involved and it is a real separate login, but it proves the routing and not a real colleague's phone. (recommended)
+- **A second GitHub account of the owner's**: no one else is involved and it is a real separate login, but it needs inviting as a collaborator (the runner refuses any other sponsor) and proves the routing, not a real colleague's phone. (recommended)
 - **A collaborator**: proves the real thing, but needs them invited to the repository and the staging app.
 - **A machine account**: easy to keep, but the app signs in with a person's GitHub login, so it may not sign in at all.
 
@@ -58,8 +69,8 @@ holds them, so a staging proof never dispatches on real work. It is wanted now b
 - **Reuse an existing key**: no contract change, but a real gate then has a second holder in the sandbox only, which blurs it.
 
 **Q3 options**
-- **Park the loop**: keeps them off the owner's queue and the ready list, but the runner may refuse a parked concern, which is not verified.
-- **Leave them open**: dispatch always works, but they show as ready work until someone filters them out. (recommended)
+- **Park the loop**: keeps them off the owner's queue and the ready list, and the runner never reads `parked`, so dispatch still works (verified 2026-10-25). (recommended)
+- **Leave them open**: dispatch always works, but they show as ready work until someone filters them out.
 - **Give each an evidence line from its closed PR**: they could finish, but `LOOP.md` §6 ties every line to a commit on `main`, so it breaks that rule.
 
 ## Evidence
