@@ -17,7 +17,9 @@
         "usesNonExemptEncryption": false
       }
     },
-    "android": {},
+    "android": {
+      "package": "com.architectloop.architectloop"
+    },
     "plugins": [
       [
         "expo-router",
