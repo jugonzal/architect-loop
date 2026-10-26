@@ -107,6 +107,31 @@ MAX_BODY = 65536  # threads' NewMessage body is at most this long
 TEST_COMMAND = re.compile(r"\b(unittest|pytest|tox|nox|check\.sh|smoke\.sh|jest|vitest|"
                           r"(npm|pnpm|yarn|bun)\s+(run\s+)?(test|check)|(go|cargo|mix|dotnet)\s+test|"
                           r"make\s+(test|check))\b")
+
+# A heredoc's start: `<<` or `<<-`, then its word, bare or quoted. A here-string (`<<<`) and a shift (`1<<3`, whose right side is no word) are not one.
+HEREDOC = re.compile(r"(?<!<)<<(-?)\s*(?:'([^'\n]+)'|\"([^\"\n]+)\"|([A-Za-z_]\w*))")
+
+
+def without_heredocs(command):
+    """The command's text outside its heredoc bodies: each body, from the line after its start up to the line that is
+    only its word, goes, and so does that line. What a body says is not what the command runs (narration-tests-milestone
+    D1); only the heredocs go, so quoted text is still matched."""
+    kept, ending = [], []
+    for line in command.split("\n"):
+        if ending:
+            word, dash = ending[0]
+            if (line.lstrip("\t") if dash else line) == word:
+                ending.pop(0)
+            continue
+        kept.append(line)
+        ending = [(m.group(2) or m.group(3) or m.group(4), m.group(1) == "-") for m in HEREDOC.finditer(line)]
+    return "\n".join(kept)
+
+
+def runs_tests(command):
+    return bool(TEST_COMMAND.search(without_heredocs(command)))
+
+
 PR_CREATE = re.compile(r"\bgh\s+pr\s+create\b")
 GIT_PUSH = re.compile(r"\bgit\b[^\n;&|]*\bpush\b")
 PR_URL = re.compile(r"https?://\S+?/pull/(\d+)\b")
@@ -322,7 +347,7 @@ class Narration:
         if not isinstance(command, str):
             return
         failed, output = bool(block.is_error), result_text(block)
-        if TEST_COMMAND.search(command):
+        if runs_tests(command):
             self._say("milestone", tests_milestone(command, failed, output))
         if PR_CREATE.search(command) and not failed:
             found = PR_URL.search(output)
