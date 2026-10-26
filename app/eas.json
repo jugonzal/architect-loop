@@ -17,6 +17,11 @@
         "EXPO_PUBLIC_NOTIFY_URL": "https://notify-665570365697.us-east1.run.app"
       }
     },
+    "preview": {
+      "extends": "staging",
+      "distribution": "internal",
+      "android": { "buildType": "apk" }
+    },
     "production": {
       "distribution": "store",
       "autoIncrement": true,
