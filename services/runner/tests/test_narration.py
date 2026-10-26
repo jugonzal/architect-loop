@@ -23,8 +23,8 @@ from referencing.jsonschema import DRAFT202012
 
 from runner import main
 from runner.config import Config
-from runner.session import (Narration, SessionJob, SessionThread, ThreadsError, gates_in, gates_named,
-                            tests_milestone)
+from runner.session import (Narration, SessionJob, SessionThread, ThreadsError, gates_in, gates_named, runs_tests,
+                            tests_milestone, without_heredocs)
 from tests.fakes import CONCERN, scratch
 from tests.test_github import PEM
 from tests.test_session import FakeWorkspace, JobTest, VirtualTimeLoop, assistant, result
@@ -516,6 +516,64 @@ class WiringTest(unittest.TestCase):
         self.assertIn("runner@{project}.iam.gserviceaccount.com",
                       threads["settings"]["THREADS_RUNNER_SERVICE_ACCOUNTS"])
         self.assertEqual(runner["identity"]["name"], "runner")  # the job runs as the service's identity
+
+
+# The two commands session c79c36c ran on staging @633cbe4 (2026-10-26) that posted "Tests run, passed" without running
+# any test: each carries a heredoc whose body names a test tool (narration-tests-milestone C1).
+COMMIT_WITH_HEREDOC = """git add sandbox/build-target-3/hello.txt && git commit -q -F - <<'EOF'
+Add the hello file that the third sandbox build target asks for
+
+sandbox/build-target-3 C1 asks for the file. Checked with sh scripts/check.sh before and after.
+
+Concern: sandbox/build-target-3
+EOF"""
+PR_BODY_HEREDOC = """cat > /tmp/prbody.md <<'EOF'
+**Do not merge.** This is a sandbox target.
+
+The runner's python3 -m unittest discover and sh scripts/check.sh both pass.
+EOF"""
+
+
+class HeredocTest(unittest.TestCase):
+    def test_a_command_that_only_mentions_a_test_tool_in_a_heredoc_runs_no_tests(self):
+        self.assertFalse(runs_tests(COMMIT_WITH_HEREDOC))
+        self.assertFalse(runs_tests(PR_BODY_HEREDOC))
+        self.assertFalse(runs_tests("cat <<EOF > notes.md\npytest\nEOF"))
+
+    def test_a_command_that_runs_tests_still_does_whatever_follows_it(self):
+        for command in ("pytest -q", "sh scripts/check.sh", "python3 -m unittest discover -s tests",
+                        "cd services/runner && python -m unittest discover -s tests -v",
+                        'sh -c "pytest -q"', "npm run test", "make check"):
+            self.assertTrue(runs_tests(command), command)
+        self.assertTrue(runs_tests("sh scripts/check.sh && cat > out.md <<'EOF'\nthe body\nEOF"))
+        self.assertTrue(runs_tests("cat > out.md <<'EOF'\nthe body\nEOF\nsh scripts/check.sh"))
+
+    def test_a_heredoc_ends_at_its_own_word_and_a_here_string_is_not_one(self):
+        self.assertEqual(without_heredocs("cat <<'EOF'\nbody\nEOF\necho done"), "cat <<'EOF'\necho done")
+        self.assertEqual(without_heredocs("cat <<-END\n\tbody\n\tEND\npwd"), "cat <<-END\npwd")
+        self.assertEqual(without_heredocs("cat <<A <<B\none\nA\ntwo\nB\nls"), "cat <<A <<B\nls")
+        self.assertEqual(without_heredocs("cat <<< 'x'\npytest -q"), "cat <<< 'x'\npytest -q")
+        self.assertEqual(without_heredocs("echo $((1<<3))\npytest"), "echo $((1<<3))\npytest")
+        self.assertEqual(without_heredocs("cat<<EOF\nbody\nEOF\nls"), "cat<<EOF\nls")
+
+    def test_a_quoted_mention_is_still_matched_as_the_design_decided(self):
+        # command-center/narration-tests-milestone D1 strips heredoc bodies and nothing else.
+        self.assertTrue(runs_tests('git commit -m "run check.sh before merging"'))
+
+
+class TestsMilestoneTest(NarrationTest):
+    def test_only_a_command_that_runs_tests_posts_a_tests_milestone(self):
+        session = self.claimed(budget=2.0)
+        script = [
+            (1.0, bash(1, "sh scripts/check.sh")), (20.0, tool_result(1, "ok  skills\nok  independence")),  # t=21
+            (1.0, bash(2, COMMIT_WITH_HEREDOC)), (1.0, tool_result(2, "")),
+            (1.0, bash(3, PR_BODY_HEREDOC)), (1.0, tool_result(3, "")),
+            (1.0, assistant(4, text="Done.")), (0.0, STOP),
+        ]
+        self.run_narrated(session, script)
+        tests = [body for _, body in self.thread.milestones() if body.startswith("Tests run")]
+        self.assertEqual(len(tests), 1, tests)
+        self.assertIn("sh scripts/check.sh", tests[0])
 
 
 if __name__ == "__main__":
