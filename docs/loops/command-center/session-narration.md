@@ -11,11 +11,14 @@ ships-to: staging/runner
 - **C1** Each session posts its milestones to its session thread within 10 seconds of each one: started,
   branch opened, tests run with the result, PR opened, stopped at a gate (naming it), and finished or stopped,
   with what it spent. Prove: a dispatched `/loop-build` on a test concern in the sandbox loop (per
-  command-center/D61), comparing timestamps with the job's log, on local and then staging/runner (per
-  command-center/D53, D54).
+  command-center/D61), comparing each post's time with the event it reports (the session's `started_at` for the
+  start, per D2; GitHub's own timestamps for the branch and the PR; the job's end log for the finish), on local and
+  then staging/runner (per command-center/D53, D54). The gate milestone is proven by the runner's tests in CI on
+  main, rung 5, and staging is not asked to show it (per D3). That the tests milestone appears only for a command
+  that runs tests is `narration-tests-milestone`'s claim, not this one's.
 - **C2** A member's message to a running session's thread reaches the session before its next step, and the
-  session's reply is posted to the thread. Prove: redirect a running test session from a second account, on
-  staging.
+  session's reply is posted to the thread. Prove: redirect a running test session from a member's account, the
+  sponsor's own included (per D4), on staging.
 
 ## Design
 
@@ -48,6 +51,9 @@ milestone kind, so the app collapses the rest of the narration by default.
 | # | Decision | Decided by, date | Closes |
 | --- | --- | --- | --- |
 | D1 | `runner-store` goes first. This concern needs it, and its `touches` gain `services/runner/runner/config.py`, `services/runner/runner/main.py` and `services/runner/service.json`. | Juan, 2026-10-22 | Q1 |
+| D2 | "Started" is measured against the session's own `started_at`, which the job stamps when it marks the session running. The container's boot before that, about 17 to 21 s in the staging runs of 2026-10-26, is not counted. The runner posts nothing at dispatch. | Juan, 2026-10-26 | Settles what C1's "started" is |
+| D3 | The "stopped at a gate" milestone is proven by the runner's scripted test in CI on main (rung 5), which asserts its 10-second window on a virtual clock. Staging is not asked to show a session stopping at a gate, and no sandbox concern is added for it. This milestone stays unseen on a real session. | Juan, 2026-10-26 | Settles how C1's gate milestone is proven |
+| D4 | A message from the session's own sponsor counts as "a member's message" for C2, so a second account is not needed to prove it. The case of a second account stays untested. | Juan, 2026-10-26 | Settles C2's Prove step; its HOLDS line of 2026-10-26 stands |
 
 ## Questions
 
