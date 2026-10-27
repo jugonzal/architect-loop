@@ -270,6 +270,7 @@ person in one terminal can push a loop forward.
 | D67 | A service's manifest may declare schedules: Cloud Scheduler jobs that call one of its paths on a cron, with an OIDC token for the service's own identity. `deploy.sh` applies them with the service, and `bootstrap.sh` enables Cloud Scheduler. A new concern, `service-schedules`, adds the field, rather than `notifications`' own branch, and `notifications` is its first user. Chosen over an always-on instance (an estimated $44 to $49 a month per environment) and a worker pool (about $26 to $31). | Juan, 2026-10-24 | Closes Q67; refines D46 |
 | D68 | A session started from the app runs the newest release tag on the project's main. The runner's estimate names that tag, each start sheet shows it and dispatches exactly that tag, and no screen holds a release of its own. A tag the owner cuts (per D17) reaches every start from the app with no store build. A new concern, `latest-release`, builds it in the runner, the runner's client and the three screens that start sessions. | Juan, 2026-10-24 | Closes Q68; refines D17 |
 | D69 | The notifier accepts a device only from a person whom the status document names as a loop's owner or member (per D62), and it has no GitHub App of its own. It pushes only to the people items wait on. | Juan, 2026-10-24 | Closes Q69; refines D27 and D28 |
+| D70 | Each loop in the status document carries `owner` (its front matter's, else the login `LOOP.md` §1 gives, per D62, and null when neither is known) and `members`, as the schema already allows, so the document names the people a service may accept (per D69). A new concern, `status-people`, builds it. `notifications` does not need it (per D51): it builds against the schema, and its staging proof waits until staging/status serves it. | Juan, 2026-10-27 | Closes Q70; D69's premise that the document names each loop's owner was false on main @cf7f3af |
 
 ## Questions
 
@@ -344,6 +345,7 @@ person in one terminal can push a loop forward.
 | ~~Q67~~ | ~~What keeps the notifier's poller running, when Cloud Run throttles CPU between requests and a manifest cannot change that? (raised by `notifications`' build)~~ → D67 | | |
 | ~~Q68~~ | ~~Which skills release does a session started from the app run? (raised by the builds of `app-agents`, `app-inbox` and `app-threads`)~~ → D68 | | |
 | ~~Q69~~ | ~~Who may register a device with the notifier, which has no GitHub App to check collaborator access? (raised by `notifications`' build)~~ → D69 | | |
+| ~~Q70~~ | ~~How does the notifier learn who is a loop's owner or member, when the status document carries neither? (raised by `notifications`' staging proof, C1 CONTRADICTS 2026-10-25)~~ → D70 | | |
 
 **Q62 options**
 - **GitHub login**: the app can match items to the signed-in account, and `LOOP.md` §1 already gives it. (recommended)
@@ -399,6 +401,11 @@ person in one terminal can push a loop forward.
   (recommended)
 - **Its own GitHub App**: as D27 and D28 say, with identity and secrets effects for the owner.
 - **Anyone, documented**: any GitHub user can register, but only people items wait on get real pushes.
+
+**Q70 options**
+- **Emit them in the document**: each loop carries `owner` and `members`, as the schema allows; the notifier stays as built. Costs a change to the derivation and a staging/status redeploy. (recommended)
+- **Notifier infers from the queue**: it takes the logins in `waits_on` and `visible_to`. No document change, but a person with nothing waiting cannot register a device, so never gets a first push.
+- **Notifier asks GitHub**: reverses D69 with a GitHub App, secrets and an identity gate for this concern.
 
 ## Evidence
 

@@ -9,7 +9,7 @@ ships-to: staging/notify
 ## Done when
 
 - **C1** A device registers for push from the app, and a test notification sent to that person arrives on their
-  devices and no one else's. Prove: two devices with two accounts, on staging. (Moved from `app-shell` C2, per
+  devices and no one else's. Prove: two devices with two accounts, on staging: the owner's login and a second login of the owner's, added as a member of the sandbox loop (per D9, D70). (Moved from `app-shell` C2, per
   D35.)
 - **C2** Within two minutes of the status changing, a push goes out for each blocking item that waits on the
   person, once, and everything else waits for the digest. Prove: two accounts with one blocking and one
@@ -22,7 +22,8 @@ ships-to: staging/notify
 
 ### Where we are
 
-- No service and no device store exist (2026-10-20; still so on main @603742a, 2026-10-24).
+- Corrected 2026-10-27: the service and its device store exist (`services/notify/`, built 2026-10-24 and 2026-10-25) and staging/notify serves it (its scheduler job ticks every minute, C2 evidence 2026-10-25). This said no service existed (2026-10-20; still so on main @603742a, 2026-10-24).
+- **Verified** (`loop_status.py --json` and `services/notify/notify/notifier.py` `members()` on main @cf7f3af, 2026-10-27): the document's loops carry no `owner` or `members` (the derivation fills `waits_on` from them but does not output them), so `members()` finds no one and every registration gets 403. This contradicted D69's premise (C1 CONTRADICTS, 2026-10-25). Per command-center/D70 a new concern, `status-people`, adds the fields; this concern's code is unchanged, and C1 waits until staging/status serves them (per D51).
 - Proposal §5: push only for blocking items addressed to the person; everything else in a digest the person
   schedules; quiet hours per person; backlog loops carry no notifications.
 - `waits_on` comes from `addressed-to-people`, and the queue from `status-service`. Per command-center/D51 neither is
@@ -76,6 +77,7 @@ merges. Rollback: redeploy the previous revision. A push that was sent cannot be
 | D6 | A new person gets a 09:00 digest, no quiet hours, and the time zone of their first registered device, UTC until then. | Juan, 2026-10-24 | confirms the first build's choice |
 | D7 | The first read of a new or wiped store marks what already waits as seen and pushes none of it, so a wipe (G4) never floods phones. | Juan, 2026-10-24 | confirms the first build's choice |
 | D8 | Expo's enhanced push-security access token is optional and not in the manifest, so it is no effect for now. | Juan, 2026-10-24 | confirms the first build's choice |
+| D9 | The second account for C1, C2 and C3 is a second GitHub login of the owner's, added as a member of the `sandbox` loop, signed in on a second device or profile. No other person is needed, so sandbox Q1 can stay deferred. | Juan, 2026-10-27 | Q5 |
 
 ## Questions
 
@@ -85,6 +87,7 @@ merges. Rollback: redeploy the previous revision. A push that was sent cannot be
 | ~~Q2~~ | ~~What counts as blocking?~~ → D2 | | |
 | ~~Q3~~ | ~~How often does the notifier read the queue, once a scheduler ticks it?~~ → D3 | | |
 | ~~Q4~~ | ~~Where do `expo-notifications`, the link to the screen and the push-tap handler go, when they are `app-shell`'s files?~~ → D4 | | |
+| ~~Q5~~ | ~~Who is the second account that C1 needs, when the sandbox's second person is deferred?~~ → D9 | | |
 
 **Q3 options**
 - **Every minute, two minutes in C2**: the most a scheduler allows, with the claim saying what a tick can
@@ -96,6 +99,11 @@ merges. Rollback: redeploy the previous revision. A push that was sent cannot be
   (recommended)
 - **A new app-push concern**: keeps this concern out of `app-shell`'s files, but splits C1 across two PRs.
 - **Defer registration**: this merges without it, and C1 waits for a later concern.
+
+**Q5 options**
+- **A second login of the owner's**: added as a member of the sandbox loop and signed in on a second device or profile; a real two-account proof at rung 1, and no other person is needed. (recommended)
+- **One account plus a refused one**: prove delivery to the owner's device and that a login absent from the document is refused, so it receives nothing. Weaker: "not delivered to another person" is inferred.
+- **Wait for a real second person**: C1, C2 and C3 stay open while sandbox Q1 stays deferred.
 
 ## Evidence
 
