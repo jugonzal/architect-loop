@@ -74,14 +74,31 @@ export function Notice({ text, alert = false }: { text: string; alert?: boolean 
   );
 }
 
-export function Button({ label, onPress }: { label: string; onPress: () => void }) {
+export function Button({
+  label,
+  onPress,
+  disabled = false,
+  hint,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  hint?: string;
+}) {
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityHint={hint}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.button, pressed && { borderColor: colors.accentPressed }]}
+      style={({ pressed }) => [
+        styles.button,
+        pressed && { borderColor: colors.accentPressed },
+        disabled && { borderColor: colors.border },
+      ]}
     >
-      <Text style={styles.buttonLabel}>{label}</Text>
+      <Text style={[styles.buttonLabel, disabled && { color: colors.inkSubtle }]}>{label}</Text>
     </Pressable>
   );
 }

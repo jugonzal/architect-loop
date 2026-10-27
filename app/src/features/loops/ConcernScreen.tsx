@@ -3,7 +3,9 @@
 // verdict and the commit that verdict cites. The artboard's state strip is redrawn with the derivation's states, and
 // what it drew as "review" or "proving" is the reason line under the strip (command-center/D5). Its batons and
 // sessions belong to later work and are left out. The concern thread at the foot opens
-// /threads/loops/[loop]/concerns/[concern], which app-threads serves (command-center/D52).
+// /threads/loops/[loop]/concerns/[concern], which app-threads serves (command-center/D52). app-documents adds a
+// design session on the concern, under its state, and the concern's own file at the status's main commit, last
+// (command-center/D72).
 
 import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -21,6 +23,8 @@ import {
   latestEvidence,
   loopHref,
 } from './board';
+import { DesignStart } from './DesignStart';
+import { DocumentCard } from './DocumentCard';
 import { BackButton, Card, Heading, Notice, SectionLabel, StatusPage, styles as ui, VerdictPill } from './ui';
 
 export function ConcernScreen({ loopId, concernId }: { loopId: string; concernId: string }) {
@@ -53,8 +57,10 @@ function ConcernBody({ doc, loopId, concernId }: { doc: StatusDocument; loopId: 
     <>
       <Heading overline={`${loop.id}/${concern.id}${loop.owner ? ` · owner ${loop.owner}` : ''}`} title={concern.title} />
       <StateCard doc={doc} concern={concern} />
+      <DesignStart target={{ concern: `${loop.id}/${concern.id}` }} what="this concern" />
       <ContractCard concern={concern} />
       <ClaimsCard concern={concern} />
+      <DocumentCard doc={doc} path={concern.path} />
     </>
   );
 }

@@ -1,12 +1,15 @@
 // One loop: its state and the reason the derivation gave, its goals with their latest verdicts, and every concern
 // with its state and reason. The board shows backlog, parked and done loops one line each, so this is where their
-// concerns are reached.
+// concerns are reached. app-documents adds a design session on the loop and the loop's README at the status's main
+// commit (command-center/D72).
 
 import { useRouter } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 
 import type { Loop, StatusDocument } from '../../api/status';
 import { asOf, concernHref, findLoop } from './board';
+import { DesignStart } from './DesignStart';
+import { DocumentCard } from './DocumentCard';
 import { Goals } from './LoopsBoard';
 import { BackButton, Card, ConcernChip, Heading, LoopChip, Notice, SectionLabel, StatusPage, styles } from './ui';
 
@@ -47,7 +50,9 @@ function LoopBody({ doc, loopId }: { doc: StatusDocument; loopId: string }) {
         </View>
         {goals.length > 0 && <Goals goals={goals} />}
       </Card>
+      <DesignStart target={{ loop: loop.id }} what="this loop" />
       <Concerns loop={loop} />
+      <DocumentCard doc={doc} path={loop.path} />
     </>
   );
 }
