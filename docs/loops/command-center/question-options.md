@@ -60,3 +60,14 @@ example.
 - 2026-10-26 · C2 · HOLDS · rung 5 · main @577c456 · Two parts, as Prove says. (1) Tests: `python3 -m unittest tests.test_questions` passes, 23 tests, with `test_the_example_in_each_template_reads_with_its_options`, `test_a_file_written_from_a_template_reads_clean`, `test_a_question_written_before_the_format_has_no_options` and `test_the_skills_that_write_questions_name_the_format_and_the_reader`. With the two templates and the two SKILL.md files as they were before the concern (the parent of efd9a0f), exactly two fail, the template-example test and the skills test, so they exercise the change. (2) Runs from a release: `/loop-plan sandbox` and `/loop-design sandbox` were run on 2026-10-25 from the installed copy of the skills, which is identical to the v0.4.0 tag (checked with `diff -r` for loop-plan, loop-design, loop-status, loop-build and loop-prove). They wrote four open questions on the sandbox loop, not a fixture (`sandbox/Q1` to `Q3` and `design-target/Q1`), each with its options and a recommendation; the design run then answered Q2 and Q3 and left Q1 open with its options updated. The files read clean (`problems []`) with `questions.py` from v0.4.0 and from main @577c456, which give the same four questions, two open (3 and 2 options) and two answered (2 and 3 options, kept). Across all of `docs/loops/` main's `questions.py` reads 97 questions with no problem: the 2 open ones all have options, and the 78 answered ones written before the format read with no options, so older questions still read. Two runs of the skills, on one loop
 
 ## Shipped
+
+2026-10-21, to `main`, its `ships-to`. Terminals have it since release v0.4.0 (18b866b).
+
+- **What shipped.** PR #18 (merge 03513ac) gave the loop and concern templates a `**Q# options**` list under the
+  Questions table, with 2 to 4 options, a consequence for each and `(recommended)` on one. `questions.py` reads
+  every question into its number, text, blocks, default, options and recommendation, and exits 1 naming each line
+  it cannot read. `/loop-plan` and `/loop-design` write the options for any question they leave open (per D33).
+- **Departures from the design.** None. A question written before the format reads with no options, as C2 asks.
+- **Learned.** C2 holds at rung 5 on 577c456: `tests.test_questions` passes 23 tests, with the pre-concern
+  templates and skills, exactly the two tests about them fail, and two real skill runs left questions that read
+  clean. Across `docs/loops/`, the 78 answered questions written before the format read with none.

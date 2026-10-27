@@ -54,3 +54,15 @@ deploy the previous commit; a schedule its manifest does not declare is deleted.
 ## Evidence
 
 ## Shipped
+
+2026-10-25, to `main`, its `ships-to`.
+
+- **What shipped.** PR #68 (merge 1da2ec2) let a manifest declare `schedules`, each with a cron, a time zone and a
+  path. `manifest.py check` refuses a malformed one and `render` writes the Cloud Scheduler create, update and
+  delete commands. `deploy.sh` runs them only after the new revision answers `/version`, with an OIDC token for the
+  service's identity, and `bootstrap.sh` enables Cloud Scheduler and lets it mint those tokens. The deploy runbook
+  documents the field.
+- **Departures from the design.** None. Both claims hold by CI on main, with `deploy.sh` and `bootstrap.sh` run
+  against a fake `gcloud`.
+- **Learned.** No real schedule has run yet. Its effects (a bootstrap, then each deploy) are the owner's, and the
+  first real schedule is checked by `notifications`' C2 on staging. The change made `service-manifests` stale.
