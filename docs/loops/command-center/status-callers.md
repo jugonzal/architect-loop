@@ -53,3 +53,15 @@ trusts no service.
 - 2026-10-25 · C1 · HOLDS · rung 1 · staging/status @633cbe4 · The status service's request log shows `architect-loop-notify` reading `/projects/jugonzal/architect-loop/status` with 200 on each of the notifier's first 3 ticks (13:44:00 to 13:46:05 UTC), and the notifier logged each read `ok=True` as `notify@loops-512401.iam.gserviceaccount.com`. On the same service an unsigned JWT naming `notify@` with the right audience got 401, and so did no token. Departure from Prove: no Google-signed token for another service account was tried, since minting one needs the owner's credentials; that refusal, and the wrong-audience and expired cases, rest on `test_callers.py` in CI
 
 ## Shipped
+
+Shipped 2026-10-27. The status service accepts a Google ID token for a service account its manifest trusts
+(jugonzal/architect-loop#66, merge bf2bea1, commit 4d8aad2) and staging/status serves it (`/version` answers
+633cbe4, which contains the merge). The notifier's identity `notify@loops-512401.iam.gserviceaccount.com` reads the
+status document with 200 on each of its first 3 ticks (C1 HOLDS, rung 1, 2026-10-25), and an unsigned JWT and no
+token get 401.
+
+Departures from the design: none in the approach. C1's Prove asked for a Google-signed token from another service
+account on staging, which needs the owner's credentials, so that refusal and the wrong-audience and expired cases
+rest on `test_callers.py` in CI.
+
+Learned: the notifier's own scheduled reads were the cheapest proof of the trusted path, with no impersonation needed.
