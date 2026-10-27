@@ -71,6 +71,8 @@ needs are decided from evidence (per D50). Rollback: revert the PR. Nothing outs
 
 - 2026-10-26 · C1 · HOLDS · rung 2 · main @162886b · CI run 40405651839 (`local` workflow, push to main, ubuntu-latest): `up.sh` refused nothing, built all 5 images (fakes, status, runner, threads, notify) at 162886b55a5f, started Postgres and the Firestore emulator, and each of local/status, runner, threads and notify answered 162886b55a5f at :8701-:8704/version and read 162886b with `served.sh` from its LOOP.md §3 row; the dirty-tree refusal is covered by the harness's own tests in the same run (26/26 OK, staged and changed tracked files refused); 30 of the last 30 `local` runs on main succeeded. Gap: the "on local" half (a developer machine, rows read by `/loop-status`) was not run, because this session's machine has no Docker; the owner can close it with `sh scripts/local/smoke.sh` then `/loop-status`
 - 2026-10-26 · C2 · HOLDS · rung 2 · main @162886b · CI run 40405651839: `sh scripts/local/smoke.sh` passed 27/27 checks: a /loop-build on command-center/addressed-to-people dispatched and ran start to end against the fake GitHub and fake SDK, a second dispatch and a non-collaborator were refused, the claim was in the runner's Firestore, spend was published during and at the end, the final message was kept, the job ran in its own container and exited 0, the runner asked only the fakes, no container on the internal network reached api.github.com or 1.1.1.1, and threads served a member's read and post, refused a non-member, and took a post with the runner's ID token; 30 of the last 30 `local` runs on main succeeded. Gap: not run on a developer machine (no Docker here); the owner can close it with `sh scripts/local/smoke.sh`
+- 2026-10-27 · C1 · HOLDS · rung 3 · local @10ac4eb · The "on local" half that the 2026-10-26 lines left open. The owner ran `up.sh` from a clean checkout of 10ac4ebb on their machine, which started 4 services at that commit, and pasted its output. From the same session, `sh scripts/gcp/served.sh` read 10ac4ebbfe76 at http://localhost:8701, :8702, :8703 and :8704/version, the four `local/<service>` rows of LOOP.md §3. One run on one machine
+- 2026-10-27 · C2 · HOLDS · rung 3 · local @10ac4eb · The owner ran `sh scripts/local/smoke.sh --no-up` on their machine against the harness above and pasted the output: all 27 checks ok, including the dispatch accepted, a second one refused, the claim in the runner's Firestore, spend published, the job in its own container exiting 0, the pull request and commit carrying `Concern:` and `Sponsored-by:`, a container on architect-loop-local-internal reaching neither api.github.com nor 1.1.1.1, and threads taking a member's read and post and refusing a non-member. One run on one machine; the output was pasted, not re-run by this session
 
 ## Shipped
 
@@ -82,7 +84,8 @@ needs are decided from evidence (per D50). Rollback: revert the PR. Nothing outs
   `LOOP.md` §3, the smoke test in §4, `docs/runbooks/local.md` and the `local` workflow. The runner and threads
   gained a configurable GitHub URL, a local launcher and a configurable key set, all defaulting to today's
   behaviour. PR #96 (merge 4de7fe2) recorded C1 and C2.
-- **Departures from the design.** None in the claims. Both are proven by the `local` workflow in CI on main (run
-  40405651839, `smoke.sh` 27/27) and not on a developer machine, because the proving session had no Docker.
-- **Learned.** 30 of the last 30 `local` runs on main passed when it was proven. A run on a developer machine
-  (`sh scripts/local/smoke.sh`, then `/loop-status`) is still the one thing not observed.
+- **Departures from the design.** None in the claims. Both were first proven by the `local` workflow in CI on main
+  (run 40405651839, `smoke.sh` 27/27); the proving session had no Docker. On 2026-10-27 the owner ran the harness
+  on their machine at 10ac4eb, and all 27 checks held there too.
+- **Learned.** 30 of the last 30 `local` runs on main passed when it was proven. The developer-machine run
+  agreed with CI on its one run, so the two environments did not differ for this smoke test.
