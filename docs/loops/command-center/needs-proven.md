@@ -111,3 +111,15 @@ Rollback: revert the PR. Needs then read by the old rule again, and no data is w
 - 2026-10-26 · C3 · HOLDS · rung 5 · main @e022011 · Run on e022011 (`python3 -m unittest tests.test_loop_status`, 73 tests, OK; the `check` workflow, which runs them, is green on that commit). Against the same tests with `loop_status.py` as it was before the concern (the parent of #32's merge, 3b1d975), 16 of the 73 fail, each of the tests named here among them, so they exercise the new rule and not a path that no longer matters. `test_a_need_is_proven_only_on_its_own_services_rows` has four rows, with `staging/runner` serving a commit that holds the status service's need, and asserts the board never names it: with `staging/status` unreadable the next step is the need's own, nothing joins agents can start, then `/loop-ship staging/status`, then `/loop-prove loop/base local/status` as the lowest of its own rows that serves it, a row above its `ships-to` is not its own, and the runner's row is the place only for the runner's own concern. `test_the_table_proves_a_concern_only_on_its_own_rows` pins the same rule in SKILL.md's table. One commit
 
 ## Shipped
+
+2026-10-26, to `main`, its `ships-to`. Release v0.4.0 carries PR #32; PR #55 is on main and in no release.
+
+- **What shipped.** PR #32 (merge 6894ad2) made a need met once its work is on main and each of its claims holds
+  on some environment, local included, or by CI on main (per D50). PR #55 (merge bcfd6f4) made the board name a
+  need's own rows as the place to prove it, and nothing for agents when none serves it (per D1, D2).
+- **Departures from the design.** C3 was added after the first merge, when `/loop-status` named `staging/runner`
+  to prove a `staging/status` concern, because every row built from this repository serves every commit by
+  ancestry.
+- **Learned.** Run on e022011, `tests.test_loop_status` passes 73 tests, and 16 of them fail against the script
+  from before the concern, so they exercise the rule. The effect, a release for terminals, is still the owner's:
+  until one carries PR #55, terminals running v0.4.0 name the old rows.

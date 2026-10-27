@@ -73,3 +73,16 @@ needs are decided from evidence (per D50). Rollback: revert the PR. Nothing outs
 - 2026-10-26 · C2 · HOLDS · rung 2 · main @162886b · CI run 40405651839: `sh scripts/local/smoke.sh` passed 27/27 checks: a /loop-build on command-center/addressed-to-people dispatched and ran start to end against the fake GitHub and fake SDK, a second dispatch and a non-collaborator were refused, the claim was in the runner's Firestore, spend was published during and at the end, the final message was kept, the job ran in its own container and exited 0, the runner asked only the fakes, no container on the internal network reached api.github.com or 1.1.1.1, and threads served a member's read and post, refused a non-member, and took a post with the runner's ID token; 30 of the last 30 `local` runs on main succeeded. Gap: not run on a developer machine (no Docker here); the owner can close it with `sh scripts/local/smoke.sh`
 
 ## Shipped
+
+2026-10-26, to `main`, its `ships-to`. Terminals and agents do not run it; it is a developer and CI tool.
+
+- **What shipped.** PR #63 (merge 603742a) added `scripts/local/`: `up.sh`, which builds every `services/<name>` at
+  `HEAD` and starts it with its manifest's settings beside Postgres and the Firestore emulator, the fakes for
+  GitHub, the Agent SDK, job launch and ID tokens, and `smoke.sh`. It also added the `local/<service>` rows in
+  `LOOP.md` §3, the smoke test in §4, `docs/runbooks/local.md` and the `local` workflow. The runner and threads
+  gained a configurable GitHub URL, a local launcher and a configurable key set, all defaulting to today's
+  behaviour. PR #96 (merge 4de7fe2) recorded C1 and C2.
+- **Departures from the design.** None in the claims. Both are proven by the `local` workflow in CI on main (run
+  40405651839, `smoke.sh` 27/27) and not on a developer machine, because the proving session had no Docker.
+- **Learned.** 30 of the last 30 `local` runs on main passed when it was proven. A run on a developer machine
+  (`sh scripts/local/smoke.sh`, then `/loop-status`) is still the one thing not observed.
