@@ -43,10 +43,14 @@ function configFor(project: string, statusUrl: string | null = STATUS_URL): AppC
   };
 }
 
-/** A fake status service that answers each GET with the next of its answers (the last one repeats). */
+/**
+ * A fake status service that answers each GET with the next of its answers (the last one repeats). GitHub's contents
+ * API, which app-documents reads each page's file from, finds nothing here; documents.test.tsx covers it.
+ */
 function statusService(...answers: (StatusDocument | number)[]) {
   const calls: { url: string; auth: string | null }[] = [];
   const fetch: Fetch = async (url, init = {}) => {
+    if (url.startsWith('https://api.github.com/')) return new Response('{"message":"Not Found"}', { status: 404 });
     calls.push({ url, auth: new Headers(init.headers).get('Authorization') });
     const answer = answers[Math.min(calls.length, answers.length) - 1]!;
     return typeof answer === 'number'

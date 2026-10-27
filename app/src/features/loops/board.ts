@@ -105,6 +105,11 @@ export function concernThreadHref(loopId: string, concernId: string): string {
   return `/threads/loops/${encodeURIComponent(loopId)}/concerns/${encodeURIComponent(concernId)}`;
 }
 
+/** A session's thread, which app-threads serves. */
+export function sessionThreadHref(sessionId: string): string {
+  return `/threads/sessions/${encodeURIComponent(sessionId)}`;
+}
+
 /** A commit as the board writes it: its first 7 hex digits, or ? for an evidence line migrated without one. */
 export function shortSha(sha: string | null | undefined): string {
   return sha ? sha.slice(0, 7) : '?';
