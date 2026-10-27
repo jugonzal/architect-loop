@@ -25,6 +25,16 @@ person in one terminal can push a loop forward.
 
 ## Goals
 
+- **G0** The owner follows and steers one real loop in this repository from a phone, without a terminal, and this
+  goal is reached first (per D71). That means reading where every loop and concern stands and the document behind
+  it at main's commit, answering an open question in a `/loop-design` session's thread, starting a `/loop-design`
+  session on a concern or loop whose state calls for a decision, and approving a record card. Each answer and
+  record lands in `docs/loops/` through its skill. Starting builds and proofs, and ship cards, are not part of G0:
+  the app keeps them, but G0 neither uses nor proves them (per D71). Prove: a walkthrough with the staging app
+  build against staging services (per D54), with the sandbox loop unparked for the run by a new decision (per
+  its D6), that reads `sandbox/design-target` and a command-center concern,
+  answers `sandbox/design-target` Q1, starts a design session from a concern page, and approves one record card,
+  with the resulting commits and PRs listed.
 - **G1** The owner runs one real loop in this repository from a phone, end to end. That means answering a
   question, reviewing a PR evidence-first, saying "deployed" on a ship card and approving a record card, all
   without a terminal. Each action lands in `docs/loops/` through its skill. Prove: a walkthrough on a real loop,
@@ -189,6 +199,15 @@ person in one terminal can push a loop forward.
   sessions each pin `v0.4.0`, the newest tag (`git tag -l`): `agents/starts.ts`, `inbox/dispatch.ts`, and
   `threads/thread.ts`, whose record sheet takes it as an editable default. A new release reaches none of them
   without an app change and a store build (D68).
+- **Verified** (`app/src/features/` and `status.schema.json` on main @20db0c4, and `loop_status.py command-center`,
+  2026-10-27): for G0, the app already reads status and answers questions. It has the Loops board, a loop page
+  with goals, and a concern page with state, facts, contract and claims. A question card shows the options and
+  starts `/loop-design`, whose thread takes the answer (`session-narration` C2 holds on staging). The status
+  document has only derived facts. It carries no concern's approach, "where we are", decisions or open questions
+  not waiting on the reader, so the phone cannot show the context behind a decision (D72). `/loop-design` starts
+  only from a question card or a thread's record sheet, never from a concern or loop page. Staging's services
+  serve main's code for status, runner and threads. Every `app-*` concern reads `unknown` because agents cannot
+  read `staging/app` (`app-served` fixes it), and none has evidence on staging. Needs you is empty for this loop.
 - **Missing:** a local environment and a smoke test. `LOOP.md` §4's smoke test is `TODO(owner)`, and
   `local-harness` adds both (per D53).
 - **Missing:** `LOOP.md` §3 rows for staging and production, with a `/version` URL for each service (per D8, D9).
@@ -271,6 +290,8 @@ person in one terminal can push a loop forward.
 | D68 | A session started from the app runs the newest release tag on the project's main. The runner's estimate names that tag, each start sheet shows it and dispatches exactly that tag, and no screen holds a release of its own. A tag the owner cuts (per D17) reaches every start from the app with no store build. A new concern, `latest-release`, builds it in the runner, the runner's client and the three screens that start sessions. | Juan, 2026-10-24 | Closes Q68; refines D17 |
 | D69 | The notifier accepts a device only from a person whom the status document names as a loop's owner or member (per D62), and it has no GitHub App of its own. It pushes only to the people items wait on. | Juan, 2026-10-24 | Closes Q69; refines D27 and D28 |
 | D70 | Each loop in the status document carries `owner` (its front matter's, else the login `LOOP.md` §1 gives, per D62, and null when neither is known) and `members`, as the schema already allows, so the document names the people a service may accept (per D69). A new concern, `status-people`, builds it. `notifications` does not need it (per D51): it builds against the schema, and its staging proof waits until staging/status serves it. | Juan, 2026-10-27 | Closes Q70; D69's premise that the document names each loop's owner was false on main @cf7f3af |
+| D71 | G0 comes before G1. It covers reading status, answering questions and starting design sessions, and approving record cards, because each writes only `docs/loops/` through its skill. Starting builds and proofs, and ship cards (the brief and "Deployed"), are deferred to G1. The app keeps those starts and cards as they are, with no switch to hide them, and G0's proof does not use them. G0's walkthrough answers `sandbox/design-target` Q1, which exists to be answered in tests. | Juan, 2026-10-27 | Adds G0; record cards in, chosen over deferring them with builds; the app left as is, chosen over hiding the deferred starts on staging |
+| D72 | A concern page and a loop page show their own document as it stands at the main commit the status document was gathered on (`main.sha` and the concern's or loop's `path`), read from GitHub with the person's token, so the text and the derived state come from the same commit. When the state calls for a decision, the page can start `/loop-design` on that concern or loop, naming no question, and the person steers it in its session thread. A new concern, `app-documents`, builds both. | Juan, 2026-10-27 | Chosen over parsing decisions, questions and "where we are" into the status document (a schema change, a release and a deploy), and over reading context only through paid sessions |
 
 ## Questions
 
