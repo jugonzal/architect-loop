@@ -4,13 +4,14 @@
 // the fake runner starts nothing: it only records what the app sent. The other tabs, and app-threads' session
 // thread (command-center/D52), are stand-ins.
 
+import { render } from '@testing-library/react-native';
 import { act, fireEvent, renderRouter, screen, within } from 'expo-router/testing-library';
 import { useLocalSearchParams } from 'expo-router';
 import { Linking, Text } from 'react-native';
 
 import type { Fetch } from '../../../api/fetch';
 import type { DispatchRequest, Session } from '../../../api/runner.gen';
-import { statusUrl, type QueueItem, type StatusDocument } from '../../../api/status';
+import { statusUrl, type QueueItem, type QueueKind, type StatusDocument } from '../../../api/status';
 import { loadStatusFixture } from '../../../api/statusFixtures';
 import TabsLayout from '../../../app/(tabs)/_layout';
 import InboxLayout from '../../../app/(tabs)/inbox/_layout';
@@ -21,6 +22,8 @@ import { SignIn } from '../../../shell/auth/signIn';
 import { fakeClock, fakeGitHub } from '../../../shell/auth/__tests__/fakeGitHub';
 import { AppRoot } from '../../../shell/AppRoot';
 import type { AppConfig } from '../../../shell/config';
+import { ItemBody } from '../cards';
+import { KIND_LABELS } from '../queue';
 import { POLL_MS } from '../sessions';
 import { NO_RUNNER_MESSAGE } from '../StartSheet';
 
@@ -330,6 +333,64 @@ describe('Needs you (C1)', () => {
   it('says so when an item is no longer queued for the person', async () => {
     await open(itemUrl('report-pipeline/dashboard/Q9'));
     expect(screen.getByText('report-pipeline/dashboard/Q9 is not in Needs you any more: the status no longer queues it for you.')).toBeTruthy();
+  });
+});
+
+describe('the fact and stuck cards (app-owner-cards C1, C2; command-center/D76, D77)', () => {
+  it('shows a fact only a person can read, who can supply it, the concerns waiting on it and the command (C1)', async () => {
+    const { fake } = await open(itemUrl('fact/app'), { doc: loadStatusFixture('owner-queue') });
+    expect(screen.getByText('loop · Fact')).toBeTruthy();
+    expect(screen.getByRole('header', { name: 'Read what app serves' })).toBeTruthy();
+    expect(screen.getByText('It is yours, and read-only here: run its command from a terminal.')).toBeTruthy();
+    const fact = within(screen.getByTestId('fact'));
+    expect(fact.getByText("app's served commit")).toBeTruthy();
+    expect(fact.getByText('LOOP.md §3 says agents may not read app')).toBeTruthy();
+    expect(fact.getByText('owner')).toBeTruthy();
+    expect(fact.getByText('Read what app serves with the owner, then /loop-status again')).toBeTruthy();
+    expect(within(screen.getByTestId('waiting')).getByText('loop/screen')).toBeTruthy();
+    expect(screen.getByTestId('command')).toHaveTextContent('/loop-status loop');
+    expect(screen.queryByRole('button', { name: /^Start/ })).toBeNull();
+    expect(fake.starts()).toEqual([]);
+  });
+
+  it('shows a concern that leads to no one, its state, why, and its next step (C2)', async () => {
+    const { fake } = await open(itemUrl('stuck/loop/lost'), { doc: loadStatusFixture('owner-queue') });
+    expect(screen.getByText('loop · Stuck')).toBeTruthy();
+    expect(screen.getByRole('header', { name: 'lost leads to no one' })).toBeTruthy();
+    const stuck = within(screen.getByTestId('stuck'));
+    expect(stuck.getByText('loop/lost')).toBeTruthy();
+    expect(stuck.getByText('blocked')).toBeTruthy();
+    expect(stuck.getByText('Nothing is built yet, and loop/gone, which it needs, does not exist')).toBeTruthy();
+    expect(stuck.getByText('/loop-design loop/lost')).toBeTruthy();
+    expect(screen.getByTestId('command')).toHaveTextContent('/loop-status loop/lost');
+    expect(fake.starts()).toEqual([]);
+  });
+
+  it('gives every kind in the schema a card with a title, so none is blank (C2)', async () => {
+    // One item of each kind from the fixtures, opened as the person it waits on.
+    const docs = [loadStatusFixture('board'), loadStatusFixture('owner-queue')];
+    const kinds = Object.keys(KIND_LABELS) as QueueKind[];
+    for (const kind of kinds) {
+      const doc = docs.find((d) => d.queue.some((item) => item.kind === kind));
+      const item = doc?.queue.find((candidate) => candidate.kind === kind);
+      if (!doc || !item) throw new Error(`no fixture has a ${kind} item`);
+      const { result } = await open(itemUrl(item.id), { doc, login: item.waits_on ?? 'ana' });
+      expect(screen.getByText(`${item.loop ?? 'across loops'} · ${KIND_LABELS[kind]}`)).toBeTruthy();
+      // A question is titled by its question and a review by its pull request; every other kind by its title.
+      const title =
+        item.kind === 'question' ? item.detail.question : item.kind === 'review' ? item.detail.pr.title : item.title;
+      expect(screen.getByRole('header', { name: title })).toBeTruthy();
+      result.unmount();
+    }
+  });
+
+  it('shows a kind this build has no card for by its title and why, not blank', () => {
+    const doc = loadStatusFixture('owner-queue');
+    const base = doc.queue.find((item) => item.kind === 'stuck')!;
+    const item = { ...base, id: 'later/1', kind: 'later', title: 'A kind from a newer schema', why: 'Because it is new' } as unknown as QueueItem;
+    render(<ItemBody entry={{ item, actionable: false, waitsOn: 'ana' }} doc={doc} />);
+    expect(screen.getByRole('header', { name: 'A kind from a newer schema' })).toBeTruthy();
+    expect(screen.getByTestId('fallback-why')).toHaveTextContent('Because it is new');
   });
 });
 
