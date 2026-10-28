@@ -19,6 +19,10 @@ command-center/addressed-to-people (tests/test_addressing.py has the rest):
   members (expected.json), a ship is split into one item per gate plus deploy, and LOOP.md §2 naming no keys is one
   drift line. Gathered and supplied facts agree on all of it.
 
+command-center/status-people (tests/test_addressing.py has the rest):
+- C1 through the whole world: each loop names its owner (its front matter's, else LOOP.md §1's) and members
+  (expected.json), and the command line's --json and supplied facts, the way the status service derives, agree.
+
 command-center/needs-proven:
 - C1: a concern that nothing has been built for yet is blocked while one of its needs is not met, and a need is met
   once its work is on main and each of its claims holds on some LOOP.md §3 environment (command-center/D50).
@@ -477,6 +481,11 @@ class WorldTest(unittest.TestCase):
 
     def test_every_loop_gets_step_5s_state(self):
         self.assertEqual({l["id"]: l["state"] for l in self.doc["loops"]}, self.expected["loops"])
+
+    def test_every_loop_names_its_owner_and_members(self):
+        # status-people C1: reports has owner: and members:, the rest fall back to LOOP.md §1's owner.
+        got = {l["id"]: {"owner": l["owner"], "members": l["members"]} for l in self.doc["loops"]}
+        self.assertEqual(got, self.expected["people"])
 
     def test_the_world_holds_every_state(self):
         found = set(states(self.doc).values())

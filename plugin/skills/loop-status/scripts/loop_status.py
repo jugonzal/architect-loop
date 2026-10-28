@@ -1460,8 +1460,9 @@ class Derivation:
                 "claims": claims, "state": c.state, "reason": c.reason, "next": c.next, "inputs": inputs}
 
     def loop_doc(self, loop):
+        owner, members = self.book.people(loop.id)
         return {"id": loop.id, "title": loop.title, "path": loop.path, "state": loop.state, "reason": loop.reason,
-                "next": loop.next,
+                "next": loop.next, "owner": owner, "members": members,
                 "goals": [{"id": g["id"], "text": g["text"], "struck": g["struck"],
                            "evidence": [{k: line[k] for k in ("date", "verdict", "rung", "environment", "commit",
                                                               "text")} for line in loop.evidence
