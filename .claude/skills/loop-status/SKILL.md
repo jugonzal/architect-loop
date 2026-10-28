@@ -143,15 +143,25 @@ If the script cannot run, gather the same facts with the commands below and appl
 
 6. **Find what needs the owner**, across every loop in scope, and sort it by how many concerns each item
    unblocks (counting through `needs`, across loops too). The script's `queue` holds one item for each thing
-   below, with the facts it rests on and, for the last three kinds, the command to run:
+   below, with the facts it rests on and, for the last five kinds, the command to run:
    - open questions, each with its recommendation and what it blocks;
    - PRs that are ready for review, with CI green and the proof in their body;
    - concerns that are merged and waiting to ship, with their declared `effects` as manual steps (one item per
      gate they cross, below);
-   - UNPROVEN claims that need something only the owner has: a device, an account, a production read;
+   - UNPROVEN claims that wait on a person: a device, an account, a production read. The line ends
+     `· needs <who>: <what>`, where `<who>` is a GitHub login, `owner` (the loop's owner) or `gate:<key>` (that
+     gate's holder); `agent` means an agent can close the gap, and queues nothing. A line without the segment
+     waits on the loop's owner and is drift (step 8), so the queue never drops a gap silently;
+   - facts only a person can read: a `LOOP.md` §3 row agents may not read, or one with no served-commit command,
+     while an unfinished concern is `unknown` because of it. One item per row, naming the concerns resting on it;
+     a row no unfinished concern rests on gives none;
    - contradictions that need a call (redesign, or roll back), and any evidence line that says it contradicts a
      shared decision, which escalates to the loop as a question;
-   - loop-document PRs that `scripts/check_loop_pr.sh` refused.
+   - loop-document PRs that `scripts/check_loop_pr.sh` refused;
+   - concerns that lead to no one, found last: every concern that is neither done nor parked must lead to an item
+     above or to a step in step 7, unless an open PR holds it, it is `unknown` on a fact the next read may find, or
+     it is blocked on a need that leads somewhere. One that does not is a `stuck` item for its loop's owner, so
+     Needs you is never empty while work waits on a person.
 
    Then [scripts/addressing.py](scripts/addressing.py) addresses each item: the gate it crosses (`gate`), the one
    person it waits on (`waits_on`) and who else sees it (`visible_to`). A person is their GitHub login.
@@ -167,10 +177,11 @@ If the script cannot run, gather the same facts with the commands below and appl
    `ship/<environment>/<key>`, for each key other than `merge` and `deploy` that its concerns' effects name, with
    the effects that name that key as its manual steps; plus one, `ship/<environment>`, that crosses `deploy`, with
    the effects that name `deploy` or no other gate. A question crosses the key its Question cell ends with,
-   `(gates: <key>)`, when it names exactly one. A record, a proof and a contradiction cross none.
+   `(gates: <key>)`, when it names exactly one. A proof crosses the key its line names as `gate:<key>`, when §2
+   defines it. A record, any other proof, a fact, a stuck concern and a contradiction cross none.
 
-   **waits_on.** The holder §2 names for the item's gate. An item that crosses no gate, or a gate §2 names no
-   holder for, waits on its loop's owner: `owner:` in the loop README's front matter, or else the login `LOOP.md`
+   **waits_on.** The login a proof's line names, else the holder §2 names for the item's gate. An item that
+   crosses no gate, or a gate §2 names no holder for, waits on its loop's owner: `owner:` in the loop README's front matter, or else the login `LOOP.md`
    §1 gives in parentheses after the owner's name, as in "Ana (ana on GitHub)". An item that spans loops with
    different owners waits on §1's. When no one is named, it is null: never guessed.
 
@@ -182,15 +193,17 @@ If the script cannot run, gather the same facts with the commands below and appl
    drift line says §2 names no keys.
 
 7. **Find what agents can start now**: `ready` concerns (build), `shipped` and `stale` ones (prove), the proofs
-   that would meet a blocked concern's needs (prove), and concerns with an incomplete contract (design can draft and gather questions). Several of these can run at
-   once, one agent and one worktree each.
+   that would meet a blocked concern's needs (prove), and concerns with an incomplete contract (design can draft and gather questions). A proof
+   whose unproven claims all wait on a person is left out: its queue item carries the command. Several of these can
+   run at once, one agent and one worktree each.
 
-8. **Look for drift**, cheaply. The script flags the five checks in the middle of this list, and evidence lines and
+8. **Look for drift**, cheaply. The script flags the six checks in the middle of this list, and evidence lines and
    questions it cannot read; the first and the last need reading, so do those yourself. Flag:
    - "Where we are" text in a loop or concern that the code under its `touches` now contradicts;
    - two concerns that are both not yet merged (open, blocked, ready or building), in this loop or across active
      loops, with overlapping `touches` and no `needs` between them. Concerns already on `main` cannot collide;
    - a linked PR that changes files outside its concern's `touches`;
+   - an UNPROVEN line that does not end with `· needs <who>: <what>`, which step 6 sends to the loop's owner;
    - a concern built against a contract that changed after its branch started;
    - a built concern whose contract lacks `touches` (staleness and overlap cannot be checked) or `ships-to`, or
      that is being built while a concern it `needs` is not met;
