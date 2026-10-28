@@ -1,6 +1,6 @@
 ---
 needs: []
-touches: [plugin/skills/loop-status/scripts/loop_status.py, plugin/skills/loop-status/scripts/addressing.py, plugin/skills/loop-status/scripts/status.schema.json, plugin/skills/loop-status/SKILL.md, plugin/skills/loop-prove/SKILL.md, tests/test_loop_status.py, tests/test_addressing.py, tests/test_status_schema.py, tests/fixtures/loop_status/, tests/fixtures/addressing/, tests/fixtures/status/, app/src/api/status.gen.ts, app/src/features/inbox/queue.ts]
+touches: [plugin/skills/loop-status/scripts/loop_status.py, plugin/skills/loop-status/scripts/addressing.py, plugin/skills/loop-status/scripts/status.schema.json, plugin/skills/loop-status/SKILL.md, plugin/skills/loop-prove/SKILL.md, tests/test_loop_status.py, tests/test_addressing.py, tests/test_status_schema.py, tests/fixtures/loop_status/, tests/fixtures/addressing/, tests/fixtures/status/, app/src/api/status.gen.ts, app/src/features/inbox/queue.ts, app/src/features/inbox/InboxScreen.tsx, app/src/features/inbox/__tests__/queue.test.ts]
 effects: [a plugin release so that terminals print the same queue (the owner releases it per D17; gates: release), staging/status redeployed so that it serves it (the owner deploys it; gates: deploy)]
 ships-to: staging/status
 ---
@@ -64,7 +64,8 @@ ships-to: staging/status
   - `addressing.py` resolves `who` into `waits_on`:
     - a login is used as is;
     - `owner` is the loop's owner;
-    - `gate:<key>` sets the item's `gate`, so its holder is used.
+    - `gate:<key>` sets the item's `gate`, so its holder is used;
+    - `agent` queues nothing, and the proof stays in Agents can start (per D2).
   - A line without the segment queues for the loop's owner, with its text as `missing`, and adds a drift line.
   - The old `NEEDS_ONLY_RE` and `ONLY_RE` fallbacks stay, so a line they matched keeps its named person.
   - `/loop-prove`'s SKILL.md gives the segment in its UNPROVEN step and in its evidence-line example.
@@ -83,7 +84,8 @@ ships-to: staging/status
     its reason and `next`. The schema gains `stuck`.
   - `QUEUE_ORDER` places `fact` and `stuck` after `proof`.
 - **App types** (per D1): regenerate `app/src/api/status.gen.ts`, add the two labels to `KIND_LABELS`, and add
-  the two kinds to `READ_ONLY_KINDS` in `queue.ts`, so app CI on main stays green. Their cards are
+  the two kinds to `READ_ONLY_KINDS` in `queue.ts`, and give each a summary line in `InboxScreen.tsx`'s
+  `itemSummary` (per D3), so app CI on main stays green. Their cards are
   `app-owner-cards`.
 - **Tests:** a fixture world reproduces today's case, with prose UNPROVEN lines, an unreadable row with
   dependants and quiet `TODO(owner)` rows, and expects the queue described in C1 to C3.
@@ -96,6 +98,8 @@ read, so no stored data changes. Evidence lines already written with the segment
 | # | Decision | Decided by, date | Closes |
 | --- | --- | --- | --- |
 | D1 | The schema change, the regenerated `status.gen.ts`, and the two new kinds' labels and read-only entries in `queue.ts` land in this concern's PR, because app CI fails main otherwise. The cards' bodies are `app-owner-cards`'. | agent, from `.github/workflows/app.yml` and `queue.ts`'s `Record<QueueKind, string>`, 2026-10-28 | — |
+| D2 | D74's `<who>` also accepts `agent`, for a gap an agent can close alone, such as a rerun: it queues nothing, and the proof stays in Agents can start. A line without the segment still waits on the loop's owner (per D75), so `/loop-prove` ends every UNPROVEN line with one or the other. | Juan, 2026-10-28 | Raised by this concern's build: `test_a_proof_item_needs_something_only_a_person_has` expects such a gap to stay agent work |
+| D3 | This concern's `touches` also cover `app/src/features/inbox/InboxScreen.tsx`, whose `itemSummary` switches over every kind and fails `npm run typecheck` once the types are regenerated; the two kinds get one summary line each there, so app CI stays green (per D1). They also cover `app/src/features/inbox/__tests__/queue.test.ts`, which pins the list of read-only kinds; `app-owner-cards` shares that folder, but it needs this concern, so the two are built one after the other. | agent, from `tsc --noEmit` on this concern's branch, 2026-10-28 | Raised by this concern's build |
 
 ## Questions
 
