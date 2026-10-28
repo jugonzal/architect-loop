@@ -46,6 +46,7 @@ ships-to: staging/runner
   SQLite only.)
 - `session-runner`'s C5 and C6 are the claims this concern's change makes true for the runner as a whole. Its C1
   and C3, which described the runner as built, are struck (2026-10-20).
+- Verified 2026-10-28 (main @142917d, unchanged under `services/runner/runner/` since b2fbcfb): `_sign_pull_requests` in `session.py` signs only what `github.py`'s `pull_requests_for_heads` returns, which asks GitHub for `state=open` pulls, and `with_trailers` keeps a `Concern:` the skill wrote (lines 84 to 94), as does the commit-msg hook in `workspace.py`. `/loop-status` links a PR whose body carries `Concern: <loop>/<concern>`, and a commit on main with that trailer, as the concern's work: #96 and its commit bd8e230 now count as `local-harness`'s. Both are corrected by `pr-signing` (per D1, D2 and command-center/D73).
 
 ### Approach
 
@@ -74,6 +75,8 @@ flight finishes under the code it started with.
 
 | # | Decision | Decided by, date | Closes |
 | --- | --- | --- | --- |
+| D1 | At a session's end, the runner signs every pull request opened from a branch the session pushed, whether it is open, merged or closed, and lists each one in the session's record. A loop-document PR the session merged itself under LOOP.md §2.1 is signed after its merge, since GitHub lets a merged PR's body be edited, and nothing checks a body before the merge. | Juan, 2026-10-28 | The 2026-10-27 CONTRADICTS of C1: five `/loop-prove` sessions merged their own PRs before ending, and `pull_requests_for_heads` asks only for `state=open` |
+| D2 | The fix is a new concern, `pr-signing`, not a second build of this one, whose work is already on `main`, so the board shows it as building while it is. This concern's claims keep their wording, and C1 is proven again on staging/runner once `pr-signing` is served (with command-center/D73). | Juan, 2026-10-28 | Where the fix is built |
 
 ## Questions
 
