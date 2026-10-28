@@ -1,3 +1,7 @@
+---
+owner: <the loop owner's GitHub login>
+members: []
+---
 # <Loop title: the change in the world, stated as an outcome>
 
 **Intent.** <Two or three sentences: what changes, for whom, and why now.>
@@ -6,7 +10,10 @@
 <!-- This README is the loop. Its concerns are the other files in this folder, and it never lists them, so
      adding a concern never edits a shared file. loop-plan writes this file and loop-design (with the owner)
      keeps it current. Nothing here records status: /loop-status derives it. Drop these comments when you
-     write a real loop. To park the loop, add front matter `parked: D<n>` naming the decision. -->
+     write a real loop. The front matter names people by GitHub login: `owner:` is the loop's one owner, its
+     architect, and `members:` the others who see its items but do not act on them. /loop-status sends each
+     item to the holder of the gate it crosses in LOOP.md §2, and any other item to the owner. To park the
+     loop, add `parked: D<n>` to the front matter, naming the decision. -->
 
 ## Goals
 
@@ -42,8 +49,9 @@ check it), missing. Concerns add the detail for their own touches.>
      nobody answers. Under the table, each open question gets a **Q<n> options** list of 2 to 4 options, each a
      bold text, a colon and its main consequence, with (recommended) at the end of the one you recommend. The
      default is what happens if nobody answers, so it may differ from the recommendation. An answered question is
-     struck through with → D# and keeps its list. loop-status's scripts/questions.py reads this format. For
-     example:
+     struck through with → D# and keeps its list. A question whose answer crosses a gate in LOOP.md §2 ends its
+     Question cell with (gates: <key>), and waits on that gate's holder. loop-status's scripts/questions.py reads
+     this format. For example:
 
 | # | Question | Blocks | Default if unanswered |
 | --- | --- | --- | --- |
