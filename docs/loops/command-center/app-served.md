@@ -1,6 +1,6 @@
 ---
 needs: [status-callers]
-touches: [services/status/status/apps.py, services/status/tests/test_apps.py, services/status/service.json, services/status/openapi.yaml, LOOP.md, app/src/shell/release/__tests__/served.test.ts]
+touches: [services/status/status/apps.py, services/status/status/app.py, services/status/status/config.py, services/status/tests/test_apps.py, services/status/tests/test_config.py, services/status/tests/support.py, services/status/service.json, services/status/openapi.yaml, services/status/README.md, LOOP.md, app/src/shell/release/__tests__/served.test.ts]
 effects: [an Expo robot account with read access to the app's builds and its token in staging's Secret Manager (the owner creates both; gates: identity, secrets), staging/status redeployed so that it serves the route (the owner deploys it; gates: deploy), the staging/app-android and staging/app-ios rows made readable on the status service's URLs and the staging/app row removed once the app's concerns ship to staging/app-android (the owner merges it once the service serves the route; gates: merge)]
 ships-to: staging/status
 ---
@@ -37,9 +37,17 @@ ships-to: staging/status
   same PR, and both paths are in `touches` (per D79).
 - **Verified** (`app/src/shell/ShellHeader.tsx`): `EXPO_PUBLIC_ENVIRONMENT` is used only to show "staging" in the
   header. The profile is shared by both platforms, so it keeps naming the channel, `staging/app`.
-- **Assumed:** EAS's build list can be read with a robot account's token, and each build carries `platform`,
-  `buildProfile`, `status`, `createdAt` and `gitCommitHash`, as `eas build:list --json` prints them. Check it while
-  building, against Expo's API documentation, and record the URL and the date it was read.
+- **Verified** (eas-cli 22.4.0, the version `eas build:list` runs here, read 2026-10-28: `build/api.js`,
+  `build/commandUtils/context/contextUtils/createGraphqlClient.js`, `build/graphql/queries/BuildQuery.js`,
+  `build/graphql/types/Build.js`):
+  - The build list is `POST https://api.expo.dev/graphql`, sent with `authorization: Bearer <token>`. Its query is
+    `app { byId(appId) { builds(offset, limit, filter: {platform, status, buildProfile}) } }`.
+  - Each build carries `platform` (`ANDROID`, `IOS`), `status` (`FINISHED` among others), `buildProfile`,
+    `gitCommitHash`, `createdAt` and `completedAt`.
+  - The app's EAS project id is `extra.eas.projectId` in `app/app.json`.
+- **Verified** (<https://docs.expo.dev/accounts/programmatic-access/>, read 2026-10-28): robot users authenticate
+  only by access token and can be given a role. The page does not say which role reads builds, so the owner picks
+  the least that does.
 - **Missing** (`owner-queue`, at 363ed2a): a readable row whose GET keeps failing, for example a 404 because no
   build exists, counts as a transient read failure. The concerns resting on it are left out of Needs you. This
   route answers 404 until each platform's first finished staging build, so a row made readable too early hides its
@@ -75,6 +83,8 @@ revision, and the platform rows read `unknown` again.
 
 | # | Decision | Decided by, date | Closes |
 | --- | --- | --- | --- |
+| D1 | `touches` also cover `app.py` (the route is registered in `create_app`), `config.py` and `tests/test_config.py` (its settings, checked against `service.json`), `tests/support.py` (a fake EAS beside the fake GitHub) and the service's README (the reference for the route and its settings). | agent, from the status service's code on main @caf8038, 2026-10-28 | Raised by this concern's build |
+| D2 | The route asks EAS the way eas-cli 22.4.0 does, with a GraphQL query for the channel profile's finished builds on one platform. It reads three settings: `STATUS_EXPO_TOKEN`, a secret named `status-expo-token`; `STATUS_EAS_PROJECT_ID`, `app/app.json`'s project id; and `STATUS_EXPO_API_URL`, default `https://api.expo.dev`, so the harness can point it at a fake. Without the token, only this route answers 503, and the status document is served as before. | agent, from eas-cli 22.4.0's source and the status service's config, 2026-10-28 | Raised by this concern's build |
 
 ## Questions
 
