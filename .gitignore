@@ -1,3 +1,6 @@
 .DS_Store
 node_modules/
 __pycache__/
+
+# Local Python virtualenvs, which an EAS build would otherwise commit
+.venv/
