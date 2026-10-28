@@ -185,6 +185,12 @@ class Book:
 
     # People.
 
+    def people(self, loop_id):
+        """(owner, members) of one loop, for its object in the document: its front matter's owner, else LOOP.md §1's,
+        else None, and its members' logins (command-center/D70)."""
+        loop = self.loops.get(loop_id, {"owner": self.project_owner, "members": []})
+        return loop["owner"], list(loop["members"])
+
     def owner(self, loop_ids):
         """The owner of these loops when they share one, else LOOP.md §1's; None when no one is named."""
         owners = {self.loops[i]["owner"] for i in loop_ids if i in self.loops}

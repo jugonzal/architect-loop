@@ -15,6 +15,11 @@ command-center/addressed-to-people:
   names none, one drift line says so and items still show their gate (D65). GateTest and NoKeysTest; the fixture
   world of tests/test_loop_status.py shows the same through gathered and supplied facts.
 
+command-center/status-people:
+- C1: each loop in the document carries owner, its front matter's login, else the one LOOP.md §1 gives, and null
+  when neither is known, and members, the logins in its front matter (command-center/D70, D62). LoopPeopleTest; the
+  fixture world of tests/test_loop_status.py shows the same through gathered and supplied facts and the command line.
+
 Every document derived here validates against status.schema.json (check_document, from test_loop_status.py).
 
 Run from the repository root: python3 -m unittest discover -s tests -v
@@ -259,6 +264,47 @@ class VisibleToTest(unittest.TestCase):
         m = world(front="owner: ben")
         m.concern("loop/asked", concern_md(questions=["| Q1 | Which store? | C1 | The database |"]))
         self.assertEqual(items(m.derive(self))["loop/asked/Q1"]["visible_to"], [], "no members:, no one else")
+
+
+class LoopPeopleTest(unittest.TestCase):
+    """status-people C1: each loop names its owner and members, as the addressing step resolves them (D70, D62)."""
+
+    def people(self, doc):
+        check_document(self, doc)
+        return {l["id"]: (l["owner"], l["members"]) for l in doc["loops"]}
+
+    def test_a_loop_with_an_owner_and_members_names_them(self):
+        m = world(front="owner: '@ben'\nmembers: [carla, dan, carla]")
+        m.concern("loop/thing", concern_md())
+        self.assertEqual(self.people(m.derive(self))["loop"], ("ben", ["carla", "dan"]))
+
+    def test_a_loop_with_neither_names_section_1s_owner_and_no_members(self):
+        m = world()
+        m.concern("loop/thing", concern_md())
+        self.assertEqual(self.people(m.derive(self))["loop"], ("ana", []), "LOOP.md §1: Ana (ana on GitHub)")
+
+    def test_with_no_owner_anywhere_the_owner_is_null(self):
+        m = world(loop_md=KEYED.replace("Ana (ana on GitHub)", "Ana"))
+        m.concern("loop/thing", concern_md())
+        self.assertEqual(self.people(m.derive(self))["loop"], (None, []), "never guessed")
+        facts = m.facts()
+        del facts["files"]["LOOP.md"]
+        self.assertEqual(self.people(ls.derive(facts))["loop"], (None, []), "and without a LOOP.md")
+
+    def test_an_owner_that_is_not_a_login_gives_way_to_section_1s(self):
+        m = world(front="owner: <login>\nmembers: [carla, Dan Smith]")
+        m.concern("loop/thing", concern_md())
+        self.assertEqual(self.people(m.derive(self))["loop"], ("ana", ["carla"]))
+        m = world(loop_md=KEYED.replace("Ana (ana on GitHub)", "Ana"), front="owner: <login>")
+        m.concern("loop/thing", concern_md())
+        self.assertEqual(self.people(m.derive(self))["loop"], (None, []))
+
+    def test_each_loop_names_its_own(self):
+        m = world(front="owner: ben\nmembers: [carla]")
+        m.loop("other")
+        m.concern("loop/thing", concern_md())
+        m.concern("other/thing", concern_md())
+        self.assertEqual(self.people(m.derive(self)), {"loop": ("ben", ["carla"]), "other": ("ana", [])})
 
     def test_the_board_shows_who_each_item_waits_on(self):
         m = world(front="owner: ben\nmembers: [carla]")

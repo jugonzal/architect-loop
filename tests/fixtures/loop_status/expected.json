@@ -1,5 +1,5 @@
 {
-  "comment": "What the derivation table in loop-status SKILL.md gives for world.json, worked out by hand from the table, one row and definition at a time; each concern file in project/ says why. Each queue item is addressed by step 6: LOOP.md §2 names no keys, so a gated item keeps its gate and waits on its loop's owner (ben for reports, whose members are ana and carla; ana, from LOOP.md §1, for onboarding, which names no owner:), and the drift has one line saying so. The test derives the world both from gathered and from supplied facts and compares both with this.",
+  "comment": "What the derivation table in loop-status SKILL.md gives for world.json, worked out by hand from the table, one row and definition at a time; each concern file in project/ says why. Each queue item is addressed by step 6: LOOP.md §2 names no keys, so a gated item keeps its gate and waits on its loop's owner (ben for reports, whose members are ana and carla; ana, from LOOP.md §1, for onboarding, which names no owner:), and each loop names the same owner and members (status-people C1), and the drift has one line saying so. The test derives the world both from gathered and from supplied facts and compares both with this.",
   "loops": {
     "audit": "open",
     "billing": "parked",
@@ -7,6 +7,14 @@
     "onboarding": "done",
     "reports": "active",
     "search": "backlog"
+  },
+  "people": {
+    "audit": {"owner": "ana", "members": []},
+    "billing": {"owner": "ana", "members": []},
+    "inbox": {"owner": "ana", "members": []},
+    "onboarding": {"owner": "ana", "members": []},
+    "reports": {"owner": "ben", "members": ["ana", "carla"]},
+    "search": {"owner": "ana", "members": []}
   },
   "concerns": {
     "billing/invoices": "parked",
