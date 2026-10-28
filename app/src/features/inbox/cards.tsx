@@ -11,6 +11,11 @@
 //   the item that crosses deploy (command-center/D59).
 // - Record: the proposed text and where it goes; approving starts the record step, which merges its own PR (D2).
 // - Proof, contradiction, refused PR: their facts and the command to run, read-only (command-center/D34, D40).
+// - Fact: which fact is missing, why it cannot be read, who can supply it, the concerns waiting on it and the
+//   command to run once it is to hand, read-only (command-center/D76).
+// - Stuck: the concern, its state, why nothing leads anywhere from it and its next step, read-only
+//   (command-center/D77).
+// - Any other kind, such as one a newer schema adds: its title and why, so no card is ever blank.
 
 import { useRouter } from 'expo-router';
 import { useMemo, useState, type ReactNode } from 'react';
@@ -55,6 +60,16 @@ export function ItemBody({ entry, doc }: { entry: InboxEntry; doc: StatusDocumen
       return <ContradictionBody item={item as Item<'contradiction'>} />;
     case 'refused_pr':
       return <RefusedPrBody item={item as Item<'refused_pr'>} />;
+    case 'fact':
+      return <FactBody item={item as Item<'fact'>} />;
+    case 'stuck':
+      return <StuckBody item={item as Item<'stuck'>} />;
+    default:
+      // Every kind the types know has a case above, so this is never reached until a kind is added: the check below
+      // fails to compile when the types are regenerated with one, and until then the item still shows its title and
+      // why rather than nothing.
+      ((kind: never) => kind)(item.kind);
+      return <FallbackBody item={item} />;
   }
 }
 
@@ -478,7 +493,7 @@ function RecordBody({ entry, item }: { entry: InboxEntry; item: Item<'record'> }
   );
 }
 
-// The read-only kinds (command-center/D34, D40).
+// The read-only kinds (command-center/D34, D40, D76, D77).
 
 function ProofBody({ item }: { item: Item<'proof'> }) {
   const { detail } = item;
@@ -548,6 +563,77 @@ function RefusedPrBody({ item }: { item: Item<'refused_pr'> }) {
         <Button label={`Open PR #${pr.number} on GitHub`} kind="secondary" onPress={() => void Linking.openURL(pr.url)} />
       </Card>
       <Command command={command} />
+    </>
+  );
+}
+
+function FactBody({ item }: { item: Item<'fact'> }) {
+  const { detail } = item;
+  return (
+    <>
+      <View style={styles.tight}>
+        <SectionLabel text="Fact" quiet />
+        <Title>{item.title}</Title>
+      </View>
+      <Text style={styles.body}>{item.why}</Text>
+      <Card testID="fact">
+        <Fact label="Missing">{detail.fact}</Fact>
+        <Fact label="On" mono>
+          {detail.environment}
+        </Fact>
+        <Fact label="Why">{detail.error}</Fact>
+        <Fact label="From">{detail.supplied_by}</Fact>
+        <Fact label="Then">{detail.next}</Fact>
+      </Card>
+      <View style={styles.chips} testID="waiting">
+        <Text style={styles.bodyMuted}>Waiting on it</Text>
+        {item.concerns.length > 0 ? (
+          item.concerns.map((concern) => <Chip key={concern} text={concern} />)
+        ) : (
+          <Text style={styles.bodyMuted}>no concern named</Text>
+        )}
+      </View>
+      <Command command={detail.command} />
+    </>
+  );
+}
+
+function StuckBody({ item }: { item: Item<'stuck'> }) {
+  const { detail } = item;
+  return (
+    <>
+      <View style={styles.tight}>
+        <SectionLabel text="Stuck" quiet />
+        <Title>{item.title}</Title>
+      </View>
+      <Text style={styles.body}>{item.why}</Text>
+      <Card testID="stuck">
+        <Fact label="Concern" mono>
+          {detail.concern}
+        </Fact>
+        <Fact label="State">{detail.state}</Fact>
+        <Fact label="Why">{detail.reason}</Fact>
+        <Fact label="Next" mono>
+          {detail.next}
+        </Fact>
+      </Card>
+      <Command command={detail.command} />
+    </>
+  );
+}
+
+/** A kind this build has no body for: its title and why, read-only, so the card is never blank. */
+function FallbackBody({ item }: { item: QueueItem }) {
+  return (
+    <>
+      <View style={styles.tight}>
+        <SectionLabel text={String(item.kind)} quiet />
+        <Title>{item.title}</Title>
+      </View>
+      <Text style={styles.body} testID="fallback-why">
+        {item.why}
+      </Text>
+      <Text style={styles.bodyMuted}>This version of the app has no card for this kind yet. Update the app to see its details.</Text>
     </>
   );
 }
