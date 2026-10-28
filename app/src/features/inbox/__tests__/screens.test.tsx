@@ -4,7 +4,8 @@
 // the fake runner starts nothing: it only records what the app sent. The other tabs, and app-threads' session
 // thread (command-center/D52), are stand-ins.
 
-import { act, fireEvent, render, renderRouter, screen, within } from 'expo-router/testing-library';
+import { render } from '@testing-library/react-native';
+import { act, fireEvent, renderRouter, screen, within } from 'expo-router/testing-library';
 import { useLocalSearchParams } from 'expo-router';
 import { Linking, Text } from 'react-native';
 

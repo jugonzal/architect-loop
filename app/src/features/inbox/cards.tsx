@@ -64,12 +64,13 @@ export function ItemBody({ entry, doc }: { entry: InboxEntry; doc: StatusDocumen
       return <FactBody item={item as Item<'fact'>} />;
     case 'stuck':
       return <StuckBody item={item as Item<'stuck'>} />;
-    default:
+    default: {
       // Every kind the types know has a case above, so this is never reached until a kind is added: the check below
       // fails to compile when the types are regenerated with one, and until then the item still shows its title and
       // why rather than nothing.
-      ((kind: never) => kind)(item.kind);
-      return <FallbackBody item={item} />;
+      const unhandled: never = item;
+      return <FallbackBody item={unhandled as QueueItem} />;
+    }
   }
 }
 
