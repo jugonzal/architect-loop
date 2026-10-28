@@ -64,7 +64,8 @@ ships-to: staging/status
   - `addressing.py` resolves `who` into `waits_on`:
     - a login is used as is;
     - `owner` is the loop's owner;
-    - `gate:<key>` sets the item's `gate`, so its holder is used.
+    - `gate:<key>` sets the item's `gate`, so its holder is used;
+    - `agent` queues nothing, and the proof stays in Agents can start (per D2).
   - A line without the segment queues for the loop's owner, with its text as `missing`, and adds a drift line.
   - The old `NEEDS_ONLY_RE` and `ONLY_RE` fallbacks stay, so a line they matched keeps its named person.
   - `/loop-prove`'s SKILL.md gives the segment in its UNPROVEN step and in its evidence-line example.
@@ -96,6 +97,7 @@ read, so no stored data changes. Evidence lines already written with the segment
 | # | Decision | Decided by, date | Closes |
 | --- | --- | --- | --- |
 | D1 | The schema change, the regenerated `status.gen.ts`, and the two new kinds' labels and read-only entries in `queue.ts` land in this concern's PR, because app CI fails main otherwise. The cards' bodies are `app-owner-cards`'. | agent, from `.github/workflows/app.yml` and `queue.ts`'s `Record<QueueKind, string>`, 2026-10-28 | — |
+| D2 | D74's `<who>` also accepts `agent`, for a gap an agent can close alone, such as a rerun: it queues nothing, and the proof stays in Agents can start. A line without the segment still waits on the loop's owner (per D75), so `/loop-prove` ends every UNPROVEN line with one or the other. | Juan, 2026-10-28 | Raised by this concern's build: `test_a_proof_item_needs_something_only_a_person_has` expects such a gap to stay agent work |
 
 ## Questions
 
