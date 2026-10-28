@@ -113,3 +113,29 @@ read, so no stored data changes. Evidence lines already written with the segment
 - 2026-10-28 · C3 · HOLDS · rung 1 · staging/status @363ed2a · Same read: the queue holds 9 items where 41597ff's held 0, none of kind `stuck`. None of the 15 entries in `agents_can_start` is a proof whose claims still to prove all wait on a person: notifications, whose C1 to C3 all do, is gone from it, while environments, runner-dispatch and status-service stay for their claims no item waits on
 
 ## Shipped
+
+2026-10-28, to `staging/status`, its `ships-to`, at 363ed2a (revision `status-00003-zl9`, live from 15:41 UTC),
+and to terminals in release 0.6.0.
+
+- **What shipped.** PR #117 (merge c80e069) gave `loop_status.py` the needs segment on UNPROVEN lines, read
+  strictly and addressed by `addressing.py` (a login, `owner`, `gate:<key>`, or `agent`, which queues nothing). It
+  also added the `fact` and `stuck` kinds to the schema, and made "Agents can start" leave out proofs that wait on
+  a person. The app's generated types, inbox labels and summary line followed, and so did `/loop-prove`'s SKILL.md.
+  PR #118 (363ed2a) released it as 0.6.0. On staging/status the served queue went from 0 items to 9, all waiting on
+  the owner: `fact/staging/app` and 8 proofs. C1 to C3 hold at rung 1 on staging/status @363ed2a.
+- **Departures from the design.**
+  - The build raised two decisions (PR #116). D2 lets a line say `needs agent:`, because D75 alone left no way to
+    keep a rerun as agent work. D3 widened `touches` to `InboxScreen.tsx` and the inbox's `queue.test.ts`, because
+    the regenerated types broke both.
+  - The Approach also queued a `fact` for a row that a blocked concern's need is proven on. The build queues one
+    only for concerns that are `unknown` on the row, and leaves the blocked case to the coverage check (C3), which
+    follows needs.
+  - Two calls the design did not make are in the code and the PR. A `building` concern counts as leading somewhere,
+    because its open PR holds it. An `unknown` from a transient read is left to the next read, so a GitHub outage
+    does not push stuck items.
+- **Learned.**
+  - The notifier's logs cannot prove a queue. It pushes an item only the first time it marks it, so
+    `notifications/C1`, marked on 2026-10-25, never showed up after the deploy. Its logs say nothing about "Agents
+    can start" either. Only one read of the served document, with the owner's token, settled C1 to C3.
+  - The 8 lines written before D74 stay as drift until they are re-proven with a needs segment.
+  - The app shows the new kinds with a label and summary but no body until `app-owner-cards` ships.
