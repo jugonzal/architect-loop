@@ -1,6 +1,6 @@
 {
   "name": "architect-loop",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "One architect, many agents: plan loops, then design, build, prove and ship each concern in parallel, with human-held gates and a status derived from facts instead of written down.",
   "author": { "name": "Juan Gonzalez" },
   "keywords": ["workflow", "parallel-agents", "worktrees", "evidence", "status", "runbooks", "agents"]
