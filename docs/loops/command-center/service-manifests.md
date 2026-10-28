@@ -81,3 +81,27 @@ true. Rollback: revert the PR. Config already applied to a service stays until t
 - 2026-10-27 · C3 · HOLDS · rung 5 · main @f87dd42 · The same green `check` run on f87dd42. Locally, the 9 tests in `ManifestsMatchTheCodeTest` pass. To check that they test the real path, I deleted `THREADS_GITHUB_WEBHOOK_SECRET` from a working copy of `services/threads/service.json`. Two of the tests then failed (`each_manifest_declares_every_variable_its_code_requires_without_a_default` and `no_manifest_holds_a_secrets_value`), and they passed again once I restored the file
 
 ## Shipped
+
+2026-10-27, to `main`, its `ships-to`. Each deploy and bootstrap the owner runs from a commit on main after
+61c365d applies it.
+
+- **What shipped.** PR #26 (merge 61c365d) added `scripts/gcp/manifest.py`, which reads and checks
+  `services/<service>/service.json`. With it, `deploy.sh` applies all of the manifest at the commit it deploys:
+  settings, secrets by name, Cloud SQL instance, runtime identity and jobs. `bootstrap.sh` enables the APIs the
+  manifests list and creates their Firestore databases and identities, reading first, so a second run changes
+  nothing. The PR also added the runner's, threads' and the probe's manifests, the deploy runbook's steps for
+  secrets, and `tests/test_service_manifests.py`. Later concerns extended the same format: `runner-store` added the
+  runner's Firestore database (PR #42), PR #48 named staging's GitHub Apps, and `service-schedules` added schedules
+  (PR #68). C1 to C3 hold in CI on main at e655a85.
+- **Departures from the design.** The claims' Prove asks for a staging half as well as CI. That half was last shown
+  for C1 at 1eae0a3, where the runner's and threads' exports matched their manifests field by field, and for C2 at
+  cd42938, where two bootstrap runs ended `staging: 0 changes.`. Later commits changed `scripts/gcp/`, among them
+  bbf959c, which adds schedules, and staging has not been read back since. Neither has it shown that a deploy
+  replaces config a service already had, or that deploying an earlier commit restores its config. Both services'
+  1eae0a3 deploys were their first, and every earlier manifest on main leaves staging's GitHub App IDs
+  `TODO(owner)`, which `deploy.sh` refuses. Both rest on the fake-`gcloud` tests until the next commit that changes
+  the runner's or threads' manifest, when the deploy runbook's step 14 can run.
+- **Learned.** Each manifest change made the staging proof stale, so C2 was proven on staging four times in two
+  days (18b866b, 92f6df9, a88018e, cd42938). The Firestore half held only vacuously until the first manifest
+  declared a database. Reading a deploy back proves what it applied, but a rollback can only be shown once two
+  deployable manifests exist on main.
