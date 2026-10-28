@@ -34,6 +34,13 @@ The default is what happens if nobody answers, so it is kept apart from the reco
 before this format, with no list, reads with no options and no recommendation, whatever its text says. HTML
 comments and fenced code are never read, so a template's example in a kept guidance comment is not a question.
 
+A question whose answer crosses a gate in LOOP.md §2 ends its Question cell with the gate's key, the way an
+effect in a concern's front matter ends, and the table keeps its four columns:
+
+    | Q3 | Delete exports after 30 days? (gates: prod-data) | C3 | Keep every export until this is answered |
+
+gate_keys(text) reads the keys a question or an effect names that way; the question's text keeps them.
+
 What it returns
 ---------------
 Each question is a JSON object:
@@ -174,6 +181,44 @@ def split_blocks(cell: str) -> List[str]:
         part.append(c)
     parts.append("".join(part).strip())
     return [p for p in parts if p]
+
+
+def gate_keys(text: str) -> List[str]:
+    """The gate keys a question or an effect names: the last part of the parenthesis it ends with, when that part
+    is `gates: <key>, <key>`. "an API key rotated (the owner rotates it; gates: secrets, infra)" names secrets and
+    infra; a text that ends otherwise names none. Keys are kept exactly as written, so a reader can match them
+    exactly."""
+    text = (text or "").rstrip()
+    if not text.endswith(")"):
+        return []
+    depth, start = 0, None
+    for i in range(len(text) - 1, -1, -1):
+        if text[i] == ")":
+            depth += 1
+        elif text[i] == "(":
+            depth -= 1
+            if depth == 0:
+                start = i
+                break
+    if start is None:
+        return []
+    parts, part, depth = [], [], 0
+    for c in text[start + 1:-1]:
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth = max(0, depth - 1)
+        if c == ";" and depth == 0:
+            parts.append("".join(part))
+            part = []
+            continue
+        part.append(c)
+    parts.append("".join(part))
+    m = re.match(r"^gates:(.*)$", parts[-1].strip())
+    if not m:
+        return []
+    keys = [k.strip().strip("`").strip() for k in m.group(1).split(",")]
+    return list(dict.fromkeys(k for k in keys if k))
 
 
 class Reader:

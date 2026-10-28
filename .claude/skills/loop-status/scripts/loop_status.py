@@ -52,7 +52,8 @@ derive_concern() checks the rows from top to bottom and the first that matches w
 If two runs on the same facts ever disagree, fix the table first, then this script.
 
 Standard library only; Python 3.8 or later. Questions are read by questions.py, beside this file, so the format
-has one reader.
+has one reader. Each queue item is addressed by addressing.py, beside it too: the gate it crosses, the one person
+it waits on, and who else sees it (command-center/addressed-to-people).
 """
 
 import argparse
@@ -75,6 +76,9 @@ SCHEMA_VERSION = 1
 _spec = importlib.util.spec_from_file_location("loop_status_questions", os.path.join(HERE, "questions.py"))
 questions = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(questions)
+_spec = importlib.util.spec_from_file_location("loop_status_addressing", os.path.join(HERE, "addressing.py"))
+addressing = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(addressing)
 
 # The rows of the derivation table, in its order, plus unknown; and step 5's loop states, plus unknown.
 CONCERN_STATES = ("parked", "contradicted", "open", "blocked", "ready", "building", "merged", "shipped", "stale",
@@ -496,6 +500,8 @@ class Loop:
         title, sections = outline(text)
         self.title = title or loop_id
         self.parked = fm_scalar(fm, "parked")
+        self.owner = fm_scalar(fm, "owner")
+        self.members = fm_list(fm, "members")
         self.goals = read_items(sections.get("goals", []), "G")
         self.decisions = read_decisions(sections.get("shared decisions", []))
         self.evidence, self.unreadable, _ = read_evidence(sections.get("evidence", []))
@@ -736,6 +742,9 @@ class Derivation:
     def __init__(self, facts):
         self.p = Project(facts)
         self.oracle = self.p.oracle
+        self.book = addressing.Book(self.p.loop_md, [
+            {"id": loop.id, "path": loop.path, "owner": loop.owner, "members": loop.members,
+             "parked": bool(loop.parked)} for loop in self.p.loops])
         self.cycles = self.find_cycles()
         self.blocked_by = self.question_blocks()
 
@@ -976,8 +985,9 @@ class Derivation:
         results = [self.claim_proven(other, claim) for claim in other.live_claims()]
         unproven = [why for result, why in results if result == "missing"]
         if unproven:
+            env = self.prove_environment(other)
             return dict(out, met=False, detail="is %s, and not yet proven on any environment: %s" % (
-                other.state, "; ".join(unproven)), prove="/loop-prove %s %s" % (other.ref, self.prove_environment(other)))
+                other.state, "; ".join(unproven)), prove="/loop-prove %s %s" % (other.ref, env) if env else None)
         unknown = [why for result, why in results if result == "unknown"]
         if unknown:
             return dict(out, missing=unknown)
@@ -1046,19 +1056,35 @@ class Derivation:
                 key, env, proof, ", ".join(superseded), c.id))
         return ("holds", "%s HOLDS rung %d on %s @%s" % (key, line["rung"], env, proof))
 
+    def own_rows(self, c):
+        """The rows of LOOP.md §3 that run c's code, lowest first: main for ships-to: main, otherwise every row
+        but main, listed no higher than ships-to, with the same part after the / (command-center/needs-proven D1).
+        Rows built from one repository serve every concern on main by ancestry, so serving alone is not enough."""
+        if c.ships_to == "main":
+            return [e for e in self.p.environments if e["name"] == "main"]
+        names = [e["name"] for e in self.p.environments]
+        if not c.ships_to or c.ships_to not in names:
+            return []
+        service = c.ships_to.partition("/")[2]
+        return [e for e in self.p.environments[:names.index(c.ships_to) + 1]
+                if e["name"] != "main" and e["name"].partition("/")[2] == service]
+
     def prove_environment(self, c):
-        """Where to prove c's unproven claims: the lowest environment after main that serves its work, else its
-        ships-to."""
+        """Where to prove c's unproven claims: the lowest of its own rows that serves its work, or None when none
+        does, so that what needs it waits on its own next step (command-center/needs-proven D2)."""
+        if c.ships_to == "main":
+            return "main"
         commits, _, _ = self.merge_commits(c)
-        if c.ships_to and c.ships_to != "main" and commits:
-            for env in self.p.environments:
-                if env["name"] == "main" or env["error"] or not env["served"]:
-                    continue
-                values = [self.oracle.ask({"kind": "ancestor", "repository": self.p.project, "commit": sha,
-                                           "of": env["served"]})[0] for sha in commits]
-                if all(v is True for v in values):
-                    return env["name"]
-        return c.ships_to or "main"
+        if not commits:
+            return None
+        for env in self.own_rows(c):
+            if env["error"] or not env["served"]:
+                continue
+            values = [self.oracle.ask({"kind": "ancestor", "repository": self.p.project, "commit": sha,
+                                       "of": env["served"]})[0] for sha in commits]
+            if all(v is True for v in values):
+                return env["name"]
+        return None
 
     def find_cycles(self):
         graph = {}
@@ -1523,16 +1549,25 @@ class Derivation:
         for c in live:
             if c.state == "merged":
                 ships.setdefault(c.ships_to, []).append(c)
+        # One item per gate the concerns' effects cross other than merge, plus one for deploy (step 6's addressing).
         for env, cs in sorted(ships.items()):
-            loops = {c.loop.id for c in cs}
-            names = [c.id for c in cs]
-            steps = list(dict.fromkeys(e for c in cs for e in c.effects))
-            items.append(self.item("ship/%s" % env, "ship", "Ship %s to %s" % (", ".join(names), env),
-                                   "%s %s merged, and %s does not serve %s yet" % (
-                                       " and ".join(names) if len(names) < 3 else ", ".join(names),
-                                       "is" if len(names) == 1 else "are", env, "it" if len(names) == 1 else "them"),
-                                   loops.pop() if len(loops) == 1 else None, [c.ref for c in cs],
-                                   self.unblocks([c.ref for c in cs]), {"environment": env, "manual_steps": steps}))
+            for gate, refs, steps in self.book.split_ship([(c.ref, c.effects) for c in cs]):
+                group = [c for c in cs if c.ref in refs]
+                loops = {c.loop.id for c in group}
+                names = [c.id for c in group]
+                why = "%s %s merged, and %s does not serve %s yet" % (
+                    " and ".join(names) if len(names) < 3 else ", ".join(names),
+                    "is" if len(names) == 1 else "are", env, "it" if len(names) == 1 else "them")
+                if gate == addressing.DEPLOY:
+                    id_, title = "ship/%s" % env, "Ship %s to %s" % (", ".join(names), env)
+                else:
+                    id_, title = "ship/%s/%s" % (env, gate), "Ship %s to %s: %s" % (", ".join(names), env, gate)
+                    why += "; %s effects cross %s" % ("its" if len(names) == 1 else "their", gate)
+                item = self.item(id_, "ship", title, why, loops.pop() if len(loops) == 1 else None,
+                                 [c.ref for c in group], self.unblocks([c.ref for c in group]),
+                                 {"environment": env, "manual_steps": steps})
+                item["gate"] = gate
+                items.append(item)
         # UNPROVEN claims that need something only a person has.
         for c in live:
             for claim in c.live_claims():
@@ -1597,6 +1632,8 @@ class Derivation:
                                        {"path": loop.path, "text": "Done: every concern (%s) is done, and %s." % (
                                            ", ".join(c.id for c in loop.concerns),
                                            "every goal has a current HOLDS" if loop.goals else "it has no goals")}))
+        for item in items:
+            self.book.address(item)
         items.sort(key=lambda i: (-len(i["unblocks"]), QUEUE_ORDER.index(i["kind"]), i["id"]))
         return items
 
@@ -1745,6 +1782,12 @@ class Derivation:
                             "read: %s" % line, "checked": "the evidence line format in LOOP.md §6"})
             if not loop.exists:
                 out.append({"where": loop.path, "finding": "the loop has no README.md", "checked": "the files on main"})
+        # What step 6 could not address as written.
+        live = [(loop, c) for loop in self.p.loops if loop.state != "parked" for c in [None] + loop.concerns
+                if c is None or c.state != "parked"]
+        out += list(self.book.drift)
+        out += self.book.check([(c.path, e) for _, c in live if c is not None for e in c.effects],
+                               [q for loop, c in live for q in (c.questions if c else loop.questions) if q["open"]])
         return out
 
     def missing(self):
@@ -2197,9 +2240,11 @@ def board(doc, scope=None):
     lines.append("Needs you (%d), most unblocking first" % len(needs))
     for n, item in enumerate(needs, 1):
         command = item["detail"].get("command") if item["kind"] in ("proof", "contradiction", "refused_pr") else None
-        lines.append("  %d. %s · %s · %s%s%s" % (n, item["kind"], item["title"], item["why"],
-                                                 " · unblocks %d" % len(item["unblocks"]) if item["unblocks"] else "",
-                                                 " · run %s" % command if command else ""))
+        lines.append("  %d. %s · %s · %s%s%s · waits on %s%s" % (
+            n, item["kind"], item["title"], item["why"],
+            " · unblocks %d" % len(item["unblocks"]) if item["unblocks"] else "",
+            " · run %s" % command if command else "", item["waits_on"] or "no one named",
+            " (gate: %s)" % item["gate"] if item["gate"] else ""))
     starts = [s for s in doc["agents_can_start"] if not scope or s["concern"].split("/")[0] in ids]
     lines.append("Agents can start now (%d)" % len(starts))
     lines += ["  %s" % s["command"] for s in starts]
