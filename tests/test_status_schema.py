@@ -286,15 +286,19 @@ STEP_6_KINDS = {
     "question": "open questions",
     "review": "PRs that are ready for review",
     "ship": "concerns that are merged and waiting to ship",
-    "proof": "UNPROVEN claims that need something only the owner has",
+    "proof": "UNPROVEN claims that wait on a person",
+    "fact": "facts only a person can read",
     "contradiction": "contradictions that need a call",
     "refused_pr": "loop-document PRs that `scripts/check_loop_pr.sh` refused",
+    "stuck": "concerns that lead to no one",
 }
 RECORD_STEP = re.compile(r"^## Record, on the owner's yes$", re.M)
-# The kinds the app shows read-only, with the command to run (command-center/D34), and the facts each one carries
+# The kinds the app shows read-only, with the command to run (command-center/D34, D76, D77), and the facts each one carries
 # besides it (command-center/D40).
 READ_ONLY_KINDS = {
     "proof": {"claim", "environment", "missing", "supplied_by"},
+    "fact": {"fact", "environment", "error", "supplied_by", "next"},
+    "stuck": {"concern", "state", "reason", "next"},
     "contradiction": {"claim", "evidence", "contradicts", "escalates"},
     "refused_pr": {"pr", "failures"},
 }
@@ -645,7 +649,7 @@ class QueueKindTest(unittest.TestCase):
         self.assertEqual(len(bullets), len(STEP_6_KINDS), bullets)
         kinds = queue_kinds_in_skill(self.skill)
         self.assertEqual(len(kinds), len(set(kinds)), kinds)
-        self.assertEqual(len(kinds), 7, "command-center/D34 names seven kinds")
+        self.assertEqual(len(kinds), 9, "command-center/D34 names seven kinds, and D76 and D77 one more each")
 
     def test_a_new_item_in_the_skill_fails_until_the_schema_has_its_kind(self):
         """So the test above cannot pass while SKILL.md queues something the schema does not carry."""

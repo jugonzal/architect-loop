@@ -153,12 +153,13 @@ export type QueueItem = {
   detail: {};
 } & QueueItem1;
 /**
- * What a queue item asks of a person: one kind for each item loop-status queues in step 6 and offers in its Record step. A person acts on the first four: answer a question, review a pull request, ship to an environment, or approve a record. The last three are shown read-only, with the command to run: a proof that needs something only a person has, a contradiction that needs a call, and a loop-document pull request that check_loop_pr.sh refused.
+ * What a queue item asks of a person: one kind for each item loop-status queues in step 6 and offers in its Record step. A person acts on the first four: answer a question, review a pull request, ship to an environment, or approve a record. The rest are shown read-only, with the command to run: a proof that waits on a person, a fact only a person can read (command-center/D76), a concern that leads to no one (command-center/D77), a contradiction that needs a call, and a loop-document pull request that check_loop_pr.sh refused.
  *
  * This interface was referenced by `LoopStatus`'s JSON-Schema
  * via the `definition` "queue_kind".
  */
-export type QueueKind = 'question' | 'review' | 'ship' | 'record' | 'proof' | 'contradiction' | 'refused_pr';
+export type QueueKind =
+  'question' | 'review' | 'ship' | 'record' | 'proof' | 'fact' | 'stuck' | 'contradiction' | 'refused_pr';
 /**
  * A concern, written <loop>/<concern>.
  *
@@ -186,6 +187,14 @@ export type QueueItem1 =
   | {
       kind?: 'proof';
       detail?: ProofDetail;
+    }
+  | {
+      kind?: 'fact';
+      detail?: FactDetail;
+    }
+  | {
+      kind?: 'stuck';
+      detail?: StuckDetail;
     }
   | {
       kind?: 'contradiction';
@@ -521,7 +530,7 @@ export interface RecordDetail {
   text: string;
 }
 /**
- * An UNPROVEN claim that needs something only a person has: a device, an account, a production read. Shown read-only, with the command to run once that is to hand.
+ * An UNPROVEN claim that waits on a person: the one its line's `· needs <who>: <what>` names, or the loop's owner when the line names no one (command-center/D74, D75). Shown read-only, with the command to run once that is to hand.
  *
  * This interface was referenced by `LoopStatus`'s JSON-Schema
  * via the `definition` "proof_detail".
@@ -537,11 +546,65 @@ export interface ProofDetail {
    */
   missing: string;
   /**
-   * Who can supply it, as the evidence line names them: a person, or a role such as the owner.
+   * Who can supply it: what the line's needs segment names (a login, owner, or gate:<key>), a person or role an older line's prose names, or owner when it names no one.
    */
   supplied_by: string;
   /**
    * The command to run once it is to hand, such as /loop-prove <loop>/<concern> <env>.
+   */
+  command: string;
+}
+/**
+ * A fact only a person can read: a LOOP.md §3 row that agents may not read, or that has no served-commit command, while an unfinished concern's state rests on it (command-center/D76). Shown read-only, with the command to run once it can be read.
+ *
+ * This interface was referenced by `LoopStatus`'s JSON-Schema
+ * via the `definition` "fact_detail".
+ */
+export interface FactDetail {
+  /**
+   * The fact, such as <environment>'s served commit.
+   */
+  fact: string;
+  /**
+   * The LOOP.md §3 row it belongs to.
+   */
+  environment: string;
+  /**
+   * Why an agent cannot read it, as the board's missing facts say.
+   */
+  error: string;
+  /**
+   * Who can read it: owner, the loop's owner.
+   */
+  supplied_by: string;
+  /**
+   * What makes it readable, as the first concern resting on it says.
+   */
+  next: string;
+  /**
+   * The command to run once it can be read: /loop-status <loop>.
+   */
+  command: string;
+}
+/**
+ * A concern that is neither done nor parked and leads to no one: no other queue item, no step an agent can take alone, and no need that leads anywhere (command-center/D77). Shown read-only, so its loop's owner can say what moves it.
+ *
+ * This interface was referenced by `LoopStatus`'s JSON-Schema
+ * via the `definition` "stuck_detail".
+ */
+export interface StuckDetail {
+  concern: ConcernRef;
+  state: ConcernState;
+  /**
+   * The concern's reason, from the facts.
+   */
+  reason: string;
+  /**
+   * The concern's next step, as the board gives it.
+   */
+  next: string;
+  /**
+   * The command to run once something leads from it: /loop-status <loop>/<concern>.
    */
   command: string;
 }
