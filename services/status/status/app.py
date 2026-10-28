@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from flask import Flask, jsonify, request
 
 from . import derivation
+from .apps import Apps, NotServed
 from .board import Board
 from .config import Settings
 from .errors import InvalidCredentials, Unavailable
@@ -108,6 +109,7 @@ def create_app(settings=None, *, github=None, identity=None, ls=None, clock=time
     app.json.sort_keys = False
     app.logger.setLevel(logging.INFO)
     access = Access(github, identity, settings.cache_seconds, clock)
+    apps = Apps(settings, clock)
     boards = {}
 
     def board_for(project):
@@ -192,6 +194,18 @@ def create_app(settings=None, *, github=None, identity=None, ls=None, clock=time
         app.logger.info("delivery %s: %s on %s%s", request.headers.get("X-GitHub-Delivery"),
                         request.headers.get("X-GitHub-Event"), project, "" if stale else " (not served here)")
         return jsonify(project=project, stale=stale)
+
+    # Which commit each app platform's builds were made from (command-center/D57, D79): no credentials, like
+    # /version, since it answers only a commit anyone can see on the repository.
+
+    @app.get("/apps/<channel>/<platform>/version")
+    def app_version(channel, platform):
+        if not Apps.known(channel, platform):
+            raise ApiError(404, "not_found", "no app channel %s on platform %s" % (channel, platform))
+        try:
+            return jsonify(commit=apps.commit(channel, platform))
+        except NotServed as error:
+            raise ApiError(404, "not_found", str(error)) from None
 
     # The deploy convention (command-center/D32).
 

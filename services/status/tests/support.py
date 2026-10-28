@@ -407,6 +407,47 @@ class FakeGitHubServer(_Server):
 
 # --- The client -----------------------------------------------------------------------------------------------------
 
+EAS_PROJECT_ID = "f0000000-0000-4000-8000-000000000001"
+EXPO_TOKEN = "made-up-robot-token"
+
+
+class FakeExpoServer(_Server):
+    """EAS's GraphQL API (`POST /graphql`), as eas-cli 22.4.0 calls it for `eas build:list`: an app's builds, filtered
+    by platform, status and build profile. It answers only the robot token the test gave the service."""
+
+    def __init__(self, project_id=EAS_PROJECT_ID, token=EXPO_TOKEN):
+        self.project_id, self.token = project_id, token
+        self.builds = []
+        self.requests = []
+        self.failure = None  # (status, raw body) to answer instead
+        super().__init__()
+
+    def build(self, platform, commit, created_at, profile="staging", status="FINISHED"):
+        self.builds.append({"id": "b%d" % len(self.builds), "platform": platform, "status": status,
+                            "buildProfile": profile, "gitCommitHash": commit, "createdAt": created_at})
+
+    def handle(self, h, method):
+        body = json.loads(h.rfile.read(int(h.headers.get("Content-Length") or 0)) or b"{}")
+        self.requests.append({"method": method, "path": h.path, "authorization": h.headers.get("Authorization"),
+                              "body": body})
+        if self.failure:
+            return self.send(h, self.failure[0], None, {"Content-Type": "application/json"}, raw=self.failure[1])
+        if method != "POST" or h.path != "/graphql":
+            return self.send(h, 404, {"errors": [{"message": "no such path"}]})
+        if h.headers.get("Authorization") != "Bearer %s" % self.token:
+            return self.send(h, 401, {"errors": [{"message": "unauthorized"}]})
+        variables = body.get("variables") or {}
+        if variables.get("appId") != self.project_id:
+            return self.send(h, 200, {"data": None, "errors": [{"message": "app not found"}]})
+        wanted = variables.get("filter") or {}
+        builds = [b for b in self.builds if all(b[k] == v for k, v in (
+            ("platform", wanted.get("platform")), ("status", wanted.get("status")),
+            ("buildProfile", wanted.get("buildProfile"))) if v is not None)]
+        builds.sort(key=lambda b: b["createdAt"], reverse=True)
+        start = variables.get("offset") or 0
+        page = builds[start:start + (variables.get("limit") or 50)]
+        self.send(h, 200, {"data": {"app": {"byId": {"id": self.project_id, "builds": page}}}})
+
 def spec_operations():
     """Every (METHOD, path template) that openapi.yaml documents."""
     with open(SPEC_PATH) as f:
@@ -508,6 +549,8 @@ class ServiceTestCase(unittest.TestCase):
         self.github.users.update({"alice-token": "alice", "carol-token": "carol"})
         self.github.collaborators[PROJECT] = {"alice"}
         self.github.runs[PROJECT] = {}
+        self.expo = FakeExpoServer()
+        self.addCleanup(self.expo.close)
         self.clock = FakeClock()
         self.settings = self.make_settings()
         self.app = self.make_app()
@@ -526,6 +569,9 @@ class ServiceTestCase(unittest.TestCase):
             max_age_seconds=self.max_age_seconds,
             cache_seconds=self.cache_seconds,
             served_timeout_seconds=2.0,
+            expo_token=EXPO_TOKEN,
+            eas_project_id=EAS_PROJECT_ID,
+            expo_api_url=self.expo.url,
         )
         values.update(changes)
         return Settings(**values)

@@ -103,11 +103,26 @@ describe("the app's environments (command-center/D43)", () => {
     expect(eas.build[profile].env.EXPO_PUBLIC_ENVIRONMENT).toBe(environment);
   });
 
+  it.each([
+    ['staging/app-android', 'android'],
+    ['staging/app-ios', 'ios'],
+  ])('%s has a LOOP.md row that builds only %s and reads its own platform from the status service (D79)', (environment, platform) => {
+    const row = rows()[environment];
+    expect(row).toBeDefined();
+    expect(row?.[4]).toContain(`eas build --profile staging --platform ${platform}`);
+    expect(row?.[4]).toContain(`eas submit --profile staging --platform ${platform} --latest`);
+    expect(row?.[5]).toMatch(new RegExp(`served\\.sh https://status-[0-9]+\\.us-east1\\.run\\.app/apps/staging/${platform}/version`));
+    expect(row?.[6]).toContain(`/apps/staging/${platform}/version <sha>`);
+  });
+
   it('lists the app rows after the services, lowest environment first', () => {
     const names = Object.keys(rows());
     expect(names.indexOf('staging/app')).toBeGreaterThan(names.indexOf('staging/notify'));
     expect(names.indexOf('production/app')).toBeGreaterThan(names.indexOf('staging/app'));
     expect(names.indexOf('production/app')).toBeGreaterThan(names.indexOf('production/notify'));
+    expect(names.indexOf('staging/app-android')).toBeGreaterThan(names.indexOf('staging/app'));
+    expect(names.indexOf('staging/app-ios')).toBeGreaterThan(names.indexOf('staging/app-android'));
+    expect(names.indexOf('production/app')).toBeGreaterThan(names.indexOf('staging/app-ios'));
   });
 
   it('builds only from committed work, so the recorded commit describes the build', () => {

@@ -90,6 +90,56 @@ paths:
         "503":
           $ref: "#/components/responses/Unavailable"
 
+  /apps/{channel}/{platform}/version:
+    parameters:
+      - name: channel
+        in: path
+        required: true
+        description: The app channel, named after its EAS build profile in `app/eas.json`, such as `staging`.
+        schema:
+          type: string
+      - name: platform
+        in: path
+        required: true
+        description: The platform whose builds are read.
+        schema:
+          type: string
+    get:
+      operationId: getAppVersion
+      summary: >-
+        The commit the platform's latest finished build of the channel was made from (command-center/D57, D79).
+      description: |
+        The served-commit read of an app row of `LOOP.md` §3, such as `staging/app-android`, by the deploy
+        convention (command-center/D32), so `sh scripts/gcp/served.sh` reads it like a service's `/version`. The
+        service asks EAS for the app's finished builds of the channel's profile on the platform, the way eas-cli
+        22.4.0 does for `eas build:list`, with an Expo robot user's token (`STATUS_EXPO_TOKEN`), and answers the
+        commit EAS recorded for the newest one. Each platform stands alone. EAS's answer is reused for a minute. It
+        needs no credentials, like `/version`: it answers only a commit anyone can see on the repository.
+      security: []
+      responses:
+        "200":
+          description: The commit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Version"
+        "404":
+          description: >-
+            No such channel or platform, the platform has no finished build of the channel's profile, or its
+            latest one records no commit. No older commit is answered instead.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: >-
+            EAS cannot be reached or does not list the builds, or the service has no robot token or EAS project
+            (`STATUS_EXPO_TOKEN`, `STATUS_EAS_PROJECT_ID`). No older commit is answered instead.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /webhooks/github:
     post:
       operationId: receiveGitHubDelivery

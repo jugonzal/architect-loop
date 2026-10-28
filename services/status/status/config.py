@@ -17,6 +17,9 @@
 | `STATUS_AUDIENCE` | This service's own URL, the audience a calling service's ID token must name (D66). Unset, no service is trusted. |
 | `STATUS_CALLER_SERVICE_ACCOUNTS` | The service accounts trusted to read every project's document, comma-separated. Unset, none is. |
 | `STATUS_CALLER_KEYS_URL` | The keys a calling service's ID token is checked against. Default Google's; the local harness's own. |
+| `STATUS_EXPO_TOKEN` | An Expo robot user's access token, which reads the app's EAS builds for `GET /apps/{channel}/{platform}/version` (command-center/D57, D79). A secret. Unset, only that route answers 503. |
+| `STATUS_EAS_PROJECT_ID` | The app's EAS project id, `extra.eas.projectId` in `app/app.json`. |
+| `STATUS_EXPO_API_URL` | Expo's API; GraphQL is at `<it>/graphql`. Default `https://api.expo.dev`. |
 
 The secrets reach the service as environment variables that Cloud Run fills from Secret Manager. A service missing
 the project or its app still starts: `GET /version` answers, and every other request is refused with 503 naming
@@ -46,12 +49,16 @@ VARIABLES = {
     "STATUS_AUDIENCE": "the audience a calling service's ID token names",
     "STATUS_CALLER_SERVICE_ACCOUNTS": "the services trusted to read",
     "STATUS_CALLER_KEYS_URL": "the keys a calling service's ID token is checked against",
+    "STATUS_EXPO_TOKEN": "the Expo robot token that reads the app's builds",
+    "STATUS_EAS_PROJECT_ID": "the app's EAS project",
+    "STATUS_EXPO_API_URL": "Expo's API",
 }
 # What every deployment sets, in services/status/service.json; COMMIT_SHA is deploy.sh's. The rest have defaults.
-# The trust is set by every deployment too (D66), though a service without it still serves people.
+# The trust is set by every deployment too (D66), though a service without it still serves people, and so is the
+# app's EAS project and robot token (app-served D2), though without them only GET /apps/... is refused.
 REQUIRED = ("STATUS_PROJECTS", "STATUS_GITHUB_APP_ID", "STATUS_GITHUB_APP_PRIVATE_KEY", "STATUS_GITHUB_WEBHOOK_SECRET",
-            "STATUS_AUDIENCE", "STATUS_CALLER_SERVICE_ACCOUNTS")
-SECRETS = ("STATUS_GITHUB_APP_PRIVATE_KEY", "STATUS_GITHUB_WEBHOOK_SECRET")
+            "STATUS_AUDIENCE", "STATUS_CALLER_SERVICE_ACCOUNTS", "STATUS_EAS_PROJECT_ID", "STATUS_EXPO_TOKEN")
+SECRETS = ("STATUS_GITHUB_APP_PRIVATE_KEY", "STATUS_GITHUB_WEBHOOK_SECRET", "STATUS_EXPO_TOKEN")
 
 
 def _list(value):
@@ -74,6 +81,9 @@ class Settings:
     audience: str | None = None
     caller_service_accounts: tuple = field(default_factory=tuple)
     caller_keys_url: str = GOOGLE_CERTS
+    expo_token: str | None = None
+    eas_project_id: str | None = None
+    expo_api_url: str = "https://api.expo.dev"
 
     @classmethod
     def from_env(cls, environ=None):
@@ -94,6 +104,9 @@ class Settings:
             audience=env.get("STATUS_AUDIENCE") or None,
             caller_service_accounts=tuple(_list(env.get("STATUS_CALLER_SERVICE_ACCOUNTS"))),
             caller_keys_url=env.get("STATUS_CALLER_KEYS_URL") or GOOGLE_CERTS,
+            expo_token=env.get("STATUS_EXPO_TOKEN") or None,
+            eas_project_id=env.get("STATUS_EAS_PROJECT_ID") or None,
+            expo_api_url=(env.get("STATUS_EXPO_API_URL") or "https://api.expo.dev").rstrip("/"),
         )
 
     @property
