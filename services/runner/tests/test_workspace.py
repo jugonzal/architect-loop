@@ -1,7 +1,8 @@
 """A session's workspace: its own fresh clone on `<loop>/<concern>`, the trailer hook, and the plugin release.
 
 session-runner C5 and D4, runner-dispatch C1: the hook adds `Sponsored-by:` to every session's commits and
-`Concern:` only to a `/loop-build` session's (command-center/D45), `--no-verify` skips it, and the trailers check
+`Concern:` only to a `/loop-build` session's (command-center/D45), and pr-signing C2: it removes a `Concern:` that
+any other session wrote itself (command-center/D73). `--no-verify` skips it, and the trailers check
 fails the commit that skipped it, whatever the skill. D17: the session runs the release named in the dispatch,
 never the clone's own `plugin/`. Everything runs against a local bare repository standing in for GitHub.
 """
@@ -202,6 +203,25 @@ class TrailersPerSkillTest(unittest.TestCase):
                 self.assertIn(("Sponsored-by", "ana"), found)
                 self.assertEqual([v for k, v in found if k == "Concern"], [CONCERN] if skill == "loop-build" else [])
                 self.assertTrue(trailers.check(clone, base, "HEAD", SLUG).ok)
+
+    def test_a_concern_trailer_a_non_build_session_wrote_is_removed(self):
+        """pr-signing C2 (command-center/D73): a proof, design or record commit never links as build work, so the hook
+        drops a `Concern:` the session wrote; a /loop-build session's stays."""
+        for n, (scope, skill) in enumerate(PAIRS, 1):
+            with self.subTest(scope=scope, skill=skill):
+                clone = self.prepared(skill, n, scope).clone
+                message = self.commit(clone, f"Record the work\n\nConcern: {CONCERN}\n"
+                                             "Co-Authored-By: Claude <noreply@anthropic.com>")
+                found = self.parsed(clone, message)
+                self.assertEqual([v for k, v in found if k == "Concern"], [CONCERN] if skill == "loop-build" else [])
+                self.assertIn(("Sponsored-by", "ana"), found)
+                self.assertIn(("Co-Authored-By", "Claude <noreply@anthropic.com>"), found)
+
+    def test_a_line_that_does_not_link_a_concern_is_kept(self):
+        clone = self.prepared("loop-prove", 1).clone
+        message = self.commit(clone, "Record the proof\n\nConcern:  command-center/x, C1 held at rung 5.")
+        # git interpret-trailers tidies the spacing of a last-paragraph line, but the line stays.
+        self.assertIn("command-center/x, C1 held at rung 5.", message)
 
     def test_a_no_verify_commit_fails_the_trailers_check_whatever_the_skill(self):
         for n, (scope, skill) in enumerate(PAIRS, 1):

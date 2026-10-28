@@ -22,7 +22,7 @@ from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, HookMatcher,
 from .config import ALLOWED_TOOLS
 from .github import JOB_PERMISSIONS, urllib_transport
 from .launcher import METADATA
-from .models import iso, utcnow
+from .models import iso, parse_iso, utcnow
 from .spend import Meter
 from .workspace import trailers_for
 
@@ -78,13 +78,25 @@ class FinalMessage:
         return "\n\n".join(self._parts) if self._parts else None
 
 
+CONCERN_LINE = re.compile(r"(?i)^concern:\s*\S+\s*$")
+
+
 def with_trailers(body, concern, sponsor):
     """A pull request body with the session's trailers, or None when it already has them (runner-dispatch C1).
 
-    `concern` is None except in a /loop-build session (command-center/D45), so only that one adds `Concern:`. Like
-    the commit-msg hook, it keeps a `Concern:` the skill wrote and adds `Sponsored-by:` beside it."""
+    `concern` is None except in a /loop-build session (command-center/D45), so only that one adds `Concern:`, and
+    keeps one the skill wrote, adding `Sponsored-by:` beside it. Any other session's body loses a `Concern:` line its
+    skill wrote, like its commits in the commit-msg hook (pr-signing C2, command-center/D73). Only a line that links
+    a concern the way loop-status reads one counts: a report's `Concern:  loop/x, C1` links nothing and stays."""
     lines = (body or "").splitlines()
-    concern_at = [i for i, line in enumerate(lines) if re.match(r"(?i)^concern:\s*\S", line)]
+    if concern is None:
+        kept = [line for line in lines if not CONCERN_LINE.match(line)]
+        if kept != lines:
+            while kept and not kept[-1].strip():
+                kept.pop()
+            sponsored = any(re.match(r"(?i)^sponsored-by:\s*\S", line) for line in kept)
+            return "\n".join(kept + ([] if sponsored else ([""] if kept else []) + [f"Sponsored-by: {sponsor}"]))
+    concern_at = [i for i, line in enumerate(lines) if CONCERN_LINE.match(line)]
     sponsored = any(re.match(r"(?i)^sponsored-by:\s*\S", line) for line in lines)
     if sponsored and (concern_at or concern is None):
         return None
@@ -583,12 +595,20 @@ class SessionJob:
                 continue
 
     def _sign_pull_requests(self, session, prepared):
-        """Put the session's trailers in the bodies of the pull requests it opened, from the branches it pushed."""
+        """Put the session's trailers in the bodies of the pull requests it opened, from the branches it pushed.
+
+        Every one, open or not: a proof session may merge its own loop-document PR before it ends (pr-signing C1,
+        runner-dispatch D1). A closed or merged one counts only if it was opened after the dispatch, since a branch
+        such as a sandbox build target keeps earlier sessions' closed PRs; an open one counts whenever it was opened,
+        as a build resumes on its PR."""
         try:
             heads = self.workspace.pushed_branches(prepared.clone)
             if not heads:
                 return []
-            pulls = self.github.pull_requests_for_heads(heads)
+            since = parse_iso(session.created_at)
+            pulls = [p for p in self.github.pull_requests_for_heads(heads, state="all")
+                     if p.get("state", "open") == "open"
+                     or (p.get("created_at") and parse_iso(p["created_at"]) >= since)]
             trailers = dict(trailers_for(session))
             for pull in pulls:
                 body = with_trailers(pull.get("body"), trailers.get("Concern"), trailers["Sponsored-by"])

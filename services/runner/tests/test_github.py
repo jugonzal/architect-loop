@@ -116,7 +116,7 @@ class GitHubTest(unittest.TestCase):
         found = self.github.open_pull_requests()
         self.assertEqual(len(found), 101)
         self.assertEqual(found[-1], {"number": 100, "url": "https://github.com/jugonzal/architect-loop/pull/100",
-                                     "head": "last", "body": ""})
+                                     "head": "last", "body": "", "state": "open", "created_at": None})
         self.assertIn("page=2", self.transport.requests[-1]["url"])
 
     def test_a_concern_exists_when_its_file_is_on_main(self):
@@ -183,6 +183,17 @@ class GitHubTest(unittest.TestCase):
         self.token_answer()
         self.transport.answer(404, {"message": "Not Found"})
         self.assertEqual(self.github.environments(), [])
+
+    def test_a_heads_pull_requests_can_be_read_in_every_state(self):
+        """pr-signing C1: the end of a session asks for its branches' pull requests merged or closed too."""
+        self.token_answer("ghs_job")
+        self.transport.answer(200, [dict(pull(9, "docs/x"), state="closed", created_at="2026-10-26T22:19:24Z")])
+        found = self.github.pull_requests_for_heads(["docs/x"], state="all")
+        self.assertIn("state=all&head=jugonzal:docs/x", self.transport.requests[-1]["url"])
+        self.assertEqual((found[0]["state"], found[0]["created_at"]), ("closed", "2026-10-26T22:19:24Z"))
+        self.transport.answer(200, [])
+        self.github.pull_requests_for_heads(["docs/x"])
+        self.assertIn("state=open&head=jugonzal:docs/x", self.transport.requests[-1]["url"], "narration's default")
 
     def test_editing_a_body_patches_the_pull_request_with_the_jobs_token(self):
         self.token_answer("ghs_job")

@@ -80,10 +80,10 @@ class FakeGitHub:
         self._call("open_pull_requests")
         return [dict(p) for p in self.pulls]
 
-    def pull_requests_for_heads(self, heads):
+    def pull_requests_for_heads(self, heads, state="open"):
         self._call("pull_requests_for_heads", tuple(heads))
         return [dict(p, body=self.bodies.get(p["number"], p.get("body", ""))) for p in self.pulls
-                if p["head"] in heads]
+                if p["head"] in heads and (state == "all" or p["state"] == state)]
 
     def set_pull_request_body(self, number, body):
         self._call("set_pull_request_body", number)
@@ -97,9 +97,10 @@ class FakeGitHub:
         self._call("bot_user_id")
         return 1234
 
-    def open_pr(self, number, head, body=""):
+    def open_pr(self, number, head, body="", state="open", created_at="2026-10-20T12:00:30Z"):
+        """A pull request on head; state "closed" is one merged or closed since, as GitHub lists both."""
         self.pulls.append({"number": number, "url": f"https://github.com/{PROJECT}/pull/{number}", "head": head,
-                           "body": body})
+                           "body": body, "state": state, "created_at": created_at})
 
 
 class FakeLauncher:
