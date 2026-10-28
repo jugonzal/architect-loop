@@ -94,8 +94,8 @@
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*/C[0-9]+$"
     },
     "queue_kind": {
-      "description": "What a queue item asks of a person: one kind for each item loop-status queues in step 6 and offers in its Record step. A person acts on the first four: answer a question, review a pull request, ship to an environment, or approve a record. The last three are shown read-only, with the command to run: a proof that needs something only a person has, a contradiction that needs a call, and a loop-document pull request that check_loop_pr.sh refused.",
-      "enum": ["question", "review", "ship", "record", "proof", "contradiction", "refused_pr"]
+      "description": "What a queue item asks of a person: one kind for each item loop-status queues in step 6 and offers in its Record step. A person acts on the first four: answer a question, review a pull request, ship to an environment, or approve a record. The rest are shown read-only, with the command to run: a proof that waits on a person, a fact only a person can read (command-center/D76), a concern that leads to no one (command-center/D77), a contradiction that needs a call, and a loop-document pull request that check_loop_pr.sh refused.",
+      "enum": ["question", "review", "ship", "record", "proof", "fact", "stuck", "contradiction", "refused_pr"]
     },
     "main": {
       "description": "The main branch: its head and the result of its checks.",
@@ -279,6 +279,8 @@
         {"properties": {"kind": {"const": "ship"}, "detail": {"$ref": "#/$defs/ship_detail"}}},
         {"properties": {"kind": {"const": "record"}, "detail": {"$ref": "#/$defs/record_detail"}}},
         {"properties": {"kind": {"const": "proof"}, "detail": {"$ref": "#/$defs/proof_detail"}}},
+        {"properties": {"kind": {"const": "fact"}, "detail": {"$ref": "#/$defs/fact_detail"}}},
+        {"properties": {"kind": {"const": "stuck"}, "detail": {"$ref": "#/$defs/stuck_detail"}}},
         {"properties": {"kind": {"const": "contradiction"}, "detail": {"$ref": "#/$defs/contradiction_detail"}}},
         {"properties": {"kind": {"const": "refused_pr"}, "detail": {"$ref": "#/$defs/refused_pr_detail"}}}
       ]
@@ -338,7 +340,7 @@
       }
     },
     "proof_detail": {
-      "description": "An UNPROVEN claim that needs something only a person has: a device, an account, a production read. Shown read-only, with the command to run once that is to hand.",
+      "description": "An UNPROVEN claim that waits on a person: the one its line's `· needs <who>: <what>` names, or the loop's owner when the line names no one (command-center/D74, D75). Shown read-only, with the command to run once that is to hand.",
       "type": "object",
       "required": ["claim", "environment", "missing", "supplied_by", "command"],
       "additionalProperties": false,
@@ -346,8 +348,35 @@
         "claim": {"$ref": "#/$defs/claim_ref"},
         "environment": {"description": "The environment the claim must be proven on.", "$ref": "#/$defs/text"},
         "missing": {"description": "What the proof needs that no agent has, from its UNPROVEN evidence line.", "$ref": "#/$defs/text"},
-        "supplied_by": {"description": "Who can supply it, as the evidence line names them: a person, or a role such as the owner.", "$ref": "#/$defs/text"},
+        "supplied_by": {"description": "Who can supply it: what the line's needs segment names (a login, owner, or gate:<key>), a person or role an older line's prose names, or owner when it names no one.", "$ref": "#/$defs/text"},
         "command": {"description": "The command to run once it is to hand, such as /loop-prove <loop>/<concern> <env>.", "$ref": "#/$defs/text"}
+      }
+    },
+    "fact_detail": {
+      "description": "A fact only a person can read: a LOOP.md §3 row that agents may not read, or that has no served-commit command, while an unfinished concern's state rests on it (command-center/D76). Shown read-only, with the command to run once it can be read.",
+      "type": "object",
+      "required": ["fact", "environment", "error", "supplied_by", "next", "command"],
+      "additionalProperties": false,
+      "properties": {
+        "fact": {"description": "The fact, such as <environment>'s served commit.", "$ref": "#/$defs/text"},
+        "environment": {"description": "The LOOP.md §3 row it belongs to.", "$ref": "#/$defs/text"},
+        "error": {"description": "Why an agent cannot read it, as the board's missing facts say.", "$ref": "#/$defs/text"},
+        "supplied_by": {"description": "Who can read it: owner, the loop's owner.", "$ref": "#/$defs/text"},
+        "next": {"description": "What makes it readable, as the first concern resting on it says.", "$ref": "#/$defs/text"},
+        "command": {"description": "The command to run once it can be read: /loop-status <loop>.", "$ref": "#/$defs/text"}
+      }
+    },
+    "stuck_detail": {
+      "description": "A concern that is neither done nor parked and leads to no one: no other queue item, no step an agent can take alone, and no need that leads anywhere (command-center/D77). Shown read-only, so its loop's owner can say what moves it.",
+      "type": "object",
+      "required": ["concern", "state", "reason", "next", "command"],
+      "additionalProperties": false,
+      "properties": {
+        "concern": {"$ref": "#/$defs/concern_ref"},
+        "state": {"$ref": "#/$defs/concern_state"},
+        "reason": {"description": "The concern's reason, from the facts.", "$ref": "#/$defs/text"},
+        "next": {"description": "The concern's next step, as the board gives it.", "$ref": "#/$defs/text"},
+        "command": {"description": "The command to run once something leads from it: /loop-status <loop>/<concern>.", "$ref": "#/$defs/text"}
       }
     },
     "contradiction_detail": {

@@ -70,13 +70,19 @@ the PR for the owner, and mention `/loop-init` once.
 6. **Reach a verdict** per claim:
    - **HOLDS**: the evidence supports the claim, at the rung stated.
    - **CONTRADICTS**: the evidence disproves the claim, or the premise under it.
-   - **UNPROVEN**: the evidence could not be obtained. Say what is missing and who can supply it.
+   - **UNPROVEN**: the evidence could not be obtained. Say what is missing and who can supply it, by ending the
+     line with `· needs <who>: <what>`. `<who>` is the GitHub login of the person who has it, `owner` for the
+     loop's owner, `gate:<key>` for the holder of a `LOOP.md` §2 gate, or `agent` when an agent can close the gap
+     alone (a rerun, a harness that was down). `/loop-status` puts every gap but an agent's in that person's Needs
+     you, and sends a line without the segment to the loop's owner as drift, so always write it.
 
 7. **Write it down where the next session will look.**
    - Before the merge: in the PR body, one line per claim:
      `C1: HOLDS (rung 3, local, @<branch-sha>): <evidence>`.
    - After the merge: append one line per claim to the concern's Evidence, on a `docs/<loop>-proof-<date>`
      branch: `- YYYY-MM-DD · C1 · HOLDS · rung 1 · staging @<served-sha> · <one line of evidence, with numbers>`.
+     An UNPROVEN line ends with its needs segment:
+     `- YYYY-MM-DD · C2 · UNPROVEN · rung 1 · staging @<served-sha> · <what was and was not observed> · needs owner: <what>`.
      Never edit or delete an earlier line; a newer one supersedes it. Open the PR and merge it as described in
      Boundary.
    - A spike: `- YYYY-MM-DD · Q2 · HOLDS · rung 4 · local @<sha> · <the answer>`. It may cite a branch, because
@@ -91,7 +97,7 @@ the PR for the owner, and mention `/loop-init` once.
      decision, say so in the evidence line ("contradicts <loop>/D2"), so `/loop-status` raises it with the owner.
      On a shared environment, also tell the owner whether users are affected and whether to roll back; that call
      is theirs. Do not patch forward on a false premise.
-   - **UNPROVEN**: record it as a named gap, with who can close it. Never report it as passing.
+   - **UNPROVEN**: record it as a named gap, with who can close it in its needs segment. Never report it as passing.
 
 9. **Report** in the format below, leading with the verdict.
 
