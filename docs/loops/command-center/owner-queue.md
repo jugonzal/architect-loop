@@ -108,4 +108,8 @@ read, so no stored data changes. Evidence lines already written with the segment
 
 ## Evidence
 
+- 2026-10-28 · C1 · HOLDS · rung 1 · staging/status @363ed2a · One GET of the served document (200, 189,416 B, as_of 16:55:46 UTC, read with the owner's token, on the owner's yes): its queue holds a proof item for each of the 8 claims whose latest line is UNPROVEN (status-service C1, C2; environments C2, C3; notifications C1, C2, C3; runner-dispatch C3), each with `waits_on` jugonzal, and 8 drift lines for those lines lacking `· needs <who>: <what>`. The notifier's first tick on the new revision (15:42:29 UTC) pushed 7 of them; notifications C1's mark dates from 2026-10-25, so it was not pushed again
+- 2026-10-28 · C2 · HOLDS · rung 1 · staging/status @363ed2a · Same read: one `fact` item, `fact/staging/app`, waiting on jugonzal with the 9 concerns that are unknown on it (app-agents, app-clients, app-documents, app-environments, app-inbox, app-loops-board, app-shell, app-threads, latest-release), and none for the four `production/*` rows nothing ships to. The notifier pushed it at 15:42:29 UTC
+- 2026-10-28 · C3 · HOLDS · rung 1 · staging/status @363ed2a · Same read: the queue holds 9 items where 41597ff's held 0, none of kind `stuck`. None of the 15 entries in `agents_can_start` is a proof whose claims still to prove all wait on a person: notifications, whose C1 to C3 all do, is gone from it, while environments, runner-dispatch and status-service stay for their claims no item waits on
+
 ## Shipped
