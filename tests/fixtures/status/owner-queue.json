@@ -1,0 +1,398 @@
+{
+  "schema_version": 1,
+  "project": "example/reports",
+  "as_of": "2026-10-21T09:00:00Z",
+  "main": {
+    "branch": "main",
+    "sha": "582ad65314c1203588a83741e46bef1cb1a589fb",
+    "ci": "success"
+  },
+  "environments": [
+    {
+      "name": "main",
+      "served": "582ad65314c1203588a83741e46bef1cb1a589fb",
+      "error": null
+    },
+    {
+      "name": "staging",
+      "served": "cf86d9f55a8ac4bbdb9f0b68226b1ad4c969fdc4",
+      "error": null
+    },
+    {
+      "name": "app",
+      "served": null,
+      "error": "LOOP.md §3 says agents may not read app"
+    },
+    {
+      "name": "later",
+      "served": null,
+      "error": "LOOP.md §3 has no served-commit command for later (TODO(owner))"
+    },
+    {
+      "name": "production",
+      "served": "dc76e9f0c0006e8f919e0c515c66dbba3982f785",
+      "error": null
+    }
+  ],
+  "loops": [
+    {
+      "id": "loop",
+      "title": "A loop",
+      "path": "docs/loops/loop/README.md",
+      "state": "active",
+      "reason": "0 of its 4 concerns are done",
+      "next": null,
+      "owner": "ana",
+      "members": [],
+      "goals": [],
+      "concerns": [
+        {
+          "id": "lost",
+          "title": "A concern that does one thing",
+          "path": "docs/loops/loop/lost.md",
+          "contract": {
+            "needs": [
+              "gone"
+            ],
+            "touches": [
+              "src/x/"
+            ],
+            "effects": [],
+            "ships_to": "staging",
+            "prs": [],
+            "parked": null
+          },
+          "claims": [
+            {
+              "id": "C1",
+              "text": "It works. Prove: a run, on staging.",
+              "struck": false,
+              "evidence": [],
+              "current_holds": false
+            }
+          ],
+          "state": "blocked",
+          "reason": "Nothing is built yet, and loop/gone, which it needs, does not exist",
+          "next": "/loop-design loop/lost",
+          "inputs": {
+            "main": "582ad65314c1203588a83741e46bef1cb1a589fb",
+            "served": {
+              "environment": "staging",
+              "commit": "cf86d9f55a8ac4bbdb9f0b68226b1ad4c969fdc4",
+              "error": null,
+              "serves": false
+            },
+            "prs": [],
+            "commits": [],
+            "branch": {
+              "name": "loop/lost",
+              "exists": false
+            }
+          }
+        },
+        {
+          "id": "notify",
+          "title": "A concern that does one thing",
+          "path": "docs/loops/loop/notify.md",
+          "contract": {
+            "needs": [],
+            "touches": [
+              "src/x/"
+            ],
+            "effects": [],
+            "ships_to": "staging",
+            "prs": [],
+            "parked": null
+          },
+          "claims": [
+            {
+              "id": "C1",
+              "text": "It works. Prove: a run, on staging.",
+              "struck": false,
+              "evidence": [
+                {
+                  "date": "2026-10-25",
+                  "verdict": "UNPROVEN",
+                  "rung": 1,
+                  "environment": "staging",
+                  "commit": "cf86d9f",
+                  "text": "no device can register · needs gate:secrets: a push key in staging's secret store"
+                }
+              ],
+              "current_holds": false
+            }
+          ],
+          "state": "shipped",
+          "reason": "staging serves its work, and C1's latest verdict is UNPROVEN",
+          "next": "/loop-prove loop/notify staging",
+          "inputs": {
+            "main": "582ad65314c1203588a83741e46bef1cb1a589fb",
+            "served": {
+              "environment": "staging",
+              "commit": "cf86d9f55a8ac4bbdb9f0b68226b1ad4c969fdc4",
+              "error": null,
+              "serves": true
+            },
+            "prs": [
+              {
+                "repository": "example/reports",
+                "number": 2,
+                "url": "https://github.com/example/reports/pull/2",
+                "title": "Pull request 2",
+                "head": "loop/notify",
+                "base": "main",
+                "state": "merged",
+                "draft": false,
+                "merge_commit": "cf86d9f55a8ac4bbdb9f0b68226b1ad4c969fdc4",
+                "on_main": true,
+                "checks": "success"
+              }
+            ],
+            "commits": [],
+            "branch": {
+              "name": "loop/notify",
+              "exists": false
+            }
+          }
+        },
+        {
+          "id": "screen",
+          "title": "A concern that does one thing",
+          "path": "docs/loops/loop/screen.md",
+          "contract": {
+            "needs": [],
+            "touches": [
+              "src/x/"
+            ],
+            "effects": [],
+            "ships_to": "app",
+            "prs": [],
+            "parked": null
+          },
+          "claims": [
+            {
+              "id": "C1",
+              "text": "It works. Prove: a run, on staging.",
+              "struck": false,
+              "evidence": [],
+              "current_holds": null
+            }
+          ],
+          "state": "unknown",
+          "reason": "Its work is on main (582ad65), and whether app serves it cannot be read",
+          "next": "Read what app serves with the owner, then /loop-status again",
+          "inputs": {
+            "main": "582ad65314c1203588a83741e46bef1cb1a589fb",
+            "served": {
+              "environment": "app",
+              "commit": null,
+              "error": "LOOP.md §3 says agents may not read app",
+              "serves": null
+            },
+            "prs": [
+              {
+                "repository": "example/reports",
+                "number": 9,
+                "url": "https://github.com/example/reports/pull/9",
+                "title": "Pull request 9",
+                "head": "loop/screen",
+                "base": "main",
+                "state": "merged",
+                "draft": false,
+                "merge_commit": "582ad65314c1203588a83741e46bef1cb1a589fb",
+                "on_main": true,
+                "checks": "success"
+              }
+            ],
+            "commits": [],
+            "branch": {
+              "name": "loop/screen",
+              "exists": false
+            },
+            "missing": [
+              "app's served commit: LOOP.md §3 says agents may not read app"
+            ]
+          }
+        },
+        {
+          "id": "service",
+          "title": "A concern that does one thing",
+          "path": "docs/loops/loop/service.md",
+          "contract": {
+            "needs": [],
+            "touches": [
+              "src/x/"
+            ],
+            "effects": [],
+            "ships_to": "staging",
+            "prs": [],
+            "parked": null
+          },
+          "claims": [
+            {
+              "id": "C1",
+              "text": "It works. Prove: a run, on staging.",
+              "struck": false,
+              "evidence": [
+                {
+                  "date": "2026-10-25",
+                  "verdict": "UNPROVEN",
+                  "rung": 1,
+                  "environment": "staging",
+                  "commit": "35af8a7",
+                  "text": "Not run: wiping the cache is a write to staging, which agents may not do. The owner can run it"
+                }
+              ],
+              "current_holds": false
+            }
+          ],
+          "state": "shipped",
+          "reason": "staging serves its work, and C1's latest verdict is UNPROVEN",
+          "next": "/loop-prove loop/service staging",
+          "inputs": {
+            "main": "582ad65314c1203588a83741e46bef1cb1a589fb",
+            "served": {
+              "environment": "staging",
+              "commit": "cf86d9f55a8ac4bbdb9f0b68226b1ad4c969fdc4",
+              "error": null,
+              "serves": true
+            },
+            "prs": [
+              {
+                "repository": "example/reports",
+                "number": 1,
+                "url": "https://github.com/example/reports/pull/1",
+                "title": "Pull request 1",
+                "head": "loop/service",
+                "base": "main",
+                "state": "merged",
+                "draft": false,
+                "merge_commit": "35af8a719df58497cd77ce6300901db8c0bc01a7",
+                "on_main": true,
+                "checks": "success"
+              }
+            ],
+            "commits": [],
+            "branch": {
+              "name": "loop/service",
+              "exists": false
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "queue": [
+    {
+      "id": "loop/notify/C1",
+      "kind": "proof",
+      "title": "notify's C1 needs a push key in staging's secret store",
+      "why": "C1's latest verdict is UNPROVEN on staging, and it waits on gate:secrets for a push key in staging's secret store",
+      "loop": "loop",
+      "concerns": [
+        "loop/notify"
+      ],
+      "unblocks": [
+        "loop/notify"
+      ],
+      "waits_on": "bea",
+      "visible_to": [],
+      "gate": "secrets",
+      "detail": {
+        "claim": "loop/notify/C1",
+        "environment": "staging",
+        "missing": "a push key in staging's secret store",
+        "supplied_by": "gate:secrets",
+        "command": "/loop-prove loop/notify staging"
+      }
+    },
+    {
+      "id": "loop/service/C1",
+      "kind": "proof",
+      "title": "service's C1 needs Not run: wiping the cache is a write to staging, which agents may not do. The owner can run it",
+      "why": "C1's latest verdict is UNPROVEN on staging, and its line names no one with `· needs <who>: <what>`, so it waits on the loop's owner",
+      "loop": "loop",
+      "concerns": [
+        "loop/service"
+      ],
+      "unblocks": [
+        "loop/service"
+      ],
+      "waits_on": "ana",
+      "visible_to": [],
+      "gate": null,
+      "detail": {
+        "claim": "loop/service/C1",
+        "environment": "staging",
+        "missing": "Not run: wiping the cache is a write to staging, which agents may not do. The owner can run it",
+        "supplied_by": "owner",
+        "command": "/loop-prove loop/service staging"
+      }
+    },
+    {
+      "id": "fact/app",
+      "kind": "fact",
+      "title": "Read what app serves",
+      "why": "app's served commit cannot be read by an agent (LOOP.md §3 says agents may not read app), and loop/screen rests on it",
+      "loop": "loop",
+      "concerns": [
+        "loop/screen"
+      ],
+      "unblocks": [
+        "loop/screen"
+      ],
+      "waits_on": "ana",
+      "visible_to": [],
+      "gate": null,
+      "detail": {
+        "fact": "app's served commit",
+        "environment": "app",
+        "error": "LOOP.md §3 says agents may not read app",
+        "supplied_by": "owner",
+        "next": "Read what app serves with the owner, then /loop-status again",
+        "command": "/loop-status loop"
+      }
+    },
+    {
+      "id": "stuck/loop/lost",
+      "kind": "stuck",
+      "title": "lost leads to no one",
+      "why": "lost is blocked, and no queue item, agent's step or need leads anywhere from it: Nothing is built yet, and loop/gone, which it needs, does not exist",
+      "loop": "loop",
+      "concerns": [
+        "loop/lost"
+      ],
+      "unblocks": [
+        "loop/lost"
+      ],
+      "waits_on": "ana",
+      "visible_to": [],
+      "gate": null,
+      "detail": {
+        "concern": "loop/lost",
+        "state": "blocked",
+        "reason": "Nothing is built yet, and loop/gone, which it needs, does not exist",
+        "next": "/loop-design loop/lost",
+        "command": "/loop-status loop/lost"
+      }
+    }
+  ],
+  "agents_can_start": [],
+  "drift": [
+    {
+      "where": "docs/loops/loop/service.md, Evidence, C1 on staging (2026-10-25)",
+      "finding": "its latest verdict is UNPROVEN, and the line does not end with `· needs <who>: <what>`, so it waits on the loop's owner; re-prove it naming who closes the gap (command-center/D75)",
+      "checked": "the line's text"
+    }
+  ],
+  "missing": [
+    {
+      "fact": "app's served commit",
+      "error": "LOOP.md §3 says agents may not read app"
+    },
+    {
+      "fact": "later's served commit",
+      "error": "LOOP.md §3 has no served-commit command for later (TODO(owner))"
+    }
+  ]
+}

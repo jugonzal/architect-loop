@@ -41,6 +41,8 @@ KEYS = ("merge", "deploy", "migration", "release", "store", "money", "spending",
         "infra", "prod-data", "send")
 # The gates every ship and review crosses whatever its effects say: they are not split out of a ship.
 MERGE, DEPLOY = "merge", "deploy"
+# What an UNPROVEN line's needs segment names instead of a login (command-center/D74, owner-queue D2).
+OWNER, AGENT, GATE_PREFIX = "owner", "agent", "gate:"
 
 LOGIN_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
@@ -196,8 +198,10 @@ class Book:
         owners = {self.loops[i]["owner"] for i in loop_ids if i in self.loops}
         return owners.pop() if len(owners) == 1 else self.project_owner
 
-    def address(self, item):
-        """Fill an item's gate (a ship's is already set, by split_ship), waits_on and visible_to."""
+    def address(self, item, who=None):
+        """Fill an item's gate (a ship's is already set, by split_ship), waits_on and visible_to. who is what an
+        UNPROVEN line's `· needs <who>: <what>` names (command-center/D74): a login, `owner` (the loop's owner) or
+        `gate:<key>` (that gate's holder); a key that is not a gate leaves the item with the loop's owner."""
         kind = item["kind"]
         if kind in ("review", "refused_pr"):
             item["gate"] = MERGE
@@ -205,9 +209,13 @@ class Book:
             item["gate"] = self.question_gate(item["detail"]["question"])
         elif kind != "ship":
             item["gate"] = None
+        if who and who.startswith(GATE_PREFIX):
+            key = who[len(GATE_PREFIX):]
+            item["gate"] = key if key in self.known else None
         loop_ids = [item["loop"]] if item["loop"] else list(dict.fromkeys(c.split("/")[0] for c in item["concerns"]))
         holder = self.holders.get(item["gate"]) if item["gate"] else None
-        item["waits_on"] = holder or self.owner(loop_ids)
+        person = who if who and who != OWNER and not who.startswith(GATE_PREFIX) and LOGIN_RE.match(who) else None
+        item["waits_on"] = person or holder or self.owner(loop_ids)
         visible = []
         for loop_id in loop_ids:
             for person in self.loops.get(loop_id, {}).get("members", []):

@@ -18,8 +18,8 @@ import type { QueueItem, QueueKind, StatusDocument } from '../../api/status';
 /** The kinds a person finishes from a card (command-center/D34), in the schema's order. */
 export const ACTIONABLE_KINDS = ['question', 'review', 'ship', 'record'] as const satisfies readonly QueueKind[];
 
-/** The kinds shown read-only, with the command to run (command-center/D34, D40). */
-export const READ_ONLY_KINDS = ['proof', 'contradiction', 'refused_pr'] as const satisfies readonly QueueKind[];
+/** The kinds shown read-only, with the command to run (command-center/D34, D40, D76, D77). */
+export const READ_ONLY_KINDS = ['proof', 'fact', 'stuck', 'contradiction', 'refused_pr'] as const satisfies readonly QueueKind[];
 
 /** A kind as a card's label names it. */
 export const KIND_LABELS: Record<QueueKind, string> = {
@@ -28,6 +28,8 @@ export const KIND_LABELS: Record<QueueKind, string> = {
   ship: 'Ship',
   record: 'Record',
   proof: 'Proof',
+  fact: 'Fact',
+  stuck: 'Stuck',
   contradiction: 'Contradiction',
   refused_pr: 'Refused PR',
 };

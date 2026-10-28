@@ -23,11 +23,11 @@ function withQueue(doc: StatusDocument, queue: QueueItem[]): StatusDocument {
   return { ...doc, queue };
 }
 
-describe('the kinds (command-center/D34)', () => {
-  it("has a card for exactly the schema's first four kinds and shows the other three read-only", () => {
+describe('the kinds (command-center/D34, D76, D77)', () => {
+  it("has a card for exactly the schema's first four kinds and shows the other five read-only", () => {
     const doc = loadStatusFixture('board');
     expect([...ACTIONABLE_KINDS]).toEqual(['question', 'review', 'ship', 'record']);
-    expect([...READ_ONLY_KINDS]).toEqual(['proof', 'contradiction', 'refused_pr']);
+    expect([...READ_ONLY_KINDS]).toEqual(['proof', 'fact', 'stuck', 'contradiction', 'refused_pr']);
     // Every kind the fixtures hold has a label, and the two lists cover every one of them.
     const kinds = new Set(doc.queue.map((item) => item.kind));
     for (const kind of kinds) {

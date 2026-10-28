@@ -505,6 +505,10 @@ class WorldTest(unittest.TestCase):
     def test_drift(self):
         self.assertEqual(sorted(d["where"] for d in self.doc["drift"]), self.expected["drift"])
 
+    def test_every_unfinished_concern_leads_to_someone(self):
+        """owner-queue C3, over every row of the table at once."""
+        self.assertEqual(leads_to_no_one(self.doc), [])
+
     def test_missing_facts(self):
         self.assertEqual([m["fact"] for m in self.doc["missing"]], self.expected["missing"])
 
@@ -637,9 +641,9 @@ class WorldTest(unittest.TestCase):
         self.assertIn("reports · 16 concerns · main %s" % self.world.main[:7], text)
         self.assertIn("staging serves %s" % self.world.short("staging-build"), text)
         self.assertRegex(text, r"(?m)^scheduler +merged +.+ +/loop-ship production$")
-        self.assertIn("Needs you (9), most unblocking first", text)
+        self.assertIn("Needs you (10), most unblocking first", text)
         self.assertIn("· waits on ben (gate: secrets)", text)
-        self.assertIn("Agents can start now (7)", text)
+        self.assertIn("Agents can start now (6)", text)
         self.assertIn("Record (2), on your yes", text)
         self.assertIn("search · backlog", text)
         one = ls.board(self.doc, "reports/scheduler")
@@ -1262,9 +1266,9 @@ class TableTest(unittest.TestCase):
         self.assertEqual(proof[0]["detail"]["missing"], "a real phone")
         self.assertEqual(proof[0]["detail"]["supplied_by"], "Ana")
         m.concern("loop/thing", concern_md(evidence=[
-            "- 2026-10-10 · C1 · UNPROVEN · rung 1 · staging @%s · the load run timed out; rerun it" % sha]))
+            "- 2026-10-10 · C1 · UNPROVEN · rung 1 · staging @%s · the load run timed out · needs agent: a rerun" % sha]))
         doc = self.derive(m)
-        self.assertFalse([i for i in doc["queue"] if i["kind"] == "proof"], "an agent can close this gap")
+        self.assertFalse([i for i in doc["queue"] if i["kind"] == "proof"], "an agent can close this gap (owner-queue D2)")
         self.assertEqual(doc["agents_can_start"], [
             {"concern": "loop/thing", "action": "prove", "command": "/loop-prove loop/thing staging"}])
 
@@ -1516,3 +1520,201 @@ class CommandLineTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# --- command-center/owner-queue: Needs you is never empty while unfinished work waits on a person ----------------
+
+OWNER_LOOP_MD = LOOP_MD.replace("## 3. Environments", """## 2. Gates
+
+- **Secrets** (key: secrets; holder: bea): creating, rotating, reading production values
+- **Deploy** (key: deploy; holder: ana): deploying to a shared environment
+
+## 3. Environments""").replace(
+    "| production | production |",
+    "| app | the app's builds | no | no | owner | `sh served.sh app` | |\n"
+    "| later | nowhere yet | yes | no | owner | TODO(owner) | |\n"
+    "| production | production |")
+
+
+def owner_only(missing):
+    """Whether a concern's missing fact is one only a person can supply (command-center/D76)."""
+    return any("may not read" in m or "TODO(owner)" in m for m in missing)
+
+
+def leads_to_no_one(doc):
+    """owner-queue C3: the unfinished concerns that lead to no queue item and to no step an agent can take alone. A
+    building concern's open PR holds it, an unknown one whose missing fact the next read may find is the next read's,
+    and a blocked one leads wherever its needs do."""
+    covered = {r for i in doc["queue"] for r in i["concerns"] + i["unblocks"]}
+    covered |= {a["concern"] for a in doc["agents_can_start"]}
+    found = {"%s/%s" % (l["id"], c["id"]): c for l in doc["loops"] if l["state"] != "parked" for c in l["concerns"]}
+    for ref, c in found.items():
+        if c["state"] in ("done", "parked", "building") or (
+                c["state"] == "unknown" and not owner_only(c["inputs"].get("missing", []))):
+            covered.add(ref)
+    changed = True
+    while changed:
+        changed = False
+        for ref, c in found.items():
+            if ref not in covered and c["state"] == "blocked" and any(
+                    ("%s/%s" % (ref.split("/")[0], n) if "/" not in n else n) in covered for n in c["contract"]["needs"]):
+                covered.add(ref)
+                changed = True
+    return sorted(ref for ref in found if ref not in covered)
+
+
+class OwnerQueueTest(unittest.TestCase):
+    """command-center/owner-queue:
+    - C1: an UNPROVEN line ending `· needs <who>: <what>` queues a proof item waiting on that person (a login, the
+      loop's owner for `owner`, a gate's holder for `gate:<key>`), and `agent` queues nothing (owner-queue D2). A
+      line without the segment waits on the loop's owner, with a drift line (D74, D75).
+    - C2: a row agents may not read, or whose command is TODO(owner), gives a `fact` item while an unfinished
+      concern's state rests on it, and none otherwise (D76).
+    - C3: every concern that is neither done nor parked leads to a queue item or to an agent's step; a proof whose
+      unproven claims all wait on a person leaves Agents can start; anything else gives a `stuck` item (D77)."""
+
+    def mini(self):
+        m = Mini()
+        m.files["LOOP.md"] = OWNER_LOOP_MD
+        m.loop("loop", front="owner: ana")
+        return m
+
+    def shipped(self, m, *lines, ref="loop/thing", claims=None, ships_to="staging"):
+        m.land(ref, len(m.merges) + 1)
+        m.serve("staging")
+        sha = m.main[:7]
+        m.concern(ref, concern_md(ships_to=ships_to, claims=claims,
+                                  evidence=[line.replace("@SHA", "@" + sha) for line in lines]))
+
+    def proofs(self, doc):
+        return {i["id"]: i for i in doc["queue"] if i["kind"] == "proof"}
+
+    # C1
+
+    def test_a_needs_segment_names_whom_the_proof_waits_on(self):
+        for who, waits_on, gate in (("cara", "cara", None), ("owner", "ana", None), ("gate:secrets", "bea", "secrets")):
+            with self.subTest(who=who):
+                m = self.mini()
+                self.shipped(m, "- 2026-10-10 · C1 · UNPROVEN · rung 1 · staging @SHA · no phone here · needs %s: "
+                                "a real phone" % who)
+                doc = m.derive(self)
+                item = self.proofs(doc)["loop/thing/C1"]
+                self.assertEqual((item["waits_on"], item["gate"]), (waits_on, gate))
+                self.assertEqual((item["detail"]["missing"], item["detail"]["supplied_by"]), ("a real phone", who))
+                self.assertNotIn("loop/thing", [a["concern"] for a in doc["agents_can_start"]],
+                                 "a proof waiting on a person is not an agent's to start")
+                self.assertFalse([d for d in doc["drift"] if "needs" in d["finding"]])
+
+    def test_needs_agent_queues_nothing(self):
+        m = self.mini()
+        self.shipped(m, "- 2026-10-10 · C1 · UNPROVEN · rung 1 · staging @SHA · it timed out · needs agent: a rerun")
+        doc = m.derive(self)
+        self.assertEqual(doc["queue"], [])
+        self.assertEqual([a["concern"] for a in doc["agents_can_start"]], ["loop/thing"])
+
+    def test_a_line_without_the_segment_waits_on_the_loops_owner_and_is_drift(self):
+        m = self.mini()
+        self.shipped(m, "- 2026-10-10 · C1 · UNPROVEN · rung 1 · staging @SHA · Not run: it is a write to staging, "
+                        "which agents may not do. The owner can run it")
+        doc = m.derive(self)
+        item = self.proofs(doc)["loop/thing/C1"]
+        self.assertEqual(item["waits_on"], "ana")
+        self.assertIn("The owner can run it", item["detail"]["missing"])
+        self.assertEqual(item["detail"]["supplied_by"], "owner")
+        drift = [d for d in doc["drift"] if "needs <who>" in d["finding"]]
+        self.assertEqual(len(drift), 1, doc["drift"])
+        self.assertIn("C1", drift[0]["where"])
+
+    def test_a_line_the_old_phrase_matched_keeps_its_person(self):
+        m = self.mini()
+        self.shipped(m, "- 2026-10-10 · C1 · UNPROVEN · rung 1 · staging @SHA · needs a real phone, which only Ana has")
+        item = self.proofs(m.derive(self))["loop/thing/C1"]
+        self.assertEqual((item["detail"]["missing"], item["detail"]["supplied_by"]), ("a real phone", "Ana"))
+        self.assertEqual(item["waits_on"], "ana", "Ana is a name, not a login, so the loop's owner is asked")
+
+    def test_a_proof_with_one_claim_an_agent_can_prove_stays_an_agents(self):
+        m = self.mini()
+        self.shipped(m, "- 2026-10-10 · C1 · UNPROVEN · rung 1 · staging @SHA · no phone · needs owner: a phone",
+                     claims=["- **C1** It works. Prove: a run, on staging.",
+                             "- **C2** It is fast. Prove: a run, on staging."])
+        doc = m.derive(self)
+        self.assertIn("loop/thing/C1", self.proofs(doc))
+        self.assertEqual([a["concern"] for a in doc["agents_can_start"]], ["loop/thing"], "C2 is an agent's to prove")
+
+    # C2
+
+    def test_an_unreadable_row_with_concerns_resting_on_it_is_a_fact_item(self):
+        m = self.mini()
+        m.land("loop/screen", 1)
+        m.concern("loop/screen", concern_md(ships_to="app"))
+        m.land("loop/menu", 2)
+        m.concern("loop/menu", concern_md(ships_to="app"))
+        doc = m.derive(self)
+        facts = [i for i in doc["queue"] if i["kind"] == "fact"]
+        self.assertEqual([i["id"] for i in facts], ["fact/app"])
+        fact = facts[0]
+        self.assertEqual(fact["concerns"], ["loop/menu", "loop/screen"])
+        self.assertEqual(fact["waits_on"], "ana")
+        self.assertEqual(fact["detail"]["environment"], "app")
+        self.assertIn("may not read app", fact["detail"]["error"])
+        self.assertEqual(fact["detail"]["command"], "/loop-status loop")
+        self.assertFalse([i for i in doc["queue"] if i["kind"] == "stuck"], "the fact item leads them to someone")
+
+    def test_a_todo_row_gives_a_fact_item_only_while_a_concern_rests_on_it(self):
+        m = self.mini()
+        m.concern("loop/thing", concern_md())
+        doc = m.derive(self)
+        self.assertFalse([i for i in doc["queue"] if i["kind"] == "fact"], "no concern rests on app or later")
+        m.land("loop/later", 1)
+        m.concern("loop/later", concern_md(ships_to="later"))
+        facts = [i for i in m.derive(self)["queue"] if i["kind"] == "fact"]
+        self.assertEqual([(i["id"], i["concerns"]) for i in facts], [("fact/later", ["loop/later"])])
+        self.assertIn("TODO(owner)", facts[0]["detail"]["error"])
+
+    # C3
+
+    def test_a_concern_that_leads_to_no_one_is_a_stuck_item(self):
+        """Merged work whose ships-to names no LOOP.md §3 row: no agent can read or add the row, and no row means no
+        fact item, so before D77 nothing on the board led anywhere from it."""
+        m = self.mini()
+        m.land("loop/thing", 1)
+        m.concern("loop/thing", concern_md(ships_to="nowhere"))
+        doc = m.derive(self)
+        thing = concern(doc, "loop/thing")
+        self.assertEqual(thing["state"], "unknown")
+        stuck = [i for i in doc["queue"] if i["kind"] == "stuck"]
+        self.assertEqual([(i["id"], i["concerns"], i["waits_on"]) for i in stuck],
+                         [("stuck/loop/thing", ["loop/thing"], "ana")])
+        self.assertEqual(stuck[0]["detail"]["state"], "unknown")
+        self.assertEqual(stuck[0]["detail"]["reason"], thing["reason"])
+        self.assertEqual(stuck[0]["detail"]["next"], thing["next"])
+        self.assertEqual(stuck[0]["detail"]["command"], "/loop-status loop/thing")
+        self.assertEqual(leads_to_no_one(doc), [])
+
+    def test_a_concern_with_an_agents_step_is_not_stuck(self):
+        m = self.mini()
+        m.loop("loop", front="owner: ana", decisions=[
+            "| D1 | Use the queue. | Ana, 2026-10-02 | Supersedes D2 |",
+            "| ~~D2~~ | ~~Use a table.~~ superseded by D1, 2026-10-02 | Ana, 2026-10-01 | |"])
+        m.concern("loop/thing", concern_md(needs="[D2]"))
+        doc = m.derive(self)
+        self.assertEqual(doc["agents_can_start"], [
+            {"concern": "loop/thing", "action": "design", "command": "/loop-design loop/thing"}])
+        self.assertEqual(doc["queue"], [])
+
+    def test_todays_case_puts_every_owner_gap_in_needs_you(self):
+        """The 2026-10-28 board: prose UNPROVEN lines naming the owner, an unreadable row with concerns resting on
+        it, and TODO(owner) rows nothing ships to. Needs you was empty; now each gap is an item for a person."""
+        m = self.mini()
+        self.shipped(m, "- 2026-10-25 · C1 · UNPROVEN · rung 1 · staging @SHA · Not run: wiping the cache is a write "
+                        "to staging, which agents may not do. The owner can run it", ref="loop/service")
+        self.shipped(m, "- 2026-10-25 · C1 · UNPROVEN · rung 1 · staging @SHA · Not run: it needs a registered device",
+                     ref="loop/notify")
+        m.land("loop/screen", 9)
+        m.concern("loop/screen", concern_md(ships_to="app"))
+        doc = m.derive(self)
+        self.assertEqual(sorted(i["id"] for i in doc["queue"]),
+                         ["fact/app", "loop/notify/C1", "loop/service/C1"])
+        self.assertTrue(all(i["waits_on"] == "ana" for i in doc["queue"]))
+        self.assertEqual(doc["agents_can_start"], [])
+        self.assertEqual(leads_to_no_one(doc), [])

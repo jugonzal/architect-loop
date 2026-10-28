@@ -248,6 +248,19 @@ class WaitsOnTest(unittest.TestCase):
                 self.assertEqual(ship["waits_on"], expected)
 
 
+    def test_a_proof_waits_on_whom_its_needs_segment_names(self):
+        """command-center/D74: a login, owner, or a gate's holder; a key §2 does not define leaves it with the owner."""
+        for who, expected in (("dan", ("dan", None)), ("owner", ("ben", None)), ("gate:secrets", ("carla", "secrets")),
+                              ("gate:nothing", ("ben", None))):
+            m = world(front="owner: ben")
+            m.land("loop/thing", 1)
+            m.serve("staging")
+            m.concern("loop/thing", concern_md(evidence=[
+                "- 2026-10-10 · C1 · UNPROVEN · rung 1 · staging @%s · no key here · needs %s: a key" % (m.main[:7], who)]))
+            item = items(m.derive(self))["loop/thing/C1"]
+            with self.subTest(who=who):
+                self.assertEqual((item["waits_on"], item["gate"]), expected)
+
 class VisibleToTest(unittest.TestCase):
     """C2: the loop's members see every item of their loop, and the board says who each item waits on (D10)."""
 

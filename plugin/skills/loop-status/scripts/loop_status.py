@@ -85,7 +85,7 @@ CONCERN_STATES = ("parked", "contradicted", "open", "blocked", "ready", "buildin
                   "done", "unknown")
 LOOP_STATES = ("parked", "open", "backlog", "done", "active", "unknown")
 # Step 6's kinds of queue item, then the Record step's, as the queue lists them among items that unblock as much.
-QUEUE_ORDER = ("question", "review", "ship", "proof", "contradiction", "refused_pr", "record")
+QUEUE_ORDER = ("question", "review", "ship", "proof", "fact", "stuck", "contradiction", "refused_pr", "record")
 
 PR_FIELDS = "number,title,headRefName,baseRefName,state,isDraft,mergeCommit,body,url,statusCheckRollup,files"
 SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
@@ -110,6 +110,10 @@ CONTRADICTS_REF_RE = re.compile(r"\bcontradicts ([A-Za-z0-9][A-Za-z0-9._-]*/D\d+
 NEEDS_ONLY_RE = re.compile(r"^(?:it )?needs (?P<missing>.+?),? (?:which|that) only (?P<who>.+?) "
                            r"(?:can|could|has|have|holds?)\b", re.I)
 ONLY_RE = re.compile(r"\bonly (?P<who>[^,;.]+?) (?:can|could|has|have|holds?)\b", re.I)
+# The end of an UNPROVEN line's text that says who closes its gap (command-center/D74, owner-queue D2): a login,
+# `owner`, `gate:<key>` or `agent`.
+NEEDS_SEGMENT_RE = re.compile(r"(?:^|\s·\s+)needs (?P<who>gate:[a-z][a-z0-9-]*|[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9]))"
+                              r"{0,38}): (?P<what>\S.*?)\s*$")
 PROOF_HEADING_RE = re.compile(r"^#{2,3}\s+How it was proven", re.I)
 PR_REF_RE = re.compile(r"^(?:([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+))?#?(\d+)$")
 REPO_PATH_RE = re.compile(r"^([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?):(.+)$")
@@ -1483,11 +1487,16 @@ class Derivation:
             "environments": [{"name": e["name"], "served": e["served"], "error": e["error"]}
                              for e in self.p.environments],
             "loops": [self.loop_doc(loop) for loop in self.p.loops],
-            "queue": self.queue(),
-            "agents_can_start": self.agents(),
+        }
+        queue = self.queue()
+        agents = self.agents()
+        queue = self.sort_queue(queue + self.stuck(queue, agents))
+        doc.update({
+            "queue": queue,
+            "agents_can_start": agents,
             "drift": self.drift(),
             "missing": self.missing(),
-        }
+        })
         return doc
 
     # Step 6: what needs a person.
@@ -1569,26 +1578,60 @@ class Derivation:
                                  {"environment": env, "manual_steps": steps})
                 item["gate"] = gate
                 items.append(item)
-        # UNPROVEN claims that need something only a person has.
+        # UNPROVEN claims that wait on a person (command-center/D74, D75; owner-queue D2).
+        whom = {}
+        self.waiting, self.unnamed = set(), []
         for c in live:
             for claim in c.live_claims():
                 lines = c.lines(claim["id"])
                 if not lines or lines[-1]["verdict"] != "UNPROVEN":
                     continue
                 line = lines[-1]
-                m = NEEDS_ONLY_RE.search(line["text"])
-                if m:
-                    missing, who = m.group("missing").strip(), m.group("who").strip()
-                else:
-                    m = ONLY_RE.search(line["text"])
-                    if not m:
+                segment = NEEDS_SEGMENT_RE.search(line["text"])
+                id_ = "%s/%s" % (c.ref, claim["id"])
+                if segment:
+                    who, missing = segment.group("who"), segment.group("what")
+                    if who == addressing.AGENT:
                         continue
-                    missing, who = line["text"], m.group("who").strip()
-                items.append(self.item("%s/%s" % (c.ref, claim["id"]), "proof", "%s's %s needs %s" % (
-                    c.id, claim["id"], missing), "%s's latest verdict is UNPROVEN on %s: only %s can supply %s" % (
-                    claim["id"], line["environment"], who, missing), c.loop.id, [c.ref], self.unblocks([c.ref]),
-                    {"claim": "%s/%s" % (c.ref, claim["id"]), "environment": line["environment"], "missing": missing,
-                     "supplied_by": who, "command": "/loop-prove %s %s" % (c.ref, line["environment"])}))
+                    whom[id_] = who
+                    why = "%s's latest verdict is UNPROVEN on %s, and it waits on %s for %s" % (
+                        claim["id"], line["environment"], who, missing)
+                else:
+                    # A line written before D74: a person the old phrases name, else the loop's owner (D75).
+                    self.unnamed.append((c, claim, line))
+                    m = NEEDS_ONLY_RE.search(line["text"]) or ONLY_RE.search(line["text"])
+                    if m:
+                        who = m.group("who").strip()
+                        missing = m.group("missing").strip() if "missing" in m.groupdict() else line["text"]
+                        why = "%s's latest verdict is UNPROVEN on %s: only %s can supply %s" % (
+                            claim["id"], line["environment"], who, missing)
+                    else:
+                        who, missing = addressing.OWNER, line["text"]
+                        why = ("%s's latest verdict is UNPROVEN on %s, and its line names no one with `· needs "
+                               "<who>: <what>`, so it waits on the loop's owner" % (claim["id"], line["environment"]))
+                self.waiting.add((c.ref, claim["id"]))
+                items.append(self.item(id_, "proof", "%s's %s needs %s" % (c.id, claim["id"], missing), why,
+                    c.loop.id, [c.ref], self.unblocks([c.ref]),
+                    {"claim": id_, "environment": line["environment"], "missing": missing, "supplied_by": who,
+                     "command": "/loop-prove %s %s" % (c.ref, line["environment"])}))
+        # Facts only a person can read: a LOOP.md §3 row that agents may not read or that has no command, while an
+        # unfinished concern's state rests on it (command-center/D76).
+        for env in self.p.environments:
+            if not (env["error"] or "").startswith("LOOP.md §3"):
+                continue
+            fact = "%s's served commit" % env["name"]
+            resting = [c for c in live if c.state == "unknown" and any(m.startswith(fact) for m in c.missing)]
+            if not resting:
+                continue
+            loops = sorted({c.loop.id for c in resting})
+            loop = loops[0] if len(loops) == 1 else None
+            refs = sorted(c.ref for c in resting)
+            items.append(self.item("fact/%s" % env["name"], "fact", "Read what %s serves" % env["name"],
+                "%s cannot be read by an agent (%s), and %s %s on it" % (
+                    fact, env["error"], ", ".join(refs), "rests" if len(refs) == 1 else "rest"),
+                loop, refs, self.unblocks(refs),
+                {"fact": fact, "environment": env["name"], "error": env["error"], "supplied_by": addressing.OWNER,
+                 "next": resting[0].next, "command": "/loop-status %s" % loop if loop else "/loop-status"}))
         # Contradictions that need a call.
         for c in live:
             if c.state != "contradicted":
@@ -1634,8 +1677,46 @@ class Derivation:
                                            ", ".join(c.id for c in loop.concerns),
                                            "every goal has a current HOLDS" if loop.goals else "it has no goals")}))
         for item in items:
-            self.book.address(item)
-        items.sort(key=lambda i: (-len(i["unblocks"]), QUEUE_ORDER.index(i["kind"]), i["id"]))
+            self.book.address(item, whom.get(item["id"]) if item["kind"] == "proof" else None)
+        return self.sort_queue(items)
+
+    @staticmethod
+    def sort_queue(items):
+        return sorted(items, key=lambda i: (-len(i["unblocks"]), QUEUE_ORDER.index(i["kind"]), i["id"]))
+
+    def leads_by_itself(self, c):
+        """Whether c needs no queue item to move: an open PR holds it, or it is unknown on a fact the next read may
+        find, rather than one only a person can read (command-center/D76, D77)."""
+        if c.state in ("done", "parked", "building"):
+            return True
+        return c.state == "unknown" and not any("LOOP.md §3" in m for m in c.missing)
+
+    def stuck(self, queue, agents):
+        """A stuck item for each concern that is neither done nor parked and leads to no one: no queue item, no
+        step an agent can take alone, and no need that leads anywhere (command-center/D77)."""
+        covered = {r for i in queue for r in i["concerns"] + i["unblocks"]} | {a["concern"] for a in agents}
+        live = [c for loop in self.p.loops if loop.state != "parked" for c in loop.concerns]
+        covered |= {c.ref for c in live if self.leads_by_itself(c)}
+        changed = True
+        while changed:
+            changed = False
+            for c in live:
+                if c.ref in covered or c.state != "blocked":
+                    continue
+                needs = [k[1] for k in (self.p.resolve_need(c, n) for n in c.needs) if k[0] == "concern"]
+                if any(n in covered for n in needs):
+                    covered.add(c.ref)
+                    changed = True
+        items = []
+        for c in live:
+            if c.ref in covered:
+                continue
+            item = self.item("stuck/%s" % c.ref, "stuck", "%s leads to no one" % c.id,
+                             "%s is %s, and no queue item, agent's step or need leads anywhere from it: %s" % (
+                                 c.id, c.state, c.reason), c.loop.id, [c.ref], self.unblocks([c.ref]),
+                             {"concern": c.ref, "state": c.state, "reason": c.reason, "next": c.next,
+                              "command": "/loop-status %s" % c.ref})
+            items.append(self.book.address(item))
         return items
 
     def record_text(self, c):
@@ -1649,6 +1730,15 @@ class Derivation:
 
     # Step 7.
 
+    def waits_on_people(self, c):
+        """Whether every claim c still has to prove waits on a person, so proving it is not an agent's to start
+        (command-center/D77): some claim's proof item waits on someone, and each other claim holds."""
+        waiting = getattr(self, "waiting", set())
+        claims = c.live_claims()
+        if not any((c.ref, cl["id"]) in waiting for cl in claims):
+            return False
+        return all((c.ref, cl["id"]) in waiting or self.current_holds(c, cl) for cl in claims)
+
     def agents(self):
         build, prove, design = [], [], []
         for loop in self.p.loops:
@@ -1657,7 +1747,7 @@ class Derivation:
             for c in loop.concerns:
                 if c.state == "ready":
                     build.append({"concern": c.ref, "action": "build", "command": "/loop-build %s" % c.ref})
-                elif c.state in ("shipped", "stale"):
+                elif c.state in ("shipped", "stale") and not self.waits_on_people(c):
                     prove.append({"concern": c.ref, "action": "prove",
                                   "command": "/loop-prove %s %s" % (c.ref, c.ships_to)})
                 elif c.state == "open" and c.open_by_contract:
@@ -1670,6 +1760,8 @@ class Derivation:
                 if c.state != "blocked":
                     continue
                 for entry in c.prove_needs:
+                    if self.waits_on_people(self.p.by_ref[entry["concern"]]):
+                        continue
                     if not any(a["command"] == entry["command"] for a in prove):
                         prove.append({"concern": entry["concern"], "action": "prove", "command": entry["command"]})
         return build + prove + design
@@ -1691,6 +1783,12 @@ class Derivation:
 
     def drift(self):
         out = []
+        for c, claim, line in getattr(self, "unnamed", []):
+            out.append({"where": "%s, Evidence, %s on %s (%s)" % (c.path, claim["id"], line["environment"], line["date"]),
+                        "finding": "its latest verdict is UNPROVEN, and the line does not end with `· needs <who>: "
+                                   "<what>`, so it waits on the loop's owner; re-prove it naming who closes the gap "
+                                   "(command-center/D75)",
+                        "checked": "the line's text"})
         unmerged = ("open", "blocked", "ready", "building")
         candidates = [c for loop in self.p.loops if loop.state != "parked" for c in loop.concerns
                       if c.state in unmerged]

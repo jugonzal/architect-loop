@@ -32,6 +32,10 @@ export function itemSummary(item: QueueItem): string {
       return item.detail.path;
     case 'proof':
       return `${item.detail.claim} on ${item.detail.environment} needs ${item.detail.missing}`;
+    case 'fact':
+      return `${item.detail.fact} · ${plural(item.concerns.length, 'concern waits', 'concerns wait')}`;
+    case 'stuck':
+      return `${item.detail.concern} is ${item.detail.state}`;
     case 'contradiction':
       return `${item.detail.claim}: ${item.detail.evidence.verdict} on ${item.detail.evidence.environment}`;
     case 'refused_pr':

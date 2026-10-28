@@ -41,6 +41,7 @@
     "search/indexer": "ready"
   },
   "queue": [
+    {"id": "fact/sandbox", "kind": "fact", "unblocks": ["inbox/digest", "reports/audit-trail"], "gate": null, "waits_on": "ana", "visible_to": ["ana", "carla"]},
     {"id": "reports/worker/C2", "kind": "contradiction", "unblocks": ["reports/worker", "reports/notifier"], "gate": null, "waits_on": "ben", "visible_to": ["ana", "carla"]},
     {"id": "reports/dashboard/Q1", "kind": "question", "unblocks": ["reports/dashboard"], "gate": null, "waits_on": "ben", "visible_to": ["ana", "carla"]},
     {"id": "example/reports#5", "kind": "review", "unblocks": ["reports/retries"], "gate": "merge", "waits_on": "ben", "visible_to": ["ana", "carla"]},
@@ -59,12 +60,12 @@
     {"concern": "search/indexer", "action": "build", "command": "/loop-build search/indexer"},
     {"concern": "reports/legacy", "action": "prove", "command": "/loop-prove reports/legacy main"},
     {"concern": "reports/metrics", "action": "prove", "command": "/loop-prove reports/metrics staging"},
-    {"concern": "reports/queue", "action": "prove", "command": "/loop-prove reports/queue staging"},
     {"concern": "reports/ranking", "action": "design", "command": "/loop-design reports/ranking"}
   ],
   "drift": [
     "LOOP.md, §2",
     "docs/loops/reports/dashboard.md and docs/loops/reports/exporter.md, touches",
+    "docs/loops/reports/queue.md, Evidence, C2 on staging (2026-10-16)",
     "docs/loops/reports/retries.md, needs",
     "docs/loops/reports/retries.md, since reports/retries started",
     "example/reports#3, linked to reports/worker"
