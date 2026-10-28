@@ -18,7 +18,13 @@ HOOK = """#!/bin/sh
 # Installed by the architect-loop runner in this session's clone (session-runner D4): every commit names its
 # sponsor, and a /loop-build session's commits name their concern too (command-center/D45).
 # `git commit --no-verify` skips this hook; the trailers check fails such a commit.
-exec git interpret-trailers --in-place --if-exists doNothing {trailers} "$1"
+{strip}exec git interpret-trailers --in-place --if-exists doNothing {trailers} "$1"
+"""
+
+# pr-signing C2 (command-center/D73): any other session's commits name no concern, even one the session wrote. Only a
+# line that links a concern the way loop-status reads it goes: `Concern: <loop>/<concern>`, and nothing after it.
+STRIP_CONCERN = """grep -Eiv '^concern:[[:space:]]*[^[:space:]]+[[:space:]]*$' "$1" > "$1.runner" || true
+cat "$1.runner" > "$1" && rm -f "$1.runner"
 """
 
 
@@ -92,7 +98,8 @@ class Workspace:
         arguments = " ".join(f"--trailer {shlex.quote(f'{key}: {value}')}" for key, value in trailers_for(session))
         path = os.path.join(hooks, "commit-msg")
         with open(path, "w") as f:
-            f.write(HOOK.format(trailers=arguments))
+            f.write(HOOK.format(trailers=arguments,
+                                strip="" if session.skill in CONCERN_TRAILER_SKILLS else STRIP_CONCERN))
         os.chmod(path, 0o755)
         # The clone's own config names its hooks, so a user-level core.hooksPath cannot send them elsewhere.
         self._git(clone, "config", "core.hooksPath", hooks)

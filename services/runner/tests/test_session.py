@@ -423,6 +423,53 @@ class PullRequestTrailerTest(JobTest):
                 self.assertEqual([line for line in lines if line.startswith("Concern:")],
                                  [f"Concern: {CONCERN}"] if skill == "loop-build" else [])
 
+    # pr-signing C1 (runner-dispatch D1): every pull request from a pushed branch, whatever its state.
+
+    def test_a_pull_request_the_session_merged_before_it_ended_is_signed_and_listed(self):
+        self.workspace.pushed = ["docs/command-center-proof-1"]
+        self.github.open_pr(41, "docs/command-center-proof-1", body="Evidence lines only.", state="closed")
+        ended = self.run_job(self.claimed(skill="loop-prove", sponsor="ana"), [(0, result())])
+        self.assertEqual(self.github.bodies[41], "Evidence lines only.\n\nSponsored-by: ana")
+        self.assertEqual(ended.pull_requests, [{"number": 41, "url": f"https://github.com/{PROJECT}/pull/41",
+                                                "head": "docs/command-center-proof-1"}])
+
+    def test_an_earlier_sessions_closed_pull_request_on_the_same_branch_is_left_alone(self):
+        self.workspace.pushed = [CONCERN]
+        self.github.open_pr(42, CONCERN, body="An earlier build.", state="closed", created_at="2026-10-19T09:00:00Z")
+        self.github.open_pr(43, CONCERN, body="This build.", state="closed")
+        ended = self.run_job(self.claimed(sponsor="ana"), [(0, result())])
+        self.assertNotIn(42, self.github.bodies)
+        self.assertEqual([p["number"] for p in ended.pull_requests], [43])
+
+    def test_an_open_pull_request_from_before_the_session_is_still_signed(self):
+        self.workspace.pushed = [CONCERN]
+        self.github.open_pr(44, CONCERN, body="Resumed.", created_at="2026-10-19T09:00:00Z")
+        ended = self.run_job(self.claimed(sponsor="ana"), [(0, result())])
+        self.assertIn("Sponsored-by: ana", self.github.bodies[44].splitlines())
+        self.assertEqual([p["number"] for p in ended.pull_requests], [44])
+
+    # pr-signing C2 (command-center/D73): only a build's pull requests name a concern, even one its session wrote.
+
+    def test_a_concern_line_a_non_build_session_wrote_is_removed_from_its_pull_request(self):
+        report = "```text\nVerdict:  HOLDS\nConcern:  command-center/x, C1\n```"
+        for n, skill in enumerate(("loop-prove", "loop-design", "loop-status"), 1):
+            with self.subTest(skill=skill):
+                self.setUp()
+                self.workspace.pushed = [f"docs/x-{n}"]
+                self.github.open_pr(50 + n, f"docs/x-{n}", body=f"Text\n\n{report}\n\nConcern: {CONCERN}\n",
+                                    state="closed")
+                self.run_job(self.claimed(skill=skill, sponsor="ana"), [(0, result())])
+                lines = self.github.bodies[50 + n].splitlines()
+                self.assertNotIn(f"Concern: {CONCERN}", lines)
+                self.assertIn("Concern:  command-center/x, C1", lines, "a report's line links nothing, so it stays")
+                self.assertIn("Sponsored-by: ana", lines)
+
+    def test_a_build_sessions_own_concern_line_is_kept(self):
+        self.workspace.pushed = [CONCERN]
+        self.github.open_pr(60, CONCERN, body=f"Text\n\nConcern: {CONCERN}\n")
+        self.run_job(self.claimed(sponsor="ana"), [(0, result())])
+        self.assertEqual(self.github.bodies[60].splitlines()[-2:], [f"Concern: {CONCERN}", "Sponsored-by: ana"])
+
 
 class FinalMessageTest(JobTest):
     """runner-dispatch C3 (app-inbox D1): the job keeps the session's last assistant message with how it ended, and
@@ -503,6 +550,16 @@ class WithTrailersTest(unittest.TestCase):
 
     def test_without_a_concern_a_body_with_its_sponsor_is_left_alone(self):
         self.assertIsNone(with_trailers("Text\n\nSponsored-by: ana", None, "ana"))
+
+    def test_without_a_concern_a_concern_line_is_removed(self):
+        """pr-signing C2: a session that is not a build names no concern, even one it wrote (command-center/D73)."""
+        self.assertEqual(with_trailers("Text\n\nConcern: loop/x\nSponsored-by: ana", None, "ana"),
+                         "Text\n\nSponsored-by: ana")
+        self.assertEqual(with_trailers("Text\n\nconcern: loop/x", None, "ana"), "Text\n\nSponsored-by: ana")
+
+    def test_a_line_that_does_not_link_a_concern_is_not_a_trailer(self):
+        body = "Concern:  loop/x, C1 (a report's line)\n\nSponsored-by: ana"
+        self.assertIsNone(with_trailers(body, None, "ana"))
 
 
 if __name__ == "__main__":

@@ -39,7 +39,7 @@ class GitHub(Protocol):
     def loop_exists(self, loop: str) -> bool: ...
     def environments(self) -> list: ...
     def open_pull_requests(self) -> list: ...
-    def pull_requests_for_heads(self, heads) -> list: ...
+    def pull_requests_for_heads(self, heads, state: str = "open") -> list: ...
     def set_pull_request_body(self, number: int, body: str) -> None: ...
     def installation_token(self, permissions: dict) -> str: ...
     def bot_user_id(self) -> int: ...
@@ -200,7 +200,8 @@ class RestGitHub:
                                           permissions=permissions)
             if status != 200:
                 raise GitHubError(f"listing pull requests answered {status}")
-            found += [{"number": p["number"], "url": p["html_url"], "head": p["head"]["ref"], "body": p.get("body") or ""}
+            found += [{"number": p["number"], "url": p["html_url"], "head": p["head"]["ref"], "body": p.get("body") or "",
+                       "state": p.get("state", "open"), "created_at": p.get("created_at")}
                       for p in answer]
             if len(answer) < 100:
                 return found
@@ -209,10 +210,12 @@ class RestGitHub:
     def open_pull_requests(self):
         return self._pulls("state=open")
 
-    def pull_requests_for_heads(self, heads):
+    def pull_requests_for_heads(self, heads, state="open"):
+        """The pull requests from these branches: open ones by default (narration), or with state="all" also the
+        merged and closed ones, which GitHub lists as "closed" (pr-signing C1)."""
         found = []
         for head in heads:
-            found += self._pulls(f"state=open&head={self.owner}:{urllib.parse.quote(head)}",
+            found += self._pulls(f"state={state}&head={self.owner}:{urllib.parse.quote(head)}",
                                  permissions=JOB_PERMISSIONS)
         return found
 
