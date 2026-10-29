@@ -77,9 +77,8 @@ Standing permissions the owner grants on purpose. Anything not listed here is no
 | staging/runner | Cloud Run service `runner`, us-east1, staging's GCP project `loops-512401` | yes | no | owner: `sh scripts/gcp/deploy.sh runner staging <sha>` | `sh scripts/gcp/served.sh https://runner-665570365697.us-east1.run.app/version` | `sh scripts/gcp/served.sh https://runner-665570365697.us-east1.run.app/version <sha>` |
 | staging/threads | Cloud Run service `threads`, us-east1, staging's GCP project `loops-512401` | yes | no | owner: `sh scripts/gcp/deploy.sh threads staging <sha>` | `sh scripts/gcp/served.sh https://threads-665570365697.us-east1.run.app/version` | `sh scripts/gcp/served.sh https://threads-665570365697.us-east1.run.app/version <sha>` |
 | staging/notify | Cloud Run service `notify`, us-east1, staging's GCP project `loops-512401` | yes | no | owner: `sh scripts/gcp/deploy.sh notify staging <sha>` | `sh scripts/gcp/served.sh https://notify-665570365697.us-east1.run.app/version` | `sh scripts/gcp/served.sh https://notify-665570365697.us-east1.run.app/version <sha>` |
-| staging/app | EAS builds of profile `staging` in `app/eas.json`, installed from TestFlight and Google Play internal testing; they use staging's services | TODO(owner): yes, until agents can read EAS builds, which needs an Expo login or `EXPO_TOKEN` | no | owner: from a clean checkout of a commit on `origin/main`, `cd app && eas build --profile staging --platform all`, then `eas submit --profile staging --platform all --latest` | `cd app && eas build:list --build-profile staging --status finished --limit 50 --json --non-interactive \| node src/shell/release/served.js staging` | the same command, with `<sha>` after `served.js staging` |
-| staging/app-android | EAS builds of profile `staging` in `app/eas.json` for Android, installed from Google Play internal testing; they use staging's services | TODO(owner): yes, once staging/status serves this row's URL (command-center/D79) | no | owner: from a clean checkout of a commit on `origin/main`, `cd app && eas build --profile staging --platform android`, then `eas submit --profile staging --platform android --latest` | TODO(owner): `sh scripts/gcp/served.sh https://status-665570365697.us-east1.run.app/apps/staging/android/version` | `sh scripts/gcp/served.sh https://status-665570365697.us-east1.run.app/apps/staging/android/version <sha>` |
-| staging/app-ios | EAS builds of profile `staging` in `app/eas.json` for iOS, installed from TestFlight; they use staging's services | TODO(owner): yes, once staging/status serves this row's URL (command-center/D79) | no | owner: from a clean checkout of a commit on `origin/main`, `cd app && eas build --profile staging --platform ios`, then `eas submit --profile staging --platform ios --latest` | TODO(owner): `sh scripts/gcp/served.sh https://status-665570365697.us-east1.run.app/apps/staging/ios/version` | `sh scripts/gcp/served.sh https://status-665570365697.us-east1.run.app/apps/staging/ios/version <sha>` |
+| staging/app-android | EAS builds of profile `staging` in `app/eas.json` for Android, installed from Google Play internal testing; they use staging's services | yes: the status service's `/apps/staging/<platform>/version` needs no credentials (command-center/D79) | no | owner: from a clean checkout of a commit on `origin/main`, `cd app && eas build --profile staging --platform android`, then `eas submit --profile staging --platform android --latest` | `sh scripts/gcp/served.sh https://status-665570365697.us-east1.run.app/apps/staging/android/version` | `sh scripts/gcp/served.sh https://status-665570365697.us-east1.run.app/apps/staging/android/version <sha>` |
+| staging/app-ios | EAS builds of profile `staging` in `app/eas.json` for iOS, installed from TestFlight; they use staging's services | yes: the status service's `/apps/staging/<platform>/version` needs no credentials (command-center/D79) | no | owner: from a clean checkout of a commit on `origin/main`, `cd app && eas build --profile staging --platform ios`, then `eas submit --profile staging --platform ios --latest` | `sh scripts/gcp/served.sh https://status-665570365697.us-east1.run.app/apps/staging/ios/version` | `sh scripts/gcp/served.sh https://status-665570365697.us-east1.run.app/apps/staging/ios/version <sha>` |
 | production/status | Cloud Run service `status`, us-east1, production's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh status production <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh production` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
 | production/runner | Cloud Run service `runner`, us-east1, production's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh runner production <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh production` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
 | production/threads | Cloud Run service `threads`, us-east1, production's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh threads production <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh production` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
@@ -112,21 +111,20 @@ bootstrap, which prints each row's command; until then the rows say TODO(owner) 
 rows hold the commands its bootstrap printed on 2026-10-22 (project `loops-512401`, number 665570365697); production's
 wait for its bootstrap. A service not deployed yet answers 404 and reads as unknown too, which is true.
 
-The app has one row per channel, `staging/app` and `production/app`, each named after the EAS build profile in
-`app/eas.json` that makes its builds (command-center/D43). EAS records the commit each build was made from (its
-`gitCommitHash`, the `git rev-parse HEAD` where `eas build` ran), and `app/eas.json` sets `cli.requireCommit`, so
-EAS refuses to build uncommitted work and that commit describes the build. A row's command prints the commit that
-the channel's latest finished iOS and Android builds were both made from; while they differ, or one platform has
-no build yet, it fails and the channel reads as unknown. Reading EAS's build list needs an Expo login or
-`EXPO_TOKEN`, and the rows have no URL for the status service to GET (command-center/D9), so until that changes
-agents cannot read these rows and they read as unknown (TODO(owner)). The latest finished build is taken to be
-the one testers get, so build a profile only to submit it.
-
-Staging also has one row per platform, `staging/app-android` and `staging/app-ios` (command-center/D79). Each serves
-the commit its own platform's latest finished staging build was made from, which the status service answers at
-`/apps/staging/<platform>/version` with an Expo robot token (`app-served`), so an Android build alone makes its row
-readable. Their served-commit commands stay TODO(owner) until staging/status serves that route. Then the owner makes
-them readable and removes `staging/app`, once the app's concerns ship to `staging/app-android` (command-center/D80).
+Staging's app has one row per platform, `staging/app-android` and `staging/app-ios` (command-center/D79), and
+production's has one row, `production/app`, until production's loop splits it the same way. Each is named after the
+EAS build profile in `app/eas.json` that makes its builds (command-center/D43). EAS records the commit each build
+was made from (its `gitCommitHash`, the `git rev-parse HEAD` where `eas build` ran), and `app/eas.json` sets
+`cli.requireCommit`, so EAS refuses to build uncommitted work and that commit describes the build. Build from a
+clean checkout of a commit on `origin/main`: a build made anywhere else serves a commit the status service cannot
+find. A platform row serves the commit its platform's latest finished build was made from, which the status
+service answers at `/apps/staging/<platform>/version` with an Expo robot token (`app-served`), so an Android build
+alone makes its row readable and a platform with no build reads as unknown on its own row. The app's concerns ship
+to `staging/app-android` (command-center/D80). `production/app`'s command prints the commit that the channel's
+latest finished iOS and Android builds were both made from; while they differ, or one platform has no build yet,
+it fails. Reading EAS's build list there needs an Expo login or `EXPO_TOKEN`, so agents cannot read that row and it
+reads as unknown (TODO(owner)). The latest finished build is taken to be the one testers get, so build a profile
+only to submit it.
 
 The plugin is not an environment: a release is a tagged commit on `main` that the owner cuts (§2).
 

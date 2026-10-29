@@ -89,10 +89,7 @@ describe("the app's environments (command-center/D43)", () => {
     return result;
   }
 
-  it.each([
-    ['staging/app', 'staging'],
-    ['production/app', 'production'],
-  ])('%s has a LOOP.md row whose served-commit command reads EAS profile %s', (environment, profile) => {
+  it.each([['production/app', 'production']])('%s has a LOOP.md row whose served-commit command reads EAS profile %s', (environment, profile) => {
     const row = rows()[environment];
     expect(row).toBeDefined();
     const served = row?.[5] ?? '';
@@ -111,16 +108,22 @@ describe("the app's environments (command-center/D43)", () => {
     expect(row).toBeDefined();
     expect(row?.[4]).toContain(`eas build --profile staging --platform ${platform}`);
     expect(row?.[4]).toContain(`eas submit --profile staging --platform ${platform} --latest`);
-    expect(row?.[5]).toMatch(new RegExp(`served\\.sh https://status-[0-9]+\\.us-east1\\.run\\.app/apps/staging/${platform}/version`));
+    expect(row?.[2]).toMatch(/^yes/);
+    expect(row?.[5]).not.toContain('TODO');
+    expect(row?.[5]).toMatch(new RegExp(`^\`sh scripts/gcp/served\\.sh https://status-[0-9]+\\.us-east1\\.run\\.app/apps/staging/${platform}/version\`$`));
     expect(row?.[6]).toContain(`/apps/staging/${platform}/version <sha>`);
+  });
+
+  it('has no staging/app row, and the staging profile names its channel (D79)', () => {
+    expect(rows()['staging/app']).toBeUndefined();
+    // One profile builds both platforms, so the build names the channel; ShellHeader shows it as "staging".
+    expect(eas.build.staging.env.EXPO_PUBLIC_ENVIRONMENT).toBe('staging/app');
   });
 
   it('lists the app rows after the services, lowest environment first', () => {
     const names = Object.keys(rows());
-    expect(names.indexOf('staging/app')).toBeGreaterThan(names.indexOf('staging/notify'));
-    expect(names.indexOf('production/app')).toBeGreaterThan(names.indexOf('staging/app'));
+    expect(names.indexOf('staging/app-android')).toBeGreaterThan(names.indexOf('staging/notify'));
     expect(names.indexOf('production/app')).toBeGreaterThan(names.indexOf('production/notify'));
-    expect(names.indexOf('staging/app-android')).toBeGreaterThan(names.indexOf('staging/app'));
     expect(names.indexOf('staging/app-ios')).toBeGreaterThan(names.indexOf('staging/app-android'));
     expect(names.indexOf('production/app')).toBeGreaterThan(names.indexOf('staging/app-ios'));
   });
