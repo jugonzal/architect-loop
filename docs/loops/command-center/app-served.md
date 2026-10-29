@@ -96,3 +96,33 @@ revision, and the platform rows read `unknown` again.
 - 2026-10-28 · C1 · HOLDS · rung 1 · staging/status @fb3569f · `GET /apps/staging/android/version` answered 200 `{"commit": "19eb6965…"}` 3 of 3 times (0.10 to 0.21 s), and `sh scripts/gcp/served.sh` on it printed 19eb696 and exited 0. 19eb696 is the commit the owner's EAS build made on 2026-10-28 ("Prepare for android build", parent 69617a2), so the route read the real staging Android build through EAS with the robot token. `/apps/staging/ios/version` answered 404 "no finished ios build for profile staging" 3 of 3 times, so Android reads without iOS (per D79). `production/android` and `staging/windows` each answered a 404 naming why
 
 ## Shipped
+
+2026-10-28, to `staging/status`, its `ships-to`, at fb3569f; its rows became readable on main in #129 (d45ed2a).
+
+- **What shipped.**
+  - PR #126 (merge fb3569f) added `GET /apps/{channel}/{platform}/version` to the status service. It asks EAS the
+    way eas-cli 22.4.0 does, with an Expo robot token from `status-expo-token`, and answers each platform's latest
+    finished build's commit. 404 means no finished build or no commit; 503 means EAS can't be read. It never
+    answers an older commit.
+  - The same PR added the `staging/app-android` and `staging/app-ios` rows, read through that route.
+  - PR #129 made both rows readable and removed `staging/app`.
+  - C1 holds at rung 1 on staging/status @fb3569f: Android answered 19eb696, the owner's real staging build, and
+    iOS answered 404. C2 holds by CI.
+- **Departures from the design.**
+  - D57 planned one row per channel, read when its iOS and Android builds agree. With staging built for Android
+    only, that rule would never read, so the owner split the rows by platform (D79). The app's concerns moved to
+    `staging/app-android` (D80).
+  - The `status-service` need was dropped (D78). Its unproven C1 and C2 are proofs, not something the build
+    relied on.
+  - The build widened `touches` to the service's `app.py`, `config.py`, `test_config.py`, `support.py` and README
+    (D1), and recorded how EAS is read (D2).
+  - The row switch landed without a `Concern:` trailer. With one, the concern would have read as merged until
+    staging/status was redeployed.
+- **Learned.**
+  - The first Android build was made from a commit EAS created on the owner's local main, because
+    `cli.requireCommit` met uncommitted files there. The commit was on no remote, so no service could have
+    placed the build. It was pushed unchanged as `builds/staging-android-19eb696`, which must stay until a build
+    from a clean checkout of `origin/main` replaces it, as LOOP.md §3 now says.
+  - The robot token sits in the manifest's secrets, so every status deploy fails until that secret exists.
+  - A readable row whose GET keeps failing still reads as a transient unknown in `owner-queue`, which is why the
+    rows were switched only after Android served.
