@@ -15,6 +15,12 @@ Serves each project's status document, fresh within a minute of a push, a pull r
 - **Freshness.** A document is reused for at most `STATUS_MAX_AGE_SECONDS` (20), and never after a signed delivery
   about the project to **`POST /webhooks/github`**. A fact that cannot be read is `unknown`; if main itself cannot
   be fetched, the answer is 503, never an earlier document.
+- **`GET /apps/{channel}/{platform}/version`** answers anyone `{"commit": "<sha>"}`, the commit EAS recorded for
+  the platform's latest finished build of the channel's profile in `app/eas.json`, so a `LOOP.md` §3 row such as
+  `staging/app-android` reads with `sh scripts/gcp/served.sh` like a service's (command-center/D57, D79). It asks EAS
+  the way eas-cli 22.4.0 asks for `eas build:list`, with an Expo robot user's token, and reuses EAS's answer for a
+  minute ([`status/apps.py`](status/apps.py)). A platform with no finished build, or whose latest one records no
+  commit, answers 404; an EAS it cannot read answers 503. Neither answers an older commit.
 - **State.** Its only store is its clone under `STATUS_CACHE_DIR`, a cache: deleting it and restarting gives the
   same answer. Nothing a person types is kept.
 
@@ -34,8 +40,8 @@ every push and pull request.
 ## Config
 
 Environment variables, listed in [`status/config.py`](status/config.py). The manifest,
-[`service.json`](service.json), sets `STATUS_PROJECTS` and `STATUS_GITHUB_APP_ID` and names the two secrets; the
-rest have defaults. `deploy.sh` sets `COMMIT_SHA`.
+[`service.json`](service.json), sets `STATUS_PROJECTS`, `STATUS_GITHUB_APP_ID` and `STATUS_EAS_PROJECT_ID` and names
+the three secrets; the rest have defaults. `deploy.sh` sets `COMMIT_SHA`.
 
 ## What the owner sets up
 
@@ -52,3 +58,7 @@ None of this exists yet, and each step is the owner's (LOOP.md §2).
 3. **The runtime identity** `status@<project>.iam.gserviceaccount.com`, which `bootstrap.sh` creates from the
    manifest, with no role, and lets read those two secrets.
 4. **The deploy:** `sh scripts/gcp/deploy.sh status staging <sha>` from a commit on main.
+5. **An Expo robot user** (app-served), with the least role on the app's Expo account that lists its builds, and
+   its access token in Secret Manager as `status-expo-token`. Then run `bootstrap.sh` again, so the identity can
+   read it, before the next deploy: every deploy mounts the secrets the manifest names, so none succeeds until it
+   exists.

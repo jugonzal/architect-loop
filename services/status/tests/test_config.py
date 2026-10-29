@@ -32,6 +32,9 @@ class SettingsTest(unittest.TestCase):
             "STATUS_MAX_AGE_SECONDS": "12",
             "STATUS_CACHE_SECONDS": "30",
             "STATUS_SERVED_TIMEOUT_SECONDS": "3",
+            "STATUS_EXPO_TOKEN": "robot",
+            "STATUS_EAS_PROJECT_ID": "f0000000-0000-4000-8000-000000000001",
+            "STATUS_EXPO_API_URL": "http://127.0.0.1:9/expo/",
         })
         self.assertEqual(settings.projects, frozenset({"jugonzal/architect-loop", "example/other"}))
         self.assertEqual(settings.commit, "abc123")
@@ -43,6 +46,9 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(settings.max_age_seconds, 12.0)
         self.assertEqual(settings.cache_seconds, 30.0)
         self.assertEqual(settings.served_timeout_seconds, 3.0)
+        self.assertEqual(settings.expo_token, "robot")
+        self.assertEqual(settings.eas_project_id, "f0000000-0000-4000-8000-000000000001")
+        self.assertEqual(settings.expo_api_url, "http://127.0.0.1:9/expo")
         self.assertEqual(settings.problems(), [])
 
     def test_defaults_are_githubs_and_twenty_seconds(self):
@@ -51,6 +57,8 @@ class SettingsTest(unittest.TestCase):
         self.assertIsNone(settings.webhook_secret)
         self.assertEqual(settings.github_api_url, "https://api.github.com")
         self.assertEqual(settings.github_git_url, "https://github.com")
+        self.assertEqual(settings.expo_api_url, "https://api.expo.dev")
+        self.assertIsNone(settings.expo_token)
         # C1: a document is reused for at most this long. A regather that cannot read an environment answers it
         # unknown, and that answer is reused as long again, so twice this, and two gathers, must fit in a minute.
         self.assertEqual(settings.max_age_seconds, 20.0)
@@ -117,6 +125,13 @@ class ManifestTest(unittest.TestCase):
         manifest.checked(MANIFEST_PATH, env="staging")
         with self.assertRaises(manifest.Refused):
             manifest.checked(MANIFEST_PATH, env="production")
+
+    def test_it_reads_the_apps_own_eas_project(self):
+        """app-served D2: the project whose builds GET /apps/... reads is the app's, in app/app.json."""
+        with open(os.path.join(ROOT, "app", "app.json")) as f:
+            project_id = json.load(f)["expo"]["extra"]["eas"]["projectId"]
+        self.assertEqual(self.manifest["settings"]["STATUS_EAS_PROJECT_ID"], project_id)
+        self.assertEqual(self.manifest["secrets"]["STATUS_EXPO_TOKEN"], "status-expo-token")
 
     def test_it_runs_as_its_own_identity_and_needs_no_cloud_role(self):
         self.assertEqual(self.manifest["identity"], {"name": "status", "roles": []})
