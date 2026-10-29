@@ -2,7 +2,7 @@
 needs: [app-shell, status-api]
 touches: [app/src/app/(tabs)/environments/, app/src/features/environments/]
 effects: []
-ships-to: staging/app
+ships-to: staging/app-android
 ---
 # Anyone on the project can see what each environment serves, and what is merged but not shipped
 

@@ -2,7 +2,7 @@
 needs: []
 touches: [app/package.json, app/src/app/(tabs)/loops/, app/src/features/loops/]
 effects: [starting sessions that cost money; the person sees the estimate and the budget and confirms each start (gates: spending)]
-ships-to: staging/app
+ships-to: staging/app-android
 ---
 # A loop's owner can read the document behind any loop or concern on the phone, and start a design session from it
 

@@ -2,7 +2,7 @@
 needs: [owner-queue]
 touches: [app/src/features/inbox/cards.tsx, app/src/features/inbox/__tests__/]
 effects: [a staging app build so that the channel serves it (the owner builds and submits it per LOOP.md §3; gates: deploy)]
-ships-to: staging/app
+ships-to: staging/app-android
 ---
 # The inbox shows a fact or a stuck concern as a read-only card
 
@@ -11,7 +11,7 @@ ships-to: staging/app
 - **C1** A `fact` item opens a read-only card. It shows which fact is missing, why it cannot be read, who can supply
   it, the concerns waiting on it, and the command to run once it is to hand (per D76). Prove: the inbox's screen
   tests, with a `fact` item in the fixture document, in CI on main. Then, on the staging app build, the owner opens
-  the `staging/app` fact card and reads its concerns.
+  the `staging/app-android` fact card and reads its concerns (per D80).
 - **C2** A `stuck` item opens a read-only card. It shows the concern, its state, why nothing leads anywhere, and
   its next step (per D77). Every kind in the schema has a body, so no card is ever blank. Prove: the inbox's screen
   tests, with a `stuck` item and a check that walks every `QueueKind`, in CI on main. Then, on the staging app

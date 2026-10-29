@@ -2,7 +2,7 @@
 needs: []
 touches: [services/runner/runner/api.py, services/runner/runner/dispatch.py, services/runner/runner/github.py, services/runner/openapi.yaml, services/runner/tests/fakes.py, services/runner/tests/test_api_contract.py, services/runner/tests/test_dispatch.py, services/runner/tests/test_github.py, app/src/api/runner.gen.ts, app/src/features/agents/, app/src/features/inbox/, app/src/features/threads/]
 effects: []
-ships-to: staging/app
+ships-to: staging/app-android
 ---
 # A session started from the app runs the newest release of the skills
 
@@ -13,7 +13,7 @@ ships-to: staging/app
   fake GitHub's tags (per command-center/D53).
 - **C2** Each start sheet (Agents, a Needs you card, a thread's record sheet) shows the release the estimate named
   and dispatches exactly that tag, and no screen holds a release of its own. Prove: the app's tests, by CI on main;
-  then on staging/app, a start from each sheet whose session reports the newest tag.
+  then on staging/app-android, a start from each sheet whose session reports the newest tag (per D80).
 
 ## Design
 

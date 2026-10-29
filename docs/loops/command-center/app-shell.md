@@ -2,26 +2,40 @@
 needs: [status-api, queue-items]
 touches: [app/package.json, app/app.json, app/eas.json, app/tsconfig.json, app/src/app/_layout.tsx, app/src/app/(tabs)/_layout.tsx, app/src/shell/, app/src/api/, app/src/theme/, .github/workflows/app.yml, LOOP.md]
 effects: [a GitHub OAuth app for sign-in with the device flow enabled that asks for no repository access (per command-center/D28 and D1 here; gates: identity), an Expo account with EAS build credentials (a new vendor account; gates: identity, spending, secrets), Apple Developer and Google Play accounts (gates: identity, spending), TestFlight and Play internal-testing submissions (the owner submits them; gates: store)]
-ships-to: staging/app
+ships-to: staging/app-android
 ---
 # A signed-in person has the app on their phone, registered for push, with a tab for each screen
 
 ## Done when
 
-- **C1** A build installs on iOS and Android, signs in with GitHub through the device flow (per D1), and shows the
+- ~~**C1** A build installs on iOS and Android, signs in with GitHub through the device flow (per D1), and shows the
   person's name. It shows the tabs from the screen design (Needs you, Loops, Agents, Environments) without a More
   tab (per command-center/D4). Prove: the shell's tests, which sign in against a fake GitHub and render the four
   tabs, in CI on main (per D2), then a TestFlight build and a Play internal build, installed on devices and signed
-  in against staging.
+  in against staging.~~ Superseded by C4 and C5 (per D3, command-center/D80).
 - ~~**C2** The device registers for push, and a test notification sent to that person arrives on their devices
   and no one else's. Prove: two devices with two accounts, on staging.~~ Moved to `notifications` C1, which owns
   registration, the device store and sending (per command-center/D35).
-- **C3** `LOOP.md` §3 has a `staging/app` and a `production/app` row. Each has a served-commit command that prints
+- ~~**C3** `LOOP.md` §3 has a `staging/app` and a `production/app` row. Each has a served-commit command that prints
   the commit that the build serving that channel was made from, and `/loop-status` reads both (per
   command-center/D43). Prove: `served.js`'s tests against EAS build-list fixtures, in CI on main (per D2), then the
   `staging/app` row's command against a build whose commit is known, on staging/app. Production's row is proven
   by the later loop (per command-center/D54). Once `app-served` is deployed, the row reads through the status
-  service (per command-center/D57).
+  service (per command-center/D57).~~ Superseded by C6 (per D4, command-center/D79).
+- **C4** A staging Android build installs from Google Play internal testing, signs in with GitHub through the
+  device flow (per D1), and shows the person's name. It shows the tabs from the screen design (Needs you, Loops,
+  Agents, Environments) without a More tab (per command-center/D4). Prove: the shell's tests, which sign in against
+  a fake GitHub and render the four tabs, in CI on main (per D2), then a Play internal build installed on an Android
+  device and signed in against staging, on staging/app-android (per D3).
+- ~~**C5** The same on iOS: a TestFlight build installs, signs in and shows the tabs.~~ Moved out of this concern
+  until a decision ships the app to staging/app-ios (per D3, command-center/D80).
+- **C6** `LOOP.md` §3 has `staging/app-android` and `staging/app-ios` rows, each reading its own platform's commit
+  through the status service's `/apps/staging/<platform>/version` (per command-center/D79, D57), and a
+  `production/app` row whose command prints the commit both platforms' latest production builds were made from
+  (per command-center/D43). `/loop-status` reads the platform rows like any other. Prove: `served.test.ts` and
+  `served.js`'s tests, in CI on main (per D2), then `sh scripts/gcp/served.sh` on the Android row's URL against a
+  build whose commit is known, on staging/app-android (per D4). Production's row is proven by the later loop (per
+  command-center/D54).
 
 ## Design
 
@@ -63,6 +77,8 @@ needs a new build.
 | --- | --- | --- | --- |
 | D1 | The app signs in with GitHub's device flow. No client secret is kept in the app or in any service, and no service is needed for sign-in, so this concern needs none. The person copies a code and confirms it on github.com. The owner enables the device flow on the OAuth app. | Juan, 2026-10-20 | Q1 |
 | D2 | C1 and C3 start their Prove with a CI rung, from the shell's and `served.js`'s tests on main, so this concern meets command-center/D50 and the screens can be built. The staging/app steps still decide done. | Juan, 2026-10-22 | Q2 |
+| D3 | C1's Android half becomes C4, proven with a Play internal build on staging/app-android. Its iOS half, C5, is moved out until a decision ships the app to staging/app-ios. | Juan, 2026-10-29 | Follows command-center/D80 |
+| D4 | C3 is restated as C6 for the per-platform rows: `staging/app-android` and `staging/app-ios` read through `app-served`'s route, and `production/app` keeps `served.js`. | Juan, 2026-10-29 | Follows command-center/D79 |
 
 ## Questions
 

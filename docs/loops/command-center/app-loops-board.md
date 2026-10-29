@@ -2,7 +2,7 @@
 needs: [app-shell, status-api]
 touches: [app/src/app/(tabs)/loops/, app/src/features/loops/]
 effects: []
-ships-to: staging/app
+ships-to: staging/app-android
 ---
 # Anyone on the project can see every loop and concern with its state and the fact behind it
 
