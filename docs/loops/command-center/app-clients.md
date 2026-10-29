@@ -2,7 +2,7 @@
 needs: [app-shell, runner-dispatch, threads]
 touches: [app/package.json, app/src/api/, app/src/shell/config.ts, app/src/shell/__tests__/config.test.ts, app/src/shell/__tests__/shell.test.tsx, app/src/shell/release/__tests__/served.test.ts, app/src/features/environments/__tests__/route.test.tsx, app/src/features/loops/__tests__/screens.test.tsx, app/eas.json]
 effects: []
-ships-to: staging/app
+ships-to: staging/app-android
 ---
 # The app has one typed client for each service it calls, and knows each service's URL
 
@@ -51,7 +51,7 @@ generator, once its API exists.
 
 It needs `app-shell`, `runner-dispatch` and `threads`, whose files and APIs it builds on. All three meet D50 by CI
 on main (`app-shell` D2, `threads` D7). `app-agents`, `app-inbox`, `app-threads` and `notifications` need this
-concern. It ships to `staging/app`, like the rest of the app (per D54). Its claims are proven in CI, and that is
+concern. It ships to `staging/app-android`, like the rest of the app (per D54, D80). Its claims are proven in CI, and that is
 what meets D50 for the screens that need it.
 
 Rollback: revert the PR. No screen calls these clients yet.

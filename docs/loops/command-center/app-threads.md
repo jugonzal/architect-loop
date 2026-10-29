@@ -2,7 +2,7 @@
 needs: [app-shell, app-clients]
 touches: [app/src/app/threads/, app/src/features/threads/]
 effects: []
-ships-to: staging/app
+ships-to: staging/app-android
 ---
 # A project member can read and post in a concern's or a session's thread from the phone
 

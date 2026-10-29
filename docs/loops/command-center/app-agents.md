@@ -2,7 +2,7 @@
 needs: [app-shell, status-api, app-clients]
 touches: [app/src/app/(tabs)/agents/, app/src/features/agents/]
 effects: [starting sessions that cost money; the person sees the estimate and the budget and confirms each start (gates: spending)]
-ships-to: staging/app
+ships-to: staging/app-android
 ---
 # Anyone on the project can see every running agent, who sponsors it and what it costs
 

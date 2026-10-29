@@ -2,7 +2,7 @@
 needs: [app-shell, status-api, queue-items, app-clients]
 touches: [app/src/app/(tabs)/inbox/, app/src/features/inbox/]
 effects: [starting sessions that cost money; each card's dispatch names the person as sponsor and shows its budget before it starts (gates: spending)]
-ships-to: staging/app
+ships-to: staging/app-android
 ---
 # The owner can finish a question, review, ship or record card from the phone's inbox
 
