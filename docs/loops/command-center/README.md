@@ -208,6 +208,10 @@ person in one terminal can push a loop forward.
   only from a question card or a thread's record sheet, never from a concern or loop page. Staging's services
   serve main's code for status, runner and threads. Every `app-*` concern reads `unknown` because agents cannot
   read `staging/app` (`app-served` fixes it), and none has evidence on staging. Needs you is empty for this loop.
+  (Corrected 2026-10-29: `staging/app` is gone. The app concerns ship to `staging/app-android` (D80), which the
+  status service reads through `app-served`'s route and which serves 19eb696, so `app-clients` is done and eight app
+  concerns are shipped, waiting for their device proofs. Needs you is not empty: on main @d45ed2a it holds 9 items,
+  among them the ship of `app-owner-cards` to that row (`loop_status.py command-center`).)
 - **Missing:** a local environment and a smoke test. `LOOP.md` §4's smoke test is `TODO(owner)`, and
   `local-harness` adds both (per D53).
 - **Missing:** `LOOP.md` §3 rows for staging and production, with a `/version` URL for each service (per D8, D9).

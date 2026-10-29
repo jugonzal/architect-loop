@@ -83,3 +83,19 @@ Rollback: revert the PR. No screen calls these clients yet.
 ## Evidence
 
 ## Shipped
+
+2026-10-29, to `staging/app-android`, its `ships-to` since D80, in the staging Android build made from 19eb696.
+
+- **What shipped.** PR #40 (merge f860a69, built 2026-10-23) generates the app's runner and threads clients from
+  `services/runner/openapi.yaml` and `services/threads/openapi.yaml`, and `check:clients` fails when either drifts.
+  It also reads the runner's, threads' and the notifier's URLs from each build profile, and names staging's in
+  `app/eas.json`. C1 and C2 hold in CI on main at d45ed2a. Their Prove names only CI, so the build serving the
+  work, 19eb696 on staging/app-android, is what made the concern done.
+- **Departures from the design.**
+  - Two builds stopped on `AppConfig` fixtures outside `touches`. First `shell.test.tsx` and `served.test.ts` (D1),
+    then two screen tests from PRs #38 and #39 that the first stop's count missed (D2, the "Corrected" note in
+    Where we are). Both times the contract was widened before the build went on.
+  - It shipped to `staging/app` by design (D54), and moved to `staging/app-android` with the rest of the app
+    (D80).
+- **Learned.** Done waited five days after the code: until `app-served` made any app row readable, no app concern
+  could be done, however its claims were proven. A claim proven only in CI still needs its `ships-to` to serve it.
