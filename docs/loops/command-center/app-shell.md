@@ -22,20 +22,32 @@ ships-to: staging/app-android
   `staging/app` row's command against a build whose commit is known, on staging/app. Production's row is proven
   by the later loop (per command-center/D54). Once `app-served` is deployed, the row reads through the status
   service (per command-center/D57).~~ Superseded by C6 (per D4, command-center/D79).
-- **C4** A staging Android build installs from Google Play internal testing, signs in with GitHub through the
+- ~~**C4** A staging Android build installs from Google Play internal testing, signs in with GitHub through the
   device flow (per D1), and shows the person's name. It shows the tabs from the screen design (Needs you, Loops,
   Agents, Environments) without a More tab (per command-center/D4). Prove: the shell's tests, which sign in against
   a fake GitHub and render the four tabs, in CI on main (per D2), then a Play internal build installed on an Android
-  device and signed in against staging, on staging/app-android (per D3).
+  device and signed in against staging, on staging/app-android (per D3).~~ Superseded by C7 (per D5, command-center/D81).
 - ~~**C5** The same on iOS: a TestFlight build installs, signs in and shows the tabs.~~ Moved out of this concern
   until a decision ships the app to staging/app-ios (per D3, command-center/D80).
-- **C6** `LOOP.md` §3 has `staging/app-android` and `staging/app-ios` rows, each reading its own platform's commit
+- ~~**C6** `LOOP.md` §3 has `staging/app-android` and `staging/app-ios` rows, each reading its own platform's commit
   through the status service's `/apps/staging/<platform>/version` (per command-center/D79, D57), and a
   `production/app` row whose command prints the commit both platforms' latest production builds were made from
   (per command-center/D43). `/loop-status` reads the platform rows like any other. Prove: `served.test.ts` and
   `served.js`'s tests, in CI on main (per D2), then `sh scripts/gcp/served.sh` on the Android row's URL against a
   build whose commit is known, on staging/app-android (per D4). Production's row is proven by the later loop (per
-  command-center/D54).
+  command-center/D54).~~ Superseded by C8 (per D5, command-center/D81, D82).
+- **C7** An Android build of the `preview` profile installs on a device as an APK, signs in with GitHub through the
+  device flow (per D1), and shows the person's name. It shows the tabs from the screen design (Needs you, Loops,
+  Agents, Environments) without a More tab (per command-center/D4). Prove: the shell's tests, which sign in against
+  a fake GitHub and render the four tabs, in CI on main (per D2), then a preview build installed on an Android
+  device and signed in against staging, on staging/app-android (per command-center/D81).
+- **C8** `LOOP.md` §3 has `staging/app-android`, read through the status service's
+  `/apps/preview/android/version`, and `staging/app-ios`, read through `/apps/staging/ios/version` (per
+  command-center/D81, D82), and a `production/app` row whose command prints the commit both platforms' latest
+  production builds were made from (per command-center/D43). `/loop-status` reads the platform rows like any other.
+  Prove: `served.test.ts` and `served.js`'s tests, in CI on main (per D2), then `sh scripts/gcp/served.sh` on the
+  Android row's URL against a build whose commit is known, on staging/app-android. Production's row is proven by the
+  later loop (per command-center/D54).
 
 ## Design
 
@@ -79,6 +91,7 @@ needs a new build.
 | D2 | C1 and C3 start their Prove with a CI rung, from the shell's and `served.js`'s tests on main, so this concern meets command-center/D50 and the screens can be built. The staging/app steps still decide done. | Juan, 2026-10-22 | Q2 |
 | D3 | C1's Android half becomes C4, proven with a Play internal build on staging/app-android. Its iOS half, C5, is moved out until a decision ships the app to staging/app-ios. | Juan, 2026-10-29 | Follows command-center/D80 |
 | D4 | C3 is restated as C6 for the per-platform rows: `staging/app-android` and `staging/app-ios` read through `app-served`'s route, and `production/app` keeps `served.js`. | Juan, 2026-10-29 | Follows command-center/D79 |
+| D5 | C4 becomes C7 and C6 becomes C8, for the preview profile's Android builds: C7 is proven with an installed APK, not a Google Play internal build, and C8 names the Android row's route as `/apps/preview/android/version`. | Juan, 2026-10-30 | Refines D3 and D4, follows command-center/D81, D82 |
 
 ## Questions
 
