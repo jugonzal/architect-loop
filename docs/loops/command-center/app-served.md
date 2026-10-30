@@ -14,9 +14,14 @@ ships-to: staging/status
   read, saying why each time. It never answers an older commit. Prove: tests against the build-list fixtures of
   `served.test.ts`, in CI on main. Then, on staging/status, `sh scripts/gcp/served.sh` on
   `/apps/staging/android/version` must print the commit of a staging Android build whose commit is known.
-- **C2** LOOP.md §3 has `staging/app-android` and `staging/app-ios` rows, each built with its platform's
+- ~~**C2** LOOP.md §3 has `staging/app-android` and `staging/app-ios` rows, each built with its platform's
   `eas build --profile staging --platform <platform>`, and app CI checks them as it checks the app rows today (per
-  D79). Prove: `served.test.ts` in CI on main.
+  D79). Prove: `served.test.ts` in CI on main.~~ Superseded by C3 (per D3, command-center/D81, D82).
+- **C3** `LOOP.md` §3's `staging/app-android` row is built with `eas build --profile preview --platform android` and
+  reads `/apps/preview/android/version`, and its `staging/app-ios` row is built with `--profile staging --platform
+  ios` and reads `/apps/staging/ios/version` (per D81, D82). App CI checks both as it checks the app rows today.
+  Prove: `served.test.ts` in CI on main. Then, on staging/status, `sh scripts/gcp/served.sh` on the Android row's URL
+  must print the commit of a preview Android build whose commit is known.
 
 ## Design
 
@@ -85,6 +90,7 @@ revision, and the platform rows read `unknown` again.
 | --- | --- | --- | --- |
 | D1 | `touches` also cover `app.py` (the route is registered in `create_app`), `config.py` and `tests/test_config.py` (its settings, checked against `service.json`), `tests/support.py` (a fake EAS beside the fake GitHub) and the service's README (the reference for the route and its settings). | agent, from the status service's code on main @caf8038, 2026-10-28 | Raised by this concern's build |
 | D2 | The route asks EAS the way eas-cli 22.4.0 does, with a GraphQL query for the channel profile's finished builds on one platform. It reads three settings: `STATUS_EXPO_TOKEN`, a secret named `status-expo-token`; `STATUS_EAS_PROJECT_ID`, `app/app.json`'s project id; and `STATUS_EXPO_API_URL`, default `https://api.expo.dev`, so the harness can point it at a fake. Without the token, only this route answers 503, and the status document is served as before. | agent, from eas-cli 22.4.0's source and the status service's config, 2026-10-28 | Raised by this concern's build |
+| D3 | C2 becomes C3: the Android row reads the `preview` profile, and the iOS row keeps `staging`. The route is unchanged, because it takes any channel, so this concern's code needs no change; the LOOP.md row and `served.test.ts` change in a chore PR (a loop-document PR cannot carry them), without this concern's `Concern:` trailer for the reason given in its Shipped note. | Juan, 2026-10-30 | Follows command-center/D81, D82 |
 
 ## Questions
 
