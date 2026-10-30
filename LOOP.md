@@ -77,7 +77,7 @@ Standing permissions the owner grants on purpose. Anything not listed here is no
 | staging/runner | Cloud Run service `runner`, us-east1, staging's GCP project `loops-512401` | yes | no | owner: `sh scripts/gcp/deploy.sh runner staging <sha>` | `sh scripts/gcp/served.sh https://runner-665570365697.us-east1.run.app/version` | `sh scripts/gcp/served.sh https://runner-665570365697.us-east1.run.app/version <sha>` |
 | staging/threads | Cloud Run service `threads`, us-east1, staging's GCP project `loops-512401` | yes | no | owner: `sh scripts/gcp/deploy.sh threads staging <sha>` | `sh scripts/gcp/served.sh https://threads-665570365697.us-east1.run.app/version` | `sh scripts/gcp/served.sh https://threads-665570365697.us-east1.run.app/version <sha>` |
 | staging/notify | Cloud Run service `notify`, us-east1, staging's GCP project `loops-512401` | yes | no | owner: `sh scripts/gcp/deploy.sh notify staging <sha>` | `sh scripts/gcp/served.sh https://notify-665570365697.us-east1.run.app/version` | `sh scripts/gcp/served.sh https://notify-665570365697.us-east1.run.app/version <sha>` |
-| staging/app-android | EAS builds of profile `staging` in `app/eas.json` for Android, installed from Google Play internal testing; they use staging's services | yes: the status service's `/apps/staging/<platform>/version` needs no credentials (command-center/D79) | no | owner: from a clean checkout of a commit on `origin/main`, `cd app && eas build --profile staging --platform android`, then `eas submit --profile staging --platform android --latest` | `sh scripts/gcp/served.sh https://status-665570365697.us-east1.run.app/apps/staging/android/version` | `sh scripts/gcp/served.sh https://status-665570365697.us-east1.run.app/apps/staging/android/version <sha>` |
+| staging/app-android | EAS builds of profile `preview` in `app/eas.json` for Android, installed as an APK; `preview` extends `staging`, so they use staging's services | yes: the status service's `/apps/preview/android/version` needs no credentials (command-center/D81) | no | owner: from a clean checkout of a commit on `origin/main`, `cd app && eas build --profile preview --platform android`, then install the APK from the build's page | `sh scripts/gcp/served.sh https://status-665570365697.us-east1.run.app/apps/preview/android/version` | `sh scripts/gcp/served.sh https://status-665570365697.us-east1.run.app/apps/preview/android/version <sha>` |
 | staging/app-ios | EAS builds of profile `staging` in `app/eas.json` for iOS, installed from TestFlight; they use staging's services | yes: the status service's `/apps/staging/<platform>/version` needs no credentials (command-center/D79) | no | owner: from a clean checkout of a commit on `origin/main`, `cd app && eas build --profile staging --platform ios`, then `eas submit --profile staging --platform ios --latest` | `sh scripts/gcp/served.sh https://status-665570365697.us-east1.run.app/apps/staging/ios/version` | `sh scripts/gcp/served.sh https://status-665570365697.us-east1.run.app/apps/staging/ios/version <sha>` |
 | production/status | Cloud Run service `status`, us-east1, production's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh status production <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh production` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
 | production/runner | Cloud Run service `runner`, us-east1, production's GCP project | yes | no | owner: `sh scripts/gcp/deploy.sh runner production <sha>` | TODO(owner): `sh scripts/gcp/served.sh <URL>`, with the URL `bootstrap.sh production` prints | `sh scripts/gcp/served.sh <URL> <sha>` |
@@ -112,14 +112,16 @@ rows hold the commands its bootstrap printed on 2026-10-22 (project `loops-51240
 wait for its bootstrap. A service not deployed yet answers 404 and reads as unknown too, which is true.
 
 Staging's app has one row per platform, `staging/app-android` and `staging/app-ios` (command-center/D79), and
-production's has one row, `production/app`, until production's loop splits it the same way. Each is named after the
-EAS build profile in `app/eas.json` that makes its builds (command-center/D43). EAS records the commit each build
+production's has one row, `production/app`, until production's loop splits it the same way. A row reads the EAS build
+profile in `app/eas.json` that makes its builds (command-center/D43): `staging/app-android` reads `preview`, an APK
+installed directly (command-center/D81), and `staging/app-ios` reads `staging` (command-center/D82). EAS records the commit each build
 was made from (its `gitCommitHash`, the `git rev-parse HEAD` where `eas build` ran), and `app/eas.json` sets
 `cli.requireCommit`, so EAS refuses to build uncommitted work and that commit describes the build. Build from a
 clean checkout of a commit on `origin/main`: a build made anywhere else serves a commit the status service cannot
 find. A platform row serves the commit its platform's latest finished build was made from, which the status
-service answers at `/apps/staging/<platform>/version` with an Expo robot token (`app-served`), so an Android build
-alone makes its row readable and a platform with no build reads as unknown on its own row. The app's concerns ship
+service answers at `/apps/<profile>/<platform>/version` with an Expo robot token (`app-served`), so an Android build
+alone makes its row readable and a platform with no build reads as unknown on its own row. The `staging` profile's
+Android builds, which go to Google Play internal testing, count for no row. The app's concerns ship
 to `staging/app-android` (command-center/D80). `production/app`'s command prints the commit that the channel's
 latest finished iOS and Android builds were both made from; while they differ, or one platform has no build yet,
 it fails. Reading EAS's build list there needs an Expo login or `EXPO_TOKEN`, so agents cannot read that row and it
