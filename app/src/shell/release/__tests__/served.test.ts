@@ -101,18 +101,27 @@ describe("the app's environments (command-center/D43)", () => {
   });
 
   it.each([
-    ['staging/app-android', 'android'],
-    ['staging/app-ios', 'ios'],
-  ])('%s has a LOOP.md row that builds only %s and reads its own platform from the status service (D79)', (environment, platform) => {
-    const row = rows()[environment];
-    expect(row).toBeDefined();
-    expect(row?.[4]).toContain(`eas build --profile staging --platform ${platform}`);
-    expect(row?.[4]).toContain(`eas submit --profile staging --platform ${platform} --latest`);
-    expect(row?.[2]).toMatch(/^yes/);
-    expect(row?.[5]).not.toContain('TODO');
-    expect(row?.[5]).toMatch(new RegExp(`^\`sh scripts/gcp/served\\.sh https://status-[0-9]+\\.us-east1\\.run\\.app/apps/staging/${platform}/version\`$`));
-    expect(row?.[6]).toContain(`/apps/staging/${platform}/version <sha>`);
-  });
+    ['staging/app-android', 'android', 'preview', false],
+    ['staging/app-ios', 'ios', 'staging', true],
+  ])(
+    '%s has a LOOP.md row that builds only %s with profile %s and reads that profile from the status service (D81, D82)',
+    (environment, platform, profile, submitted) => {
+      const row = rows()[environment];
+      expect(row).toBeDefined();
+      expect(row?.[4]).toContain(`eas build --profile ${profile} --platform ${platform}`);
+      // The staging profile goes to a store track; a preview build is an APK installed from its page (D81).
+      if (submitted) expect(row?.[4]).toContain(`eas submit --profile ${profile} --platform ${platform} --latest`);
+      else expect(row?.[4]).not.toContain('eas submit');
+      expect(row?.[2]).toMatch(/^yes/);
+      expect(row?.[5]).not.toContain('TODO');
+      expect(row?.[5]).toMatch(
+        new RegExp(`^\`sh scripts/gcp/served\\.sh https://status-[0-9]+\\.us-east1\\.run\\.app/apps/${profile}/${platform}/version\`$`),
+      );
+      expect(row?.[6]).toContain(`/apps/${profile}/${platform}/version <sha>`);
+      // preview extends staging, so the build uses staging's services (D81).
+      expect(eas.build.preview.extends).toBe('staging');
+    },
+  );
 
   it('has no staging/app row, and the staging profile names its channel (D79)', () => {
     expect(rows()['staging/app']).toBeUndefined();
