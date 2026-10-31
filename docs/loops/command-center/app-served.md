@@ -100,6 +100,7 @@ revision, and the platform rows read `unknown` again.
 ## Evidence
 
 - 2026-10-28 · C1 · HOLDS · rung 1 · staging/status @fb3569f · `GET /apps/staging/android/version` answered 200 `{"commit": "19eb6965…"}` 3 of 3 times (0.10 to 0.21 s), and `sh scripts/gcp/served.sh` on it printed 19eb696 and exited 0. 19eb696 is the commit the owner's EAS build made on 2026-10-28 ("Prepare for android build", parent 69617a2), so the route read the real staging Android build through EAS with the robot token. `/apps/staging/ios/version` answered 404 "no finished ios build for profile staging" 3 of 3 times, so Android reads without iOS (per D79). `production/android` and `staging/windows` each answered a 404 naming why
+- 2026-10-30 · C3 · HOLDS · rung 1 · staging/status @fb3569f · `GET /apps/preview/android/version` answered 200 `{"commit": "d45ed2a9…"}` 3 of 3 times (0.11 to 0.18 s), and `sh scripts/gcp/served.sh` on it, the command in main's LOOP.md row for `staging/app-android` (f82583b), printed d45ed2a and exited 0. The owner confirmed d45ed2a is the commit their preview Android build was made from, read on its EAS build page, and installed that build on their phone. `staging/app-ios` reads `/apps/staging/ios/version`, which answered 404 "no finished ios build for profile staging" (and 404 on the preview profile), so iOS stays unknown. CI on main @f82583b is green, with `served.test.ts` passing 14 of 14 on the rows in D81 and D82
 
 ## Shipped
 
