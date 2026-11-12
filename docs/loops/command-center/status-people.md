@@ -59,4 +59,6 @@ deploy, which is the owner's. Rollback: redeploy the previous revision, which na
 
 ## Evidence
 
+- 2026-11-11 · C2 · UNPROVEN · rung 1 · staging/status @fb3569f · Half observed. The document half holds: `/projects/jugonzal/architect-loop/status` on fb3569f, read with the owner's GitHub token at 03:14 UTC on 2026-11-12, gives `owner: jugonzal` and `members: []` for both `command-center` and `sandbox`, and 81018ef is an ancestor of fb3569f. The same read matched the terminal's `--json` at main 319ea0d: 39 concerns, 0 state differences, 11 queue items, 8 drift lines and 10 missing facts in each. The registration half was not run: registering a device writes to staging/notify, and staging/notify serves 633cbe4, which does not contain 81018ef, while the Prove asks that both serve it · needs owner: register a device from the owner's login on staging/notify, once it serves a commit that contains 81018ef
+
 ## Shipped
