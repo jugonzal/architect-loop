@@ -102,4 +102,6 @@ needs a new build.
 
 ## Evidence
 
+- 2026-11-13 · C7 · HOLDS · rung 1 · staging/app-android @d45ed2a · Device check on the owner's Android phone with the preview APK, signed in against staging, during the G0 walkthrough; the installed build is taken to be the latest finished preview build, which the row serves (`served.sh`, d45ed2a). The owner confirmed the app is signed in as them, and four screenshots between 23:34 and 23:53 UTC show the header with the project and the person's name ("Juan Gonzalez") and four tabs, Needs you, Loops, Agents and Environments, with no More tab. The sign-in is real: the runner's request log has the app's calls (`okhttp/4.9.2`) answered 200 and 201 with the owner as sponsor. The device flow itself was not watched this time; the app was already signed in
+
 ## Shipped
