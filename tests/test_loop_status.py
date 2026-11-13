@@ -1133,6 +1133,20 @@ class TableTest(unittest.TestCase):
             "- **C1** Holds. Prove: the API tests, in CI on main, then a dispatch, on staging."]))
         self.assertEqual(self.state(m)[0], "shipped", "a Prove that goes on past CI needs its line")
 
+    def test_a_ci_prove_written_with_main_in_backticks_or_after_a_comma_still_names_ci(self):
+        """Concern files write `main` as code, and "in CI, on main"; both are the same Prove (SL24, 2026-11-12)."""
+        for prove in ("API tests; CI on `main`.", "API tests in CI, on main.", "API tests, in CI, on `main`.",
+                      "unit tests, in CI on main."):
+            with self.subTest(prove=prove):
+                self.assertTrue(ls.is_ci_claim("- **C1** Holds. Prove: %s" % prove))
+                m = Mini()
+                m.land("loop/thing", 1)
+                m.concern("loop/thing", concern_md(ships_to="main", claims=["- **C1** Holds. Prove: %s" % prove]))
+                self.assertEqual(self.state(m)[0], "done")
+        for prove in ("the owner on `main`.", "API tests; CI on `main`, then the owner on staging."):
+            with self.subTest(prove=prove):
+                self.assertFalse(ls.is_ci_claim("- **C1** Holds. Prove: %s" % prove))
+
     def test_a_pr_merged_in_another_repository_counts_on_that_repositorys_main(self):
         """command-center/D19, with its fixture row."""
         merge = "5a1f0e2d9c8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f"
@@ -1443,6 +1457,78 @@ class NeedsTest(unittest.TestCase):
                                                                           "ships-to: staging/runner"))
         self.assertEqual(self.thing(m)[0]["next"], "/loop-prove loop/base staging/runner",
                          "the runner's row is the place to prove the runner's own concern")
+
+
+class ChangesAnswerTest(unittest.TestCase):
+    """The changes question, answered by real git, for an environment that CD serves from its own branch: each
+    deploy is a merge of main into that branch, so the served commit is never on main (SL24, 2026-11-12)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.git("init", "-q", "-b", "main")
+        self.write("src/x/a.py", "1")
+        self.commit("first")
+        self.git("checkout", "-q", "-b", "production")
+        self.git("checkout", "-q", "main")
+        for n in range(2, 5):
+            self.write("src/x/a.py", str(n))
+            self.commit("main %d" % n)
+            self.write("src/y/b.py", str(n))
+            self.commit("elsewhere %d" % n)
+            self.deploy()
+        self.write("src/y/b.py", "last")
+        self.commit("elsewhere last")
+        self.deploy()
+        self.proof = self.git("rev-parse", "main")
+        self.run = ls.Runner(self.tmp, dict(os.environ, **GIT_ENV))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def git(self, *args):
+        return run_git(self.tmp, *args)
+
+    def write(self, path, text):
+        os.makedirs(os.path.dirname(os.path.join(self.tmp, path)), exist_ok=True)
+        with open(os.path.join(self.tmp, path), "w") as f:
+            f.write(text)
+
+    def commit(self, message):
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", message)
+
+    def deploy(self):
+        self.git("checkout", "-q", "production")
+        self.git("merge", "-q", "--no-ff", "-m", "Merge main into production", "main")
+        self.git("checkout", "-q", "main")
+
+    def changes(self, paths=("src/x/",)):
+        served = self.git("rev-parse", "production")
+        query = {"kind": "changes", "repository": "o/r", "from": self.proof[:7], "to": served, "paths": list(paths)}
+        return ls.answer(self.run, query, "o/r")
+
+    def test_earlier_deploy_merges_are_not_changes_since_a_proof_on_main(self):
+        self.assertNotEqual(self.git("log", "--format=%H", "%s..production" % self.proof, "--", "src/x/"), "",
+                            "the case: git log alone lists the earlier deploy merges")
+        result = self.changes()
+        self.assertIsNone(result["error"])
+        self.assertEqual(result["value"], [])
+
+    def test_a_commit_made_on_the_environments_branch_is_still_a_change(self):
+        self.git("checkout", "-q", "production")
+        self.write("src/x/a.py", "hotfix")
+        self.commit("hotfix on production")
+        hotfix = self.git("rev-parse", "HEAD")
+        self.git("checkout", "-q", "main")
+        self.assertEqual(self.changes()["value"], [hotfix])
+        self.assertEqual(self.changes(paths=("src/y/",))["value"], [], "outside the paths it is no change")
+
+    def test_a_later_main_commit_served_by_the_next_deploy_is_a_change(self):
+        self.write("src/x/a.py", "5")
+        self.commit("main 5")
+        later = self.git("rev-parse", "HEAD")
+        self.deploy()
+        self.assertEqual(self.changes()["value"], [later])
 
 
 class SkillTest(unittest.TestCase):
