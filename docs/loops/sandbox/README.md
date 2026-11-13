@@ -1,6 +1,3 @@
----
-parked: D6
----
 # Staging proofs have somewhere safe to dispatch real sessions
 
 **Intent.** Several concerns of `command-center` are proven on staging by dispatching a real session on "a test
@@ -53,7 +50,8 @@ holds them, so a staging proof never dispatches on real work. It is wanted now b
 | D3 | A build target is used once. A merged build, even a reverted one, leaves its merge commit on `main`, so `/loop-status` derives the concern as shipped and `/loop-build` refuses it. The next staging build proof dispatches on a fresh target (`build-target-2`), and later ones add another. | Juan, 2026-10-25 | Adds `build-target-2` |
 | D4 | A docs commit that adds or edits a sandbox target carries no `Concern:` trailer (per command-center/D45), because `/loop-status` counts any commit with it as the concern's work and derives the concern as shipped. `build-target-2` was lost that way, so `build-target-3` replaces it as the target. | agent, delegated by Juan, 2026-10-25 | Refines D3 |
 | ~~D5~~ | ~~The loop is not parked while a staging proof dispatches on its concerns, and is parked again once that proof is recorded. The runner ignores `parked`, but the app's Agents tab lists only what `agents_can_start` offers, and the derivation leaves a parked loop's concerns out of it (`loop_status.py`, verified 2026-10-26), so a parked loop cannot be dispatched from the app.~~ superseded by D6, 2026-10-26 | Juan, 2026-10-26 | Supersedes D1 |
-| D6 | The loop is parked again, so its concerns leave the owner's queue and the ready list. The staging proofs of `session-narration` and `narration-tests-milestone` are recorded, and the owner chose no further run for now. A parked loop cannot be dispatched from the app (verified 2026-10-26), so a later proof unparks it again with a new decision. | Juan, 2026-10-26 | Supersedes D5 |
+| ~~D6~~ | ~~The loop is parked again, so its concerns leave the owner's queue and the ready list. The staging proofs of `session-narration` and `narration-tests-milestone` are recorded, and the owner chose no further run for now. A parked loop cannot be dispatched from the app (verified 2026-10-26), so a later proof unparks it again with a new decision.~~ superseded by D7, 2026-11-13 | Juan, 2026-10-26 | Supersedes D5 |
+| D7 | The loop is not parked while the owner runs command-center's G0 walkthrough on it from the staging Android build: reading `design-target`, answering its Q1 and starting a `/loop-design` session from its page (per command-center/D71). A parked loop's question does not reach Needs you and its concerns cannot be started from the app (per D6). It is parked again by a new decision once the walkthrough is recorded. | Juan, 2026-11-13 | Supersedes D6 |
 
 ## Questions
 
