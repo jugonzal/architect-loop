@@ -115,12 +115,15 @@ If the script cannot run, gather the same facts with the commands below and appl
      one repository serve every concern on main by ancestry, so serving alone never makes another service's row a
      place to prove it.
    - **Current HOLDS for a claim on an environment:** its latest evidence line is HOLDS there, its commit is an
-     ancestor of the served commit, and `git log --format=%h <proof>..<served> -- <touches>` prints nothing.
-     A claim whose Prove says CI holds at rung 5 when CI is green on the main branch's head, with no line needed.
+     ancestor of the served commit, and `git log --no-merges --format=%h <proof>..<served> -- <touches>` prints
+     nothing. Merges are left out because an environment that CD serves from its own branch takes main through a
+     merge per deploy, and those merges change nothing of their own.
+     A claim whose Prove ends in CI, or CI on main (however `main` is written), holds at rung 5 when CI is green
+     on the main branch's head, with no line needed.
    - **Met, for a concern in `needs`:** it is done, or its work is on main and each of its claims holds on some
      environment of `LOOP.md` §3: its latest line there is HOLDS, its commit is on main, and
-     `git log --format=%h <proof>..<main> -- <touches>` prints nothing. A claim whose Prove names CI holds this
-     way while CI is green on the main branch's head. A contradicted need is never met. This is decided from
+     `git log --no-merges --format=%h <proof>..<main> -- <touches>` prints nothing. A claim whose Prove names CI
+     holds this way while CI is green on the main branch's head. A contradicted need is never met. This is decided from
      evidence, not from what an environment serves now, so a need proven on a lower or a local environment
      unblocks what needs it, while done still waits for its `ships-to`.
    - A line marked `@?` (migrated without a commit) never counts as a HOLDS, but a CONTRADICTS still counts,

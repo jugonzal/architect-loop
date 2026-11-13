@@ -265,15 +265,16 @@ def prove_clause(text):
 
 
 def is_ci_claim(text):
-    """Whether a claim's Prove says CI: it ends in CI, or CI on main, after any closing (per ...) note."""
+    """Whether a claim's Prove says CI: it ends in CI, or CI on main (or "CI, on main", with main in backticks or
+    not), after any closing (per ...) note."""
     prove = prove_clause(text)
     while True:
         stripped = re.sub(r"\s*\([^()]*\)\s*[.;]?\s*$", "", prove)
         if stripped == prove:
             break
         prove = stripped
-    prove = prove.rstrip(" .;")
-    return bool(re.search(r"(?:^|[\s,])(?:in )?CI(?: on main)?$", prove))
+    prove = prove.replace("`", "").rstrip(" .;")
+    return bool(re.search(r"(?:^|[\s,])(?:in )?CI(?:,? on main)?$", prove))
 
 
 def names_ci(text):
@@ -2195,8 +2196,11 @@ def answer(run, query, project):
         else:
             out["error"] = last_line(err, code)
     elif kind == "changes":
-        code, text, err = run.run(["git", "log", "--format=%H", "%s..%s" % (query["from"], query["to"]), "--"]
-                                  + query["paths"])
+        # --no-merges: an environment that CD serves from its own branch takes main through a merge per deploy,
+        # and git log lists those merges whenever main also changed other paths in between. A merge brings no change
+        # of its own; what it brings is listed as the commits it merged.
+        code, text, err = run.run(["git", "log", "--no-merges", "--format=%H", "%s..%s" % (query["from"], query["to"]),
+                                   "--"] + query["paths"])
         if code == 0:
             out["value"] = [line.strip() for line in text.splitlines() if line.strip()]
         else:
