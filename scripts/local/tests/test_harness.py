@@ -106,6 +106,10 @@ class EnvironmentTest(unittest.TestCase):
         self.assertEqual(env["FIRESTORE_EMULATOR_HOST"], "firestore:8080")
         self.assertEqual(env["RUNNER_GITHUB_API_URL"], "http://fakes:8711")
         self.assertEqual(env["RUNNER_GIT_URL"], "http://fakes:8711/jugonzal/architect-loop.git")
+        # plugin-source/plugin-repository: the release comes from a repository that is not the project.
+        self.assertEqual(env["RUNNER_PLUGIN_REPOSITORY"], "local-plugin/skills")
+        self.assertEqual(env["RUNNER_PLUGIN_GIT_URL"], "http://fakes:8711/local-plugin/skills.git")
+        self.assertNotEqual(env["RUNNER_PLUGIN_GIT_URL"], env["RUNNER_GIT_URL"])
         self.assertEqual(env["RUNNER_RUN_API_URL"], "http://fakes:8712")
         self.assertEqual(env["RUNNER_METADATA_URL"], "http://fakes:8713")
         self.assertEqual((env["COMMIT_SHA"], env["PORT"]), ("a" * 40, "8080"))

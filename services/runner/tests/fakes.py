@@ -9,6 +9,7 @@ import tempfile
 from runner.config import Config
 from runner.dispatch import Dispatcher
 from runner.github import GitHubError, newest_release
+from runner.plugin import PluginSourceError
 from runner.store import SqliteStore
 
 PROJECT = "jugonzal/architect-loop"
@@ -35,7 +36,6 @@ class FakeGitHub:
         self.collaborators = {"juan", "ana"}
         self.concerns = {CONCERN, OTHER, "command-center/app-agents", "command-center/notifications",
                          "command-center/environments"}
-        self.releases = {"v0.3.0"}
         self.loops = {LOOP}
         self.environment_names = ["main", "staging/runner", "production/runner"]
         self.pulls = []
@@ -59,14 +59,6 @@ class FakeGitHub:
     def concern_exists(self, loop, concern):
         self._call("concern_exists", loop, concern)
         return f"{loop}/{concern}" in self.concerns
-
-    def release_exists(self, tag):
-        self._call("release_exists", tag)
-        return tag in self.releases
-
-    def latest_release(self):
-        self._call("latest_release")
-        return newest_release(self.releases)
 
     def loop_exists(self, loop):
         self._call("loop_exists", loop)
@@ -101,6 +93,29 @@ class FakeGitHub:
         """A pull request on head; state "closed" is one merged or closed since, as GitHub lists both."""
         self.pulls.append({"number": number, "url": f"https://github.com/{PROJECT}/pull/{number}", "head": head,
                            "body": body, "state": state, "created_at": created_at})
+
+
+class FakePlugin:
+    """The plugin's source as the dispatcher sees it: the release tags of the repository that releases the skills,
+    which is not the project's (plugin-source/plugin-repository)."""
+
+    def __init__(self):
+        self.releases = {"v0.3.0"}
+        self.calls = []
+        self.down = False
+
+    def _call(self, name, *args):
+        self.calls.append((name, *args))
+        if self.down:
+            raise PluginSourceError(f"git ls-remote of the plugin's repository failed: {name}")
+
+    def release_exists(self, tag):
+        self._call("release_exists", tag)
+        return tag in self.releases
+
+    def latest_release(self):
+        self._call("latest_release")
+        return newest_release(self.releases)
 
 
 class FakeLauncher:
@@ -140,12 +155,13 @@ def scratch(testcase):
 
 
 def make_runner(testcase, **config):
-    """A dispatcher over a fresh store, with fake GitHub, Cloud Run and clock."""
+    """A dispatcher over a fresh store, with fake GitHub, Cloud Run and clock, and a fake plugin source that the
+    tests reach as `dispatcher.plugin`."""
     path = scratch(testcase)
     cfg = Config(**{"store_path": os.path.join(path, "runner.sqlite3"), "commit": "eee8119", **config})
     store = SqliteStore(cfg.store_path, seeds=cfg.seeds)
     github, launcher, clock = FakeGitHub(), FakeLauncher(), Clock()
-    dispatcher = Dispatcher(cfg, store, github, launcher, now=clock, new_id=ids())
+    dispatcher = Dispatcher(cfg, store, github, launcher, FakePlugin(), now=clock, new_id=ids())
     return dispatcher, store, github, launcher, clock
 
 
