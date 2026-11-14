@@ -19,7 +19,7 @@ import urllib.parse
 from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, HookMatcher, ResultMessage, TextBlock,
                               ToolResultBlock, ToolUseBlock, UserMessage)
 
-from .config import ALLOWED_TOOLS
+from .config import ALLOWED_TOOLS, WAITING_SKILLS
 from .github import JOB_PERMISSIONS, urllib_transport
 from .launcher import METADATA
 from .models import iso, parse_iso, utcnow
@@ -275,6 +275,13 @@ def dollars(usd):
     return f"${usd:,.2f}" if usd >= 1 else f"${usd:.4f}"
 
 
+def how_long(seconds):
+    if seconds < 90:
+        return f"{seconds:.0f} seconds"
+    minutes = round(seconds / 60)
+    return f"{minutes} minutes"
+
+
 def relay_text(messages):
     said = "\n\n".join(f"From @{m['author']['login']}, at {m['created_at']}:\n{m['body']}" for m in messages)
     return ("Members of the project wrote to this session's thread, where what you say is posted for them. Read their "
@@ -441,6 +448,38 @@ class Narration:
         return {"hookSpecificOutput": {"hookEventName": data.get("hook_event_name") or "PostToolUse",
                                        "additionalContext": relay_text(from_members)}}
 
+    def waiting(self, seconds):
+        self._say("milestone", f"Waiting for a reply in this thread for {how_long(seconds)}. A member's message "
+                               "here becomes its next turn.")
+
+    def gave_up(self, seconds):
+        self._say("milestone", f"No reply in {how_long(seconds)}, so it stops waiting.")
+
+    async def reply(self, seconds, stopped):
+        """session-waits C1, C2: the members' messages that reach the thread within `seconds`, looking every `poll_s`.
+        An empty list when none came, and None when `stopped` was set first. A thread that cannot be read is looked
+        at again at the next look, so an outage never ends the wait early."""
+        loop = asyncio.get_running_loop()
+        until = loop.time() + seconds
+        while True:
+            try:
+                messages, self._seen = await asyncio.to_thread(self.thread.messages_after, self._seen)
+            except Exception as error:  # one line a look, not a traceback: an outage can last the whole wait
+                log.warning("could not read session %s's thread while it waits: %s", self.session.id, error)
+                messages = []
+            from_members = [m for m in messages if (m.get("author") or {}).get("type") == "person"]
+            if from_members:
+                self._answering = True
+                return from_members
+            left = until - loop.time()
+            if left <= 0:
+                return []
+            try:
+                await asyncio.wait_for(stopped.wait(), min(self.poll_s, left))
+                return None
+            except asyncio.TimeoutError:
+                continue
+
     def gates(self, final_message, loop_md):
         gates = gates_in(loop_md)
         named = gates_named(final_message, gates)
@@ -489,6 +528,7 @@ class SessionJob:
         session = self.store.mark_running(session_id, iso(self.now()))
         self._id, self._client, self._interrupted = session_id, None, None
         self._done, self._said = asyncio.Event(), FinalMessage()
+        self._stopped, self._idle, self._began = asyncio.Event(), False, self.monotonic()
         meter = Meter(self.config.prices[session.model], session.budget_usd, self.monotonic)
         publisher = asyncio.create_task(self._publish_every(meter))
         if session.stop_requested:
@@ -507,7 +547,7 @@ class SessionJob:
                 token = await asyncio.to_thread(self.github.installation_token, JOB_PERMISSIONS)
                 options = build_options(session, prepared, {"GH_TOKEN": token, "GITHUB_TOKEN": token},
                                         hooks=narration.hooks())
-                result = await self._converse(options, prompt_for(session, prepared), meter)
+                result = await self._converse(session, options, prompt_for(session, prepared), meter)
                 outcome = self._outcome(result)
         except Exception:
             log.exception("session %s failed", session_id)
@@ -541,31 +581,65 @@ class SessionJob:
             log.exception("session %s cannot narrate to its thread", session.id)
             return None
 
-    async def _converse(self, options, prompt, meter):
+    async def _converse(self, session, options, prompt, meter):
+        """The session's turns: the skill's own, and for a session that waits (session-waits C1), one more for each
+        reply its members write to its thread while it waits."""
         result = None
         async with self.client_factory(options) as client:
             self._client = client
             await client.query(prompt)
             if self._interrupted:  # a stop that arrived while the client was starting
                 await client.interrupt()
-            async for message in client.receive_response():
-                self._narration.observe(message)
-                if isinstance(message, AssistantMessage):
-                    meter.add(message.message_id, message.usage)
-                    self._said.add(message)
-                    if meter.crossed:
-                        # D21: stop at the first response that crosses the budget, even if the SDK has not.
-                        await self._interrupt("budget")
-                elif isinstance(message, ResultMessage):
-                    result = message
+            while True:
+                async for message in client.receive_response():
+                    self._narration.observe(message)
+                    if isinstance(message, AssistantMessage):
+                        meter.add(message.message_id, message.usage)
+                        self._said.add(message)
+                        if meter.crossed:
+                            # D21: stop at the first response that crosses the budget, even if the SDK has not.
+                            await self._interrupt("budget")
+                    elif isinstance(message, ResultMessage):
+                        result = message
+                replies = await self._replies(session, result, meter)
+                if not replies:
+                    break
+                await client.query(relay_text(replies))
             self._client = None
         return result
+
+    async def _replies(self, session, result, meter):
+        """What the session's members wrote while it waited, or nothing when it does not wait or nobody wrote.
+
+        Only a /loop-design session waits, only where it has a thread to be answered in, and only after a turn that
+        ended well: not at its budget, not stopped, not after an error (command-center/D83, D84). The wait is
+        `design_wait_s` from now, and never past `session_deadline_s` after the job began. The session stays running
+        while it waits, so it holds its concern and counts against its sponsor's cap, and the spend publisher goes on
+        picking up a stop."""
+        narration = self._narration
+        if session.skill not in WAITING_SKILLS or not narration.on or self._interrupted or meter.crossed:
+            return None
+        if result is None or result.is_error or result.subtype != "success":
+            return None
+        window = min(self.config.design_wait_s, self.config.session_deadline_s - (self.monotonic() - self._began))
+        if window <= 0:
+            return None
+        narration.waiting(window)
+        self._idle = True
+        try:
+            replies = await narration.reply(window, self._stopped)
+        finally:
+            self._idle = False
+        if replies == []:
+            narration.gave_up(window)
+        return replies
 
     async def _interrupt(self, reason):
         if self._interrupted:
             return
         self._interrupted = reason
-        if self._client is not None:
+        self._stopped.set()
+        if self._client is not None and not self._idle:  # a waiting session has no turn to interrupt
             await self._client.interrupt()
 
     def _outcome(self, result):

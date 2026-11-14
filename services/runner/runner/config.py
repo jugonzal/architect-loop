@@ -58,6 +58,9 @@ DEFAULT_SEEDS = (
 ALLOWED_TOOLS = ("Bash", "Read", "Write", "Edit", "Glob", "Grep", "Skill")
 
 MAX_SPEND_INTERVAL_S = 10.0  # D23: at least every 10 seconds
+# session-waits (command-center/D83, D84): the skills whose session waits in its thread for a member's reply once its
+# model has stopped. Only /loop-design is built to ask its owner questions; every other session ends as it stops.
+WAITING_SKILLS = ("loop-design",)
 # session-narration C1: a milestone reaches the session's thread within 10 seconds of it. The ones the job learns of by
 # looking (a branch pushed, a pull request opened some other way than `gh pr create`) wait up to one look for it, so
 # the looks are at most 5 seconds apart, which leaves the rest for the post.
@@ -101,6 +104,11 @@ class Config:
     # threads' Cloud Run URL, which is also the audience threads checks the runner's ID token against (D28, D46).
     threads_url: str = ""
     narration_poll_s: float = 5.0  # how often a session looks for a pushed branch or an opened pull request
+    # session-waits (command-center/D84): how long a waiting session waits for a reply, each reply starting it again;
+    # 0 turns the wait off. And how long after its job began a session may still be waiting: the job's task timeout in
+    # service.json, less the time the job needs to record its end, so Cloud Run never kills a session mid-wait.
+    design_wait_s: float = 900.0
+    session_deadline_s: float = 3300.0
 
     def __post_init__(self):
         if not 0 < self.spend_interval_s <= MAX_SPEND_INTERVAL_S:
@@ -109,6 +117,10 @@ class Config:
         if not 0 < self.narration_poll_s <= MAX_NARRATION_POLL_S:
             raise ValueError(f"narration_poll_s must be above 0 and at most {MAX_NARRATION_POLL_S} "
                              f"(session-narration C1), not {self.narration_poll_s}")
+        if not (math.isfinite(self.design_wait_s) and self.design_wait_s >= 0):
+            raise ValueError(f"design_wait_s must be a number of seconds, 0 or more, not {self.design_wait_s}")
+        if not (math.isfinite(self.session_deadline_s) and self.session_deadline_s > 0):
+            raise ValueError(f"session_deadline_s must be a number of seconds above 0, not {self.session_deadline_s}")
         if self.cap_per_sponsor < 1:
             raise ValueError(f"cap_per_sponsor must be at least 1, not {self.cap_per_sponsor}")
         if not (math.isfinite(self.budget_ceiling_usd) and self.budget_ceiling_usd > 0):
@@ -150,7 +162,9 @@ class Config:
                    "RUNNER_SPEND_INTERVAL_S": ("spend_interval_s", float),
                    "RUNNER_LOST_AFTER_S": ("lost_after_s", float),
                    "RUNNER_BUDGET_CEILING_USD": ("budget_ceiling_usd", float),
-                   "RUNNER_NARRATION_POLL_S": ("narration_poll_s", float)}
+                   "RUNNER_NARRATION_POLL_S": ("narration_poll_s", float),
+                   "RUNNER_DESIGN_WAIT_S": ("design_wait_s", float),
+                   "RUNNER_SESSION_DEADLINE_S": ("session_deadline_s", float)}
         for name, (key, kind) in numbers.items():
             if env.get(name):
                 values[key] = kind(env[name])
