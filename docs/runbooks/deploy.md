@@ -553,8 +553,8 @@ Each learned in a real run. Newest first.
   up to 2026-10-29 went through → set `EAS_BUILD_SKIP_LOCKFILE_CHECK=1` for the build, as the message offers,
   until `app/package-lock.json` is committed. The failed attempt still increments `versionCode`.
 - **2026-11-14:** `eas env:create` answered `Entity not authorized ... viewer = RobotViewerContext` → the shell
-  exports `EXPO_TOKEN`, the status service's robot token, and the CLI uses it in place of the owner's login; the
-  robot may read builds but not create a variable → run the command as `env -u EXPO_TOKEN eas ...`, after
+  exports `EXPO_TOKEN`, a robot's token, and the CLI uses it in place of the owner's login; that robot may
+  not create a variable → run the command as `env -u EXPO_TOKEN eas ...`, after
   `env -u EXPO_TOKEN eas whoami` names the owner. `env:create` is also deprecated in eas-cli 22.4.0: use
   `env:set`, with the same flags.
 - **2026-11-14:** `deploy.sh status staging` failed with `Permission denied on secret:
