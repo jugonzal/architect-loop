@@ -83,8 +83,10 @@ only C1's and C2's staging proofs rely on them, and those proofs wait until stag
 | --- | --- | --- | --- |
 | D1 | A dispatched `/loop-ship`'s brief is that session's final report. The runner keeps each session's final message and serves it with the session, and the ship card shows it. No change to `loop-ship` or to threads. | Juan, 2026-10-20 | Q1 |
 | D2 | The record card shows what will be recorded, from the record item in the status document. Approving dispatches the record step as it is, and it merges its own PR. The person approves the proposed text, not the PR's exact diff. No skill changes. | Juan, 2026-10-20 | Q2 |
-| D3 | A dispatched `/loop-design` asks its question in the session's thread, and the person answers there. No skill changes, but the question card needs `session-narration`'s relay of a member's message into a running session (its C2). | Juan, 2026-10-20 | Q3 |
+| ~~D3~~ | ~~A dispatched `/loop-design` asks its question in the session's thread, and the person answers there. No skill changes, but the question card needs `session-narration`'s relay of a member's message into a running session (its C2).~~ superseded by D5, 2026-11-13 | Juan, 2026-10-20 | Q3 |
 | D4 | A gated question needs a typed reason before it can be answered, and the reason goes in the decision's notes. | Juan, 2026-10-20 | Q4 |
+| D5 | A dispatched `/loop-design` asks its question in the session's thread, and the person answers there, because the session waits in place for the answer (per command-center/D83, D84). The relay of `session-narration` C2 alone was not enough: it hands over only messages already in the thread when the model stops. No skill changes for this half. C2 is proven again once staging/runner serves `session-waits`. | Juan, 2026-11-13 | Supersedes D3; the CONTRADICTS of C2, 2026-11-13 |
+| D6 | D2 stands: the record step merges its own PR. It did not on 2026-11-13 because the skill says to merge once the checks pass and not how to wait for them. The skills now say how (per command-center/D85), built by `merge-after-checks`, so D2's "no skill changes" no longer holds. C2's record half is proven again once a session runs a release that has it. | Juan, 2026-11-13 | Refines D2; the second CONTRADICTS of C2, 2026-11-13 |
 
 ## Questions
 

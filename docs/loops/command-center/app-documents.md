@@ -44,6 +44,7 @@ which is `app-shell`'s sign-in scope and out of scope here (phase 1 serves this 
 
 | # | Decision | Decided by, date | Closes |
 | --- | --- | --- | --- |
+| D1 | C2 keeps its wording. Its start from a page works as built; what failed is the answer, because the session ended one second after asking. A design session now waits in place for its answer (per command-center/D83, D84), built by `session-waits`, and C2 is proven again on staging/app-android once staging/runner serves that. The start sheet's spinner that never clears after a successful start is a bug in this concern's own code, fixed by a `/loop-build` on it. | Juan, 2026-11-13 | The CONTRADICTS of C2, 2026-11-13 |
 
 ## Questions
 
