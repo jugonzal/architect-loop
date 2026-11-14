@@ -68,7 +68,7 @@ class HookedClaude:
 
     def __init__(self, script, options, clock):
         self.script, self.options, self.clock = script, options, clock
-        self.contexts, self.prompts = [], []
+        self.contexts, self.prompts, self.asked_at, self._at = [], [], [], 0
 
     async def __aenter__(self):
         return self
@@ -78,6 +78,7 @@ class HookedClaude:
 
     async def query(self, prompt):
         self.prompts.append(prompt)
+        self.asked_at.append(self.clock())
 
     async def interrupt(self):
         pass
@@ -93,7 +94,14 @@ class HookedClaude:
         return False
 
     async def receive_response(self):
-        for delay, message in self.script:
+        """One turn: the script from where the last turn's result left it, up to the next result. A script that
+        has run out answers a result at once, as a model with nothing more to say."""
+        while True:
+            if self._at >= len(self.script):
+                yield result()
+                return
+            delay, message = self.script[self._at]
+            self._at += 1
             await asyncio.sleep(delay)
             if message is STOP:
                 if await self._hook("Stop", {"stop_hook_active": False}):
@@ -158,12 +166,12 @@ class NarrationTest(JobTest):
         self.workspace = WorkspaceWithLoop(os.path.join(scratch(self), "work"))
         self.thread = FakeThread()
 
-    def run_narrated(self, session, script, during=None, threads=True):
+    def run_narrated(self, session, script, during=None, threads=True, within=120):
         async def go(job):
             task = asyncio.create_task(job.run(session.id))
             if during:
                 await during()
-            return await asyncio.wait_for(task, 120)
+            return await asyncio.wait_for(task, within)
 
         with asyncio.Runner(loop_factory=VirtualTimeLoop) as runner:
             clock = runner.get_loop().time
@@ -177,7 +185,10 @@ class NarrationTest(JobTest):
 
             job = SessionJob(self.config, self.store, self.github, self.workspace, factory, monotonic=clock,
                              threads=(lambda s: self.thread) if threads else None)
-            return runner.run(go(job))
+            started = clock()
+            ended = runner.run(go(job))
+            self.elapsed = clock() - started
+            return ended
 
     def assertWithin(self, milestones, starts, at, seconds=10.0):
         found = [t for t, body in milestones if body.startswith(starts)]
@@ -358,6 +369,114 @@ class RelayTest(NarrationTest):
 
         self.run_narrated(session, script, during)
         self.assertEqual([at for at, _, _ in self.clients[0].contexts], [4.0])
+
+
+class WaitingTest(NarrationTest):
+    """session-waits C1, C2 (command-center/D83, D84): a /loop-design session whose model has stopped waits in its
+    thread for a member's reply, for 15 minutes, and no other skill's session waits."""
+
+    ASKS = [(1.0, assistant(1, text="Q1: which greeting, hello or hi?")), (0.0, STOP)]
+
+    def waits(self):
+        return [body for _, body in self.thread.milestones() if body.startswith("Waiting")]
+
+    def test_a_reply_within_the_window_becomes_the_sessions_next_turn_and_its_answer_is_posted(self):
+        session = self.claimed(skill="loop-design")
+        script = self.ASKS + [(2.0, assistant(2, text="Recorded as D1: hello.")), (0.0, STOP)]
+
+        async def during():
+            await asyncio.sleep(121.0)  # two minutes after the question, where the session used to be long gone
+            self.thread.member_says("juan", "hello")
+
+        ended = self.run_narrated(session, script, during, within=3000)
+        client = self.clients[0]
+        self.assertEqual(len(client.prompts), 2, client.prompts)
+        self.assertIn("From @juan", client.prompts[1])
+        self.assertIn("hello", client.prompts[1])
+        self.assertLessEqual(client.asked_at[1] - 121.0, self.config.narration_poll_s + 1e-6)  # within one look
+        self.assertIn(("message", "Recorded as D1: hello."), [(k, b) for _, k, b in self.thread.posts])
+        self.assertEqual((ended.outcome, ended.final_message), ("completed", "Recorded as D1: hello."))
+        self.assertEqual(client.contexts, [])  # relayed once, as the next turn, and not again by a hook
+
+    def test_each_reply_starts_the_fifteen_minutes_again(self):
+        session = self.claimed(skill="loop-design")
+        script = self.ASKS + [(2.0, assistant(2, text="And the second question?")), (0.0, STOP),
+                              (2.0, assistant(3, text="Recorded both.")), (0.0, STOP)]
+
+        async def during():
+            await asyncio.sleep(800.0)
+            self.thread.member_says("juan", "hello")
+            await asyncio.sleep(800.0)  # 1600 s in: past the first window, inside the second
+            self.thread.member_says("juan", "and hi for the other")
+
+        ended = self.run_narrated(session, script, during, within=4000)
+        self.assertEqual(len(self.clients[0].prompts), 3)
+        self.assertEqual((ended.outcome, ended.final_message), ("completed", "Recorded both."))
+        self.assertGreaterEqual(self.elapsed, 1600.0 + 900.0)  # and it waited a whole window after the last answer
+
+    def test_with_no_reply_it_ends_completed_after_fifteen_minutes_and_says_so(self):
+        session = self.claimed(skill="loop-design")
+        ended = self.run_narrated(session, list(self.ASKS), within=3000)
+        self.assertEqual((ended.outcome, ended.final_message), ("completed", "Q1: which greeting, hello or hi?"))
+        self.assertEqual(len(self.clients[0].prompts), 1)
+        self.assertGreaterEqual(self.elapsed, 1.0 + 900.0)
+        self.assertLessEqual(self.elapsed, 1.0 + 900.0 + 30.0)
+        milestones = self.thread.milestones()
+        self.assertWithin(milestones, "Waiting for a reply", 1.0)
+        self.assertIn("15 minutes", self.waits()[0])
+        self.assertWithin(milestones, "No reply", 901.0)
+        self.assertWithin(milestones, "Finished", 901.0, seconds=30.0)
+
+    def test_its_sponsors_stop_ends_the_wait_within_ten_seconds(self):
+        session = self.claimed(skill="loop-design")
+
+        async def during():
+            await asyncio.sleep(300.0)
+            self.store.request_stop(session.id)
+
+        ended = self.run_narrated(session, list(self.ASKS), during, within=3000)
+        self.assertEqual(ended.outcome, "sponsor")
+        self.assertLessEqual(self.elapsed - 300.0, 10.0)
+
+    def test_a_session_of_any_other_skill_ends_when_its_model_stops(self):
+        for skill, scope in (("loop-build", "concern"), ("loop-prove", "concern"), ("loop-status", "loop"),
+                             ("loop-ship", "environment")):
+            with self.subTest(skill=skill):
+                self.setUp()
+                session = self.claimed(skill=skill, scope=scope)
+                ended = self.run_narrated(session, list(self.ASKS))
+                self.assertEqual(ended.outcome, "completed")
+                self.assertLess(self.elapsed, 60.0)
+                self.assertEqual(self.waits(), [])
+
+    def test_a_design_session_with_no_thread_has_nowhere_to_wait(self):
+        session = self.claimed(skill="loop-design")
+        ended = self.run_narrated(session, list(self.ASKS), threads=False)
+        self.assertEqual(ended.outcome, "completed")
+        self.assertLess(self.elapsed, 60.0)
+
+    def test_a_wait_never_runs_past_the_jobs_deadline(self):
+        self.config = Config(store_path=self.config.store_path, spend_interval_s=1.0, app_slug="architect-loop-runner",
+                             session_deadline_s=300.0)
+        session = self.claimed(skill="loop-design")
+        ended = self.run_narrated(session, list(self.ASKS), within=3000)
+        self.assertEqual(ended.outcome, "completed")
+        self.assertLessEqual(self.elapsed, 300.0 + 30.0)
+        self.assertIn("5 minutes", self.waits()[0])  # it says how long it can really wait
+
+    def test_a_thread_that_is_down_while_it_waits_does_not_end_it_early(self):
+        session = self.claimed(skill="loop-design")
+        script = self.ASKS + [(2.0, assistant(2, text="Recorded as D1: hello.")), (0.0, STOP)]
+
+        async def during():
+            await asyncio.sleep(60.0)
+            self.thread.down = True
+            await asyncio.sleep(60.0)
+            self.thread.down = False
+            self.thread.member_says("juan", "hello")
+
+        ended = self.run_narrated(session, script, during, within=3000)
+        self.assertEqual(ended.final_message, "Recorded as D1: hello.")
 
 
 class FakeHttp:

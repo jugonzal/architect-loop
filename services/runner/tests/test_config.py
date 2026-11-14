@@ -72,3 +72,30 @@ class ConfigTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WaitingConfigTest(unittest.TestCase):
+    """session-waits (command-center/D84): how long a design session waits, and the job's own limit."""
+
+    def test_a_design_session_waits_fifteen_minutes_and_only_design_waits(self):
+        from runner.config import WAITING_SKILLS
+        self.assertEqual(Config().design_wait_s, 900.0)
+        self.assertEqual(WAITING_SKILLS, ("loop-design",))
+        self.assertEqual(Config.from_env({"RUNNER_DESIGN_WAIT_S": "60"}).design_wait_s, 60.0)
+        self.assertEqual(Config(design_wait_s=0).design_wait_s, 0)  # 0 turns the wait off
+        with self.assertRaises(ValueError):
+            Config(design_wait_s=-1)
+
+    def test_the_deadline_leaves_the_job_time_to_record_its_end(self):
+        import json
+        import os
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(here, "service.json"), encoding="utf-8") as f:
+            manifest = json.load(f)
+        timeouts = [job["task_timeout_s"] for job in manifest["jobs"].values()]
+        self.assertTrue(timeouts, "service.json names the session job's task_timeout_s")
+        for timeout in timeouts:
+            self.assertGreaterEqual(timeout - Config().session_deadline_s, 120)
+        self.assertEqual(Config.from_env({"RUNNER_SESSION_DEADLINE_S": "600"}).session_deadline_s, 600.0)
+        with self.assertRaises(ValueError):
+            Config(session_deadline_s=0)
