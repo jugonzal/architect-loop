@@ -40,8 +40,8 @@ every push and pull request.
 ## Config
 
 Environment variables, listed in [`status/config.py`](status/config.py). The manifest,
-[`service.json`](service.json), sets `STATUS_PROJECTS`, `STATUS_GITHUB_APP_ID` and `STATUS_EAS_PROJECT_ID` and names
-the three secrets; the rest have defaults. `deploy.sh` sets `COMMIT_SHA`.
+[`service.json`](service.json), sets `STATUS_GITHUB_APP_ID` and `STATUS_EAS_PROJECT_ID`, names the three secrets, and
+takes `STATUS_PROJECTS` from Secret Manager too, so that no project's name is committed; the rest have defaults. `deploy.sh` sets `COMMIT_SHA`.
 
 ## What the owner sets up
 

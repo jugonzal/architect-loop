@@ -1034,7 +1034,7 @@ class RepositoryManifestsTest(Harness):
     def test_staging_names_their_github_apps_and_production_waits_for_its_own(self):
         # The owner named staging's apps (deploy.md step 11); production's belong to a later loop (command-center/D54),
         # so a production deploy is refused until they are named too. The refusal itself is tested above.
-        wanted = {"runner": ["settings.RUNNER_APP_ID", "settings.RUNNER_APP_INSTALLATION_ID", "settings.RUNNER_APP_SLUG"],
+        wanted = {"runner": ["settings.RUNNER_APP_ID", "settings.RUNNER_APP_SLUG"],
                   "threads": ["settings.THREADS_GITHUB_APP_ID"], "status": ["settings.STATUS_GITHUB_APP_ID"]}
         for service, settings in wanted.items():
             m = manifest.load(os.path.join(ROOT, "services", service, "service.json"))
@@ -1067,7 +1067,11 @@ class RepositoryManifestsTest(Harness):
         self.assertEqual(threads["env"]["THREADS_AUDIENCE"], "https://threads-%s.us-east1.run.app" % number)
         self.assertEqual(threads["env"]["THREADS_RUNNER_SERVICE_ACCOUNTS"], runner["identity"])
         self.assertEqual(sorted(threads["secrets"]),
-                         ["DATABASE_URL", "THREADS_GITHUB_APP_PRIVATE_KEY", "THREADS_GITHUB_WEBHOOK_SECRET"])
+                         ["DATABASE_URL", "THREADS_GITHUB_APP_PRIVATE_KEY", "THREADS_GITHUB_WEBHOOK_SECRET",
+                          "THREADS_PROJECTS"])
+        # The project an environment serves comes from Secret Manager, so that no project's name is committed.
+        self.assertNotIn("THREADS_PROJECTS", threads["env"])
+        self.assertLessEqual({"RUNNER_PROJECT", "RUNNER_APP_INSTALLATION_ID"}, set(job["secrets"]))
 
 
 if __name__ == "__main__":

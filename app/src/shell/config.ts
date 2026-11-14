@@ -5,7 +5,11 @@
 
 import type { ProjectKey } from '../api/status';
 
-/** Phase 1 serves this one project (command-center/D18). */
+/**
+ * Phase 1 serves one project (command-center/D18): this one, unless the build sets EXPO_PUBLIC_PROJECT. The owner
+ * sets that as an EAS environment variable, not in app/eas.json, so that no other project's name is committed
+ * (docs/runbooks/deploy.md, step 9).
+ */
 export const DEFAULT_PROJECT: ProjectKey = 'jugonzal/architect-loop';
 
 export type AppConfig = {
