@@ -36,4 +36,6 @@ of the artboard are left out, and the concern-thread link at the bottom opens
 
 ## Evidence
 
+- 2026-11-13 · C2 · HOLDS · rung 1 · staging/app-android @d45ed2a · Device check on the owner's Android phone with the preview APK, signed in against staging, during the G0 walkthrough; the installed build is taken to be the latest finished preview build, which the row serves (`served.sh`, d45ed2a). The owner's screenshot of `command-center/app-environments` at 23:36 UTC shows the state strip with exactly the derivation's eleven states (parked, contradicted, open, blocked, ready, building, merged, shipped, stale, done, unknown) and `shipped` marked, the fact that produced it ("staging/app-android serves its work, and C1 has no evidence"), its next step (`/loop-prove command-center/app-environments staging/app-android`), `main @0182b89` and the served commit @d45ed2a, which is what the terminal's board derived for it on 0182b89. The contract and the claims are below the fold of the screenshot; the owner reported the page shows the contract, the claims and the state
+
 ## Shipped
