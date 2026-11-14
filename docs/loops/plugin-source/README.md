@@ -39,9 +39,10 @@ the way.
   before it starts, and this loop edits none of that loop's files.
 - **command-center/D17**: needs a decision. `plugin-repository` relies on a session running a tagged release
   extracted outside the clone, never the clone's own `plugin/`. It is in that concern's `needs`.
-- **command-center/D68**: in tension, raised here as Q2. D68 says a start runs "the newest release tag on the
-  project's main". Once the project and the plugin's repository can differ, the tag is the plugin repository's.
-  This loop does not edit D68.
+- **command-center/D68**: in tension. D68 says a start runs "the newest release tag on the project's main". Once
+  the project and the plugin's repository can differ, the tag is the plugin repository's. Per D2 a new decision in
+  `command-center` supersedes D68, made there with `/loop-design command-center`; this loop does not edit it, and
+  `plugin-repository` does not wait for it.
 - **command-center/D18**: relates. D18 keeps phase 1 to one project and says more can be added later. This loop
   adds none; it removes the assumption that the one project is the plugin's home.
 - **sandbox**: relates. G2's staging proof dispatches one session, and it does so on a sandbox concern, as that
@@ -61,8 +62,19 @@ the way.
   release of the skills and starts nothing.
 - Verified (`services/runner/runner/github.py`, `AppAuth.token`, on main @9a687e9, 2026-11-14): each installation
   token is minted for the project's repository only.
-- Assumed: the plugin's repository is public, so its tags and its release can be read without the runner's App
-  being installed on it. Q1 checks it.
+- Verified (`gh repo view jugonzal/architect-loop --json visibility`, 2026-11-14): the plugin's repository is
+  public, so git reads its tags and fetches from it with no credentials (per D1).
+- Verified (`services/runner/Dockerfile` on main @ff263cc, 2026-11-14): the dispatching service and a session's
+  job run the same image, and it has git.
+- Verified (`services/runner/runner/dispatch.py`, `estimate`, on main @ff263cc, 2026-11-14): every estimate calls
+  `latest_release`, with nothing kept between calls, so each start sheet opened reads the tags once.
+- Verified (https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api, read 2026-11-14):
+  REST allows an unauthenticated caller 60 requests an hour for each address, and an installation token at least
+  5,000. The page does not say whether git over HTTPS counts against either.
+- Verified (https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app, read
+  2026-11-14): the page does not say whether a token limited to one repository can read another public one.
+- Assumed: git's own reads of a public repository over HTTPS (`ls-remote`, `fetch`) are not held to REST's 60 an
+  hour. To check it: `plugin-repository` C3's staging proof, and the runner's log of any refused read after it.
 - Missing: any setting that names the plugin's repository, and a second repository in the local harness's fake
   GitHub.
 
@@ -70,13 +82,16 @@ the way.
 
 | # | Decision | Decided by, date | Notes |
 | --- | --- | --- | --- |
+| D1 | The runner reads the plugin repository with git alone and no credentials: its release tags with `git ls-remote`, and a release with `git fetch` of the tag. It makes no REST call about the plugin repository. So the plugin's repository must be public, and nothing is installed or granted on it. | Juan, 2026-11-14 | Closes Q1 |
+| D2 | command-center/D68's "the project's main" is corrected in `command-center`, by a new decision there that supersedes D68 and says the tag is the plugin repository's. This loop edits nothing in that loop. | Juan, 2026-11-14 | Closes Q2 |
+| D3 | The setting is `RUNNER_PLUGIN_REPOSITORY`, an `owner/repo`. Unset, it is `jugonzal/architect-loop`, so a runner set to any project needs nothing more to run the released skills. A fork that releases its own skills sets it. | Juan, 2026-11-14 | |
 
 ## Questions
 
 | # | Question | Blocks | Default if unanswered |
 | --- | --- | --- | --- |
-| Q1 | With what credentials does the runner read the plugin repository's tags and fetch its release, when its GitHub App is installed only on the project? | `plugin-repository`, G1 | Without credentials, until a proof shows GitHub's rate limit refusing a read |
-| Q2 | How is command-center/D68's "the project's main" reconciled with a plugin repository that is not the project? | `plugin-repository` C1 | This loop reads D68's "the project" as the plugin's repository wherever the two differ, and says so in a shared decision here |
+| ~~Q1~~ | ~~With what credentials does the runner read the plugin repository's tags and fetch its release, when its GitHub App is installed only on the project?~~ → D1 | | |
+| ~~Q2~~ | ~~How is command-center/D68's "the project's main" reconciled with a plugin repository that is not the project?~~ → D2 | | |
 
 **Q1 options**
 - **No credentials**: nothing to install or grant, and it works for any project, but GitHub allows an anonymous
@@ -85,6 +100,9 @@ the way.
   scoped to one repository read another public one. A spike settles that. (recommended)
 - **Install the runner's App on the plugin's repository too**: certain to work, but it only works where the App's
   owner controls both repositories, and it adds an identity step for each new account.
+- **Git only, no credentials**: tags with `git ls-remote` and the release with `git fetch`, so no REST limit
+  applies and nothing is installed, but the plugin's repository must stay public. Added on 2026-11-14, once the
+  code showed every estimate reads the tags; chosen as D1.
 
 **Q2 options**
 - **A new decision in command-center supersedes D68**: one place says where the release comes from, at the cost of
