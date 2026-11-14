@@ -20,7 +20,8 @@ How a service is configured here, from its manifest, services/<name>/service.jso
   database in the local Postgres for DATABASE_URL, and random text for the rest.
 - A manifest with `firestore` gets FIRESTORE_EMULATOR_HOST, and one with `cloudsql` a database of its own, migrated
   with `python -m <service>.migrate` when the service has a migrations/ folder.
-- POINT_AT_FAKES then sets what points it at the fakes, and its jobs get JOB_SETTINGS. A service without an entry
+- POINT_AT_FAKES then sets what points it at the fakes, and the project each service serves, which the manifests
+  take from a secret so that no project's name is committed; its jobs get JOB_SETTINGS. A service without an entry
   there still builds, runs and answers /version; it needs one only to reach a fake.
 
 Each service listens on 127.0.0.1:<8700 + its place in SERVICES in scripts/gcp/common.sh>, the URL its local row in
@@ -67,6 +68,8 @@ TOKENS = {SPONSOR: "local-sponsor-token", MEMBER: "local-member-token", OUTSIDER
 FAKES = "http://fakes"
 POINT_AT_FAKES = {
     "runner": {
+        "RUNNER_PROJECT": PROJECT,
+        "RUNNER_APP_INSTALLATION_ID": "1",
         "RUNNER_GITHUB_API_URL": f"{FAKES}:{GITHUB_PORT}",
         "RUNNER_GIT_URL": f"{FAKES}:{GITHUB_PORT}/{PROJECT}.git",
         "RUNNER_PLUGIN_REPOSITORY": PLUGIN,
@@ -75,13 +78,16 @@ POINT_AT_FAKES = {
         "RUNNER_METADATA_URL": f"{FAKES}:{METADATA_PORT}",
     },
     "threads": {
+        "THREADS_PROJECTS": PROJECT,
         "THREADS_GITHUB_API_URL": f"{FAKES}:{GITHUB_PORT}",
         "THREADS_RUNNER_KEYS_URL": f"{FAKES}:{METADATA_PORT}/oauth2/v3/certs",
     },
     "status": {
+        "STATUS_PROJECTS": PROJECT,
         "STATUS_GITHUB_API_URL": f"{FAKES}:{GITHUB_PORT}",
         "STATUS_GITHUB_GIT_URL": f"{FAKES}:{GITHUB_PORT}",
     },
+    "notify": {"NOTIFY_PROJECTS": PROJECT},
 }
 # A runner session's job runs the fake Agent SDK, which the fake Cloud Run adds at /opt/local (fakes/fakesdk.py).
 JOB_SETTINGS = {"runner": {"RUNNER_SDK_CLIENT": "fakesdk:client", "FAKE_SDK_SECONDS": "8"}}

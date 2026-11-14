@@ -107,16 +107,19 @@ class ManifestTest(unittest.TestCase):
         self.assertEqual(declared, set(config.REQUIRED))
 
     def test_its_secrets_are_named_never_given(self):
-        self.assertEqual(set(self.manifest.get("secrets", {})), set(config.SECRETS))
+        # STATUS_PROJECTS is no secret, but comes from Secret Manager so that no project's name is committed
+        # (docs/runbooks/deploy.md, step 9).
+        self.assertEqual(set(self.manifest.get("secrets", {})), set(config.SECRETS) | {"STATUS_PROJECTS"})
         with open(MANIFEST_PATH) as f:
             text = f.read()
         self.assertNotIn("BEGIN", text)
         for name in config.SECRETS:
             self.assertNotIn(name, self.manifest.get("settings", {}))
 
-    def test_it_serves_this_repository_and_names_only_staging_s_app(self):
+    def test_it_names_no_project_and_only_staging_s_app(self):
         settings = self.manifest["settings"]
-        self.assertEqual(settings["STATUS_PROJECTS"], "jugonzal/architect-loop")
+        self.assertNotIn("STATUS_PROJECTS", settings)
+        self.assertEqual(self.manifest["secrets"]["STATUS_PROJECTS"], "status-projects")
         app_id = settings["STATUS_GITHUB_APP_ID"]
         # The owner named staging's app (docs/runbooks/deploy.md step 11). Production's belongs to a later loop
         # (command-center/D54), so deploy.sh refuses production until the owner names it in a pull request.

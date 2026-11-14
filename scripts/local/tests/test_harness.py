@@ -86,7 +86,10 @@ class EnvironmentTest(unittest.TestCase):
             for key in manifest.get("secrets", {}):
                 value = self.env[name][key]
                 with self.subTest(service=name, secret=key):
-                    if key.endswith("PRIVATE_KEY"):
+                    if key in harness.POINT_AT_FAKES.get(name, {}):
+                        # Not a secret's value but a setting the owner keeps out of git, such as the project.
+                        self.assertEqual(value, harness.POINT_AT_FAKES[name][key])
+                    elif key.endswith("PRIVATE_KEY"):
                         self.assertIn("made up", value)
                     elif key == "DATABASE_URL":
                         self.assertEqual(value, f"postgresql://local:pw@postgres:5432/{name}")

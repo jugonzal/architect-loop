@@ -258,6 +258,22 @@ on main when this was written:
 | `threads-github-app-private-key` | Threads' GitHub App private key (PEM) | Threads' app, which `threads` declares |
 | `threads-github-webhook-secret` | That app's webhook secret | The same app's settings |
 | `threads-database-url` | `postgresql://threads:<PASSWORD>@/threads?host=/cloudsql/<PROJECT_ID>:us-east1:threads` | Step 10 |
+| `runner-project` | The one project the runner serves, as `owner/repo` | The owner's choice for this environment |
+| `runner-app-installation-id` | The installation ID of the runner's GitHub App on that project's account | The number at the end of the installation's settings URL |
+| `status-projects`, `threads-projects`, `notify-projects` | The projects each serves, as comma-separated `owner/repo` | The owner's choice for this environment |
+
+The last five hold no secret. They are in Secret Manager so that the project an environment serves is never
+committed: the manifests are public, and a project may be private. Each environment has its own values, so
+nothing in the repository changes when an environment is pointed at another project. To do that: add a version to
+each of the five, then deploy the four services again at the commit they serve. The app is a separate build: set
+`EXPO_PUBLIC_PROJECT` for it as an EAS environment variable (`app/eas.json` names the `preview` environment),
+which keeps the name out of `eas.json` too:
+
+```bash
+cd app && eas env:create --environment preview --name EXPO_PUBLIC_PROJECT --value <OWNER/REPO> --visibility plaintext
+```
+
+Without that variable a build serves `jugonzal/architect-loop`.
 
 A key file:
 
@@ -308,8 +324,9 @@ migration on shared data is the owner's).
 
 ### 11. Name the values only the owner knows
 
-The manifests leave `TODO(owner)` where only the owner can name a value: the runner's `RUNNER_APP_ID`,
-`RUNNER_APP_INSTALLATION_ID` and `RUNNER_APP_SLUG`, and threads' `THREADS_GITHUB_APP_ID`. Once the apps exist,
+The manifests leave `TODO(owner)` where only the owner can name a value: the runner's `RUNNER_APP_ID` and
+`RUNNER_APP_SLUG`, and threads' `THREADS_GITHUB_APP_ID`. (The runner's installation ID is a secret of step 9,
+since it follows the project.) Once the apps exist,
 replace each in `services/runner/service.json` and `services/threads/service.json` on a branch and merge it. When
 staging and production use different apps, write the value as `{"staging": "<ID>", "production": "<ID>"}`.
 

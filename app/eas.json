@@ -8,6 +8,7 @@
     "staging": {
       "distribution": "store",
       "autoIncrement": true,
+      "environment": "preview",
       "env": {
         "EXPO_PUBLIC_ENVIRONMENT": "staging/app",
         "EXPO_PUBLIC_GITHUB_CLIENT_ID": "Ov23liIB7Aud7TtO9eGD",
