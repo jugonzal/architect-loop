@@ -24,7 +24,10 @@ concern, and nothing else. It never edits another loop's files, never edits code
 
 It commits on a `docs/<loop>-plan` branch and opens a PR that changes only `docs/loops/<loop>/`. That PR
 records no evidence, so under `LOOP.md` §2.1 it may merge it itself once
-`scripts/check_loop_pr.sh` from the loop-status skill passes. Without that row, the owner merges.
+`scripts/check_loop_pr.sh` from the loop-status skill passes. Without that row, the owner merges. Before merging,
+run `gh pr checks <n> --watch` and allow it ten minutes. If it says no checks are reported yet, run it again. Do
+not end the turn before it answers. Merge only when every check passed; otherwise leave the PR for the owner and
+say which check failed.
 
 **Without `LOOP.md`:** use `docs/loops/`, the default gates from `loop-init`, `ships-to: production`, leave the
 PR for the owner, and mention `/loop-init` once.

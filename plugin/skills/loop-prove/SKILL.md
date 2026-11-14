@@ -35,7 +35,9 @@ It does not fix what it finds: fixing is `/loop-build`, and finding the cause is
 
 Evidence lines go in the concern file through a PR that changes only `docs/loops/`. Under `LOOP.md` §2.1 it
 merges that PR itself once `scripts/check_loop_pr.sh` from the loop-status skill passes, which it will only if
-every commit the lines cite is on `main`.
+every commit the lines cite is on `main`. Before merging, run `gh pr checks <n> --watch` and allow it ten
+minutes. If it says no checks are reported yet, run it again. Do not end the turn before it answers. Merge only
+when every check passed; otherwise leave the PR for the owner and say which check failed.
 
 **Without `LOOP.md`:** use local runs and tests only, ask the owner before reading any shared environment, leave
 the PR for the owner, and mention `/loop-init` once.
