@@ -264,16 +264,34 @@ on main when this was written:
 
 The last five hold no secret. They are in Secret Manager so that the project an environment serves is never
 committed: the manifests are public, and a project may be private. Each environment has its own values, so
-nothing in the repository changes when an environment is pointed at another project. To do that: add a version to
-each of the five, then deploy the four services again at the commit they serve. The app is a separate build: set
-`EXPO_PUBLIC_PROJECT` for it as an EAS environment variable (`app/eas.json` names the `preview` environment),
-which keeps the name out of `eas.json` too:
+nothing in the repository changes when an environment is pointed at another project.
+
+**To point an environment at another project**, in this order (run on staging on 2026-11-14):
+
+1. Install the runner's, status's and threads' GitHub Apps on the project's account, for that repository only.
+   An app that is "Only on this account" cannot be installed on another account: make it public first, in the
+   app's Advanced settings. Note the runner's installation ID.
+2. Make sure each person who will use the app is a **direct** collaborator on the repository (see Traps: access
+   that comes only from an organization does not count).
+3. Create the five secrets, or add a version to each that exists. The runner serves one project; the other three
+   take a list, so they can keep serving the earlier project too.
+4. With a checkout of the commit to deploy, run the bootstrap (step 12), so each service may read its secrets.
+   The bootstrap reads the manifests of the working tree, not of `main` (see Traps).
+5. Deploy the four services again (step 13), at the commit they serve or a newer one.
+6. Check each: `served.sh` for its commit, then, with a collaborator's GitHub token, `GET /estimates?skill=loop-status`
+   on the runner and `GET /projects/<OWNER>/<REPO>/status` on the status service. Each answers 200.
+
+The app is a separate build. Set `EXPO_PUBLIC_PROJECT` for it as an EAS environment variable (`app/eas.json`
+names the `preview` environment), which keeps the name out of `eas.json` too, then build:
 
 ```bash
-cd app && eas env:create --environment preview --name EXPO_PUBLIC_PROJECT --value <OWNER/REPO> --visibility plaintext
+cd app && env -u EXPO_TOKEN eas env:set --environment preview --name EXPO_PUBLIC_PROJECT --value <OWNER/REPO> --visibility plaintext
+cd app && env -u EXPO_TOKEN EAS_BUILD_SKIP_LOCKFILE_CHECK=1 eas build --profile preview --platform android
 ```
 
-Without that variable a build serves `jugonzal/architect-loop`.
+The build's first lines list the variables it loaded: `EXPO_PUBLIC_PROJECT` is named among those "loaded from the
+"preview" environment on EAS". Without that variable a build serves `jugonzal/architect-loop`. `env -u EXPO_TOKEN`
+and `EAS_BUILD_SKIP_LOCKFILE_CHECK=1` are each for a trap below.
 
 A key file:
 
@@ -522,6 +540,30 @@ yet deployed.
 
 Each learned in a real run. Newest first.
 
+- **2026-11-14:** the runner and the status service answered 403 `not a collaborator` to the owner of the
+  organization that owns the project, who is an admin of the repository → both ask GitHub
+  `GET /repos/<project>/collaborators/<login>` with their app's token, and it answered 404: the repository had no
+  direct collaborator, and the person's access came only from owning the organization. The apps hold no
+  organization permission, which is the likely reason they cannot see such access; that was not confirmed → add
+  each person as a direct collaborator on the repository. Once the owner was added, both answered 200. Giving the
+  three apps the organization permission "Members: read" may cover access through an organization or a team; it
+  has not been tried.
+- **2026-11-14:** `eas build` stopped with `No lockfile found in the project directory` → the app has no
+  lockfile (`.github/workflows/app.yml` says why), and eas-cli 22.4.0 refuses to build without one, though builds
+  up to 2026-10-29 went through → set `EAS_BUILD_SKIP_LOCKFILE_CHECK=1` for the build, as the message offers,
+  until `app/package-lock.json` is committed. The failed attempt still increments `versionCode`.
+- **2026-11-14:** `eas env:create` answered `Entity not authorized ... viewer = RobotViewerContext` → the shell
+  exports `EXPO_TOKEN`, the status service's robot token, and the CLI uses it in place of the owner's login; the
+  robot may read builds but not create a variable → run the command as `env -u EXPO_TOKEN eas ...`, after
+  `env -u EXPO_TOKEN eas whoami` names the owner. `env:create` is also deprecated in eas-cli 22.4.0: use
+  `env:set`, with the same flags.
+- **2026-11-14:** `deploy.sh status staging` failed with `Permission denied on secret:
+  .../secrets/status-projects/versions/latest for Revision service account status@...`, after the secret was
+  created and the bootstrap run → the bootstrap grants the secrets that the manifests **of the working tree**
+  name, and it ran on a checkout from before the commit that named the new secret, so it granted nothing and said
+  nothing about it → pull the commit you will deploy, then run the bootstrap: it prints one `let <identity> read
+  secret <name>` line for each. Check with `gcloud secrets get-iam-policy <SECRET> --project=<PROJECT_ID>`. The
+  failed deploy leaves the earlier revision serving.
 - **2026-10-23:** step 14 had no commit to roll back to, after step 13 deployed the runner and threads from
   1eae0a3 → staging's GitHub App IDs were first named in 1bdb337 (PR #48). Every earlier runner or threads
   manifest leaves them `TODO(owner)` for staging, and `deploy.sh` refuses such a commit before any `gcloud` call.
@@ -539,6 +581,11 @@ Each learned in a real run. Newest first.
 
 ## Corrections
 
+- 2026-11-14: Step 9, the app's project: `eas env:create` is deprecated, and the command is `eas env:set`. The
+  owner ran it and the build on 2026-11-14; both commands now carry what those runs needed (see Traps).
+- 2026-11-14: Step 9: pointing an environment at another project is now a numbered procedure, in the order that
+  worked on staging. The paragraph it replaces did not say to install the GitHub Apps, to run the bootstrap after
+  pulling the commit, or how to check the result.
 - 2026-10-23: Status, Last run as written and intro: the owner ran step 13 on staging from 1eae0a3 and reported
   its three exports, which hold what step 13 says (see `service-manifests` C1's evidence line at 1eae0a3). The
   status said no run of steps 6 to 15 was recorded. The deploys' own output was not reported, so it is still as
