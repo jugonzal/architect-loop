@@ -22,6 +22,9 @@ After a verified deploy it appends `ship` lines to the concerns' Evidence throug
 `docs/loops/`, and merges that PR itself under `LOOP.md` §2.1 once `scripts/check_loop_pr.sh` from the
 loop-status skill passes. It will pass only if the served commit is on `main`. If an environment serves
 something that is not on `main` (a hotfix branch, say), that is a finding for the owner, not something to record.
+Before merging, run `gh pr checks <n> --watch` and allow it ten minutes. If it says no checks are reported yet,
+run it again. Do not end the turn before it answers. Merge only when every check passed; otherwise leave the PR
+for the owner and say which check failed.
 
 **Without `LOOP.md`:** nothing is delegated. Ask the owner how each environment reports its served commit, leave
 every PR for the owner, and mention `/loop-init` once.

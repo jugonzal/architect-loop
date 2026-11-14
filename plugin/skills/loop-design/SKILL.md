@@ -24,7 +24,10 @@ else: no code, no config, no other loop's files. It does not start `/loop-build`
 
 It commits on a `docs/<loop>-design` branch and opens a PR that changes only `docs/loops/<loop>/`. Under
 `LOOP.md` §2.1 it may merge that PR itself once `scripts/check_loop_pr.sh` from the loop-status skill passes;
-otherwise the owner merges. Decisions count only if the owner made them in this conversation.
+otherwise the owner merges. Before merging, run `gh pr checks <n> --watch` and allow it ten minutes. If it says
+no checks are reported yet, run it again. Do not end the turn before it answers. Merge only when every check
+passed; otherwise leave the PR for the owner and say which check failed. Decisions count only if the owner made
+them in this conversation.
 
 **Without `LOOP.md`:** use the default gates from `loop-init`, treat every non-local environment as read-only
 and ask before reading it, leave the PR for the owner, and mention `/loop-init` once.

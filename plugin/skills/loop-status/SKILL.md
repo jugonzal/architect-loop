@@ -248,8 +248,10 @@ Offer, never assume. When the owner agrees:
      where it departs from its design, and what was learned;
    - corrections to "Where we are" text the facts contradict, each saying what was wrong and how it was checked.
 
-   Run [scripts/check_loop_pr.sh](scripts/check_loop_pr.sh) `--pr <n>`. If it passes and the PR's checks are
-   green, merge it yourself (`LOOP.md` §2.1). If it fails, leave it for the owner and say why.
+   Run [scripts/check_loop_pr.sh](scripts/check_loop_pr.sh) `--pr <n>`. If it fails, leave the PR for the owner
+   and say why. If it passes, run `gh pr checks <n> --watch` and allow it ten minutes. If it says no checks are
+   reported yet, run it again. Do not end the turn before it answers. If every check passed, merge it yourself
+   (`LOOP.md` §2.1). Otherwise leave the PR for the owner and say which check failed.
 2. **Everything else** goes in a separate PR for the owner to merge: memory facts (use
    [templates/memory-fact.md](templates/memory-fact.md) in `docs/memory/`, update rather than duplicate, delete
    facts proved wrong), runbook traps (via `/loop-runbook`), `LOOP.md` §7 traps, and corrections to READMEs or
