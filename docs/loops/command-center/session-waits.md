@@ -72,4 +72,7 @@ job runs the image it started with.
 
 ## Evidence
 
+- 2026-11-14 · C1 · HOLDS · rung 1 · staging/runner @c14ba70 · On staging, session f5da9b5b of `/loop-design` on `sandbox/design-target` (plugin release v0.7.0, sponsor jugonzal), read from the runner's API and the session's thread with the owner's GitHub sign-in; staging/runner serves c14ba70 (`served.sh`). The session asked Q1 at 03:12:54 UTC and posted "Waiting for a reply in this thread for 15 minutes"; the owner's reply "A" at 03:13:29 became its next turn, it recorded sandbox/design-target D1 and merged PR #155 (2c21804), posted its report at 03:17:42 and began a second 15 minutes. The session stayed `running` throughout. One departure from the Prove: the answer came 35 seconds after the question, not more than a minute; the second wait, which ran its full 15 minutes with the session still running, covers what the minute was there to show
+- 2026-11-14 · C2 · HOLDS · rung 1 · staging/runner @c14ba70 · The same session, left unanswered after its report: "Waiting for a reply" at 03:17:42.45 UTC, "No reply in 15 minutes, so it stops waiting." at 03:32:42.48, the Finished milestone at 03:32:44, and the runner reads it `ended`, `completed` at 03:32:44. That is 15 minutes 2 seconds from the wait's start to Finished. The `/loop-status` session 99c49f76 dispatched at 03:20 ended when its model stopped, with no wait. A sponsor's stop during a wait was not tried on staging; the Prove asks for it in CI only
+
 ## Shipped
