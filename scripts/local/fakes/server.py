@@ -1,7 +1,8 @@
 """The local harness's fakes (command-center/local-harness, per command-center/D53), in one process:
 
 - GitHub, on FAKE_GITHUB_PORT (8711): the REST calls the services make (`GET /user`, collaborator checks,
-  installation tokens, contents, tags, pull requests and reviews), the project's repository over git's smart HTTP,
+  installation tokens, contents, tags, pull requests and reviews), the project's repository and any other under its
+  git root, such as the plugin's, over git's smart HTTP,
   and the webhooks GitHub delivers to each service's app.
 - Cloud Run's job launch, on FAKE_RUN_PORT (8712): `POST /v2/projects/<p>/locations/<r>/jobs/<job>:run` starts one
   execution of the job in a container of its own, through the Docker Engine API on /var/run/docker.sock.
@@ -383,6 +384,10 @@ class GitHub(Handler):
                 headers[key.strip()] = value.strip()
         if path.endswith("/git-receive-pack"):
             self.fakes.log("github", "PUSH", path, status=status)
+        elif path.endswith("/info/refs") and "service=git-upload-pack" in parts.query:
+            # A read of a repository's refs, which starts every ls-remote, fetch and clone: the smoke test tells
+            # from these which repository the runner read its release from (plugin-source/plugin-repository).
+            self.fakes.log("github", "REFS", path, status=status)
         return self.answer(status, headers=headers, raw=payload)
 
 

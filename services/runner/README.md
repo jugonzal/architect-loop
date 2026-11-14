@@ -34,6 +34,8 @@ Environment variables; secrets are mounted from Secret Manager as environment va
 | Variable | Default | What |
 | --- | --- | --- |
 | `RUNNER_PROJECT` | `jugonzal/architect-loop` | The one project served (command-center/D18) |
+| `RUNNER_PLUGIN_REPOSITORY` | `jugonzal/architect-loop` | The repository that releases the skills, as `owner/repo`. It need not be the project: a runner set to any project runs the released skills with this unset, and a fork that releases its own sets it (plugin-source/D3). The runner reads its release tags with `git ls-remote` and a release with `git fetch`, with no credentials and no REST call, so it must be public (plugin-source/D1) |
+| `RUNNER_PLUGIN_GIT_URL` | `https://github.com/<plugin repository>.git` | The plugin repository's git URL, when it is not GitHub's; the local harness points it at its fake |
 | `RUNNER_CAP_PER_SPONSOR` | `3` | Sessions one sponsor may run at once (command-center/D22) |
 | `RUNNER_SKILL_MODELS` | `/loop-status` on `claude-sonnet-5-5`, the rest on `claude-opus-5-5` | JSON skill to model map, merged over the default (session-runner D5) |
 | `RUNNER_PRICES` | Opus 5.5 and Sonnet 5.5 list prices | JSON dollars per million tokens, for the running estimate only |

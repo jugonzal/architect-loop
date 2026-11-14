@@ -7,7 +7,10 @@ Changing the cap, the budget ceiling or the skill to model map is a config chang
 import json
 import math
 import os
+import re
 from dataclasses import dataclass, field
+
+REPOSITORY = re.compile(r"^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$")
 
 SKILLS = ("loop-design", "loop-build", "loop-prove", "loop-status", "loop-ship")
 
@@ -90,6 +93,12 @@ class Config:
     job: str = "runner-session"
     # Where a session's job clones from and works.
     git_url: str = ""
+    # The repository that releases the skills, which need not be the project (plugin-source/D3): a runner set to any
+    # project runs the released skills with nothing more set, and a fork that releases its own sets this. It is read
+    # with git alone and no credentials, so it must be public (plugin-source/D1). `plugin_git_url` overrides its git
+    # URL as `git_url` does the project's, for the local harness.
+    plugin_repository: str = "jugonzal/architect-loop"
+    plugin_git_url: str = ""
     workdir: str = "/tmp/runner/sessions"
     # The services outside the runner. Each defaults to the real one; the local harness points them at its fakes
     # (command-center/D53).
@@ -121,6 +130,8 @@ class Config:
             raise ValueError(f"design_wait_s must be a number of seconds, 0 or more, not {self.design_wait_s}")
         if not (math.isfinite(self.session_deadline_s) and self.session_deadline_s > 0):
             raise ValueError(f"session_deadline_s must be a number of seconds above 0, not {self.session_deadline_s}")
+        if not REPOSITORY.match(self.plugin_repository):
+            raise ValueError(f"plugin_repository must be owner/repo, not {self.plugin_repository}")
         if self.cap_per_sponsor < 1:
             raise ValueError(f"cap_per_sponsor must be at least 1, not {self.cap_per_sponsor}")
         if not (math.isfinite(self.budget_ceiling_usd) and self.budget_ceiling_usd > 0):
@@ -139,6 +150,10 @@ class Config:
         return self.git_url or f"https://github.com/{self.project}.git"
 
     @property
+    def plugin_url(self):
+        return self.plugin_git_url or f"https://github.com/{self.plugin_repository}.git"
+
+    @property
     def bot_login(self):
         return f"{self.app_slug}[bot]" if self.app_slug else ""
 
@@ -153,7 +168,8 @@ class Config:
             "RUNNER_JOB": "job", "RUNNER_GIT_URL": "git_url", "RUNNER_WORKDIR": "workdir",
             "RUNNER_GITHUB_API_URL": "github_api_url", "RUNNER_RUN_API_URL": "run_api_url",
             "RUNNER_METADATA_URL": "metadata_url", "RUNNER_SDK_CLIENT": "sdk_client",
-            "RUNNER_THREADS_URL": "threads_url",
+            "RUNNER_THREADS_URL": "threads_url", "RUNNER_PLUGIN_REPOSITORY": "plugin_repository",
+            "RUNNER_PLUGIN_GIT_URL": "plugin_git_url",
         }
         for name, key in plain.items():
             if env.get(name):
