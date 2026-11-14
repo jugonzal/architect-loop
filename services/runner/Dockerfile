@@ -2,7 +2,9 @@
 # Build from the repository root:  docker build -f services/runner/Dockerfile --build-arg COMMIT_SHA=<sha> .
 FROM python:3.12-slim
 
-# git for the session's own clone, and gh because the skills open pull requests with it.
+# git for the session's own clone, gh because the skills open pull requests with it, and curl because a session
+# runs the project's commands: scripts/gcp/served.sh reads each LOOP.md §3 row's served commit with it, and without
+# it a session's /loop-status reads every service row as unknown. Only gnupg is here just to fetch gh's key.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates curl gnupg \
  && install -d -m 0755 /etc/apt/keyrings \
@@ -13,7 +15,7 @@ RUN apt-get update \
       > /etc/apt/sources.list.d/github-cli.list \
  && apt-get update \
  && apt-get install -y --no-install-recommends gh \
- && apt-get purge -y curl gnupg \
+ && apt-get purge -y gnupg \
  && apt-get autoremove -y \
  && rm -rf /var/lib/apt/lists/*
 
