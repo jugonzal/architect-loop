@@ -45,6 +45,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 STATE = os.environ.get("LOCAL_STATE_DIR") or os.path.join(tempfile.gettempdir(), "architect-loop-local")
 
 PROJECT = "jugonzal/architect-loop"
+# The repository that releases the skills, made up and apart from the project, which has no release tag here: the
+# harness always runs the case where the two differ (plugin-source/plugin-repository).
+PLUGIN = "local-plugin/skills"
 LABEL = "architect-loop-local"
 NETWORK = "architect-loop-local"  # the fakes only: it publishes their ports on 127.0.0.1
 INTERNAL = "architect-loop-local-internal"  # everything else: created --internal, so nothing on it leaves the machine
@@ -66,6 +69,8 @@ POINT_AT_FAKES = {
     "runner": {
         "RUNNER_GITHUB_API_URL": f"{FAKES}:{GITHUB_PORT}",
         "RUNNER_GIT_URL": f"{FAKES}:{GITHUB_PORT}/{PROJECT}.git",
+        "RUNNER_PLUGIN_REPOSITORY": PLUGIN,
+        "RUNNER_PLUGIN_GIT_URL": f"{FAKES}:{GITHUB_PORT}/{PLUGIN}.git",
         "RUNNER_RUN_API_URL": f"{FAKES}:{RUN_PORT}",
         "RUNNER_METADATA_URL": f"{FAKES}:{METADATA_PORT}",
     },
@@ -328,10 +333,14 @@ def up(root=ROOT, state=STATE):
     for name in services:
         build(tree, f"services/{name}/Dockerfile", image(name, sha), sha, os.path.join(state, f"build-{name}.log"))
 
-    # The project's repository, as the fake GitHub serves it: HEAD as main, and every release tag.
+    # The project's repository, as the fake GitHub serves it: HEAD as main, and no tag. The release tags go to the
+    # plugin's repository beside it, which the runner reads with git alone (plugin-source/D1).
     repository = os.path.join(state, "git", *PROJECT.split("/")) + ".git"
     run(["git", "init", "--quiet", "--bare", "--initial-branch=main", repository])
-    run(["git", "-C", root, "push", "--quiet", repository, f"{sha}:refs/heads/main", "refs/tags/*:refs/tags/*"])
+    run(["git", "-C", root, "push", "--quiet", repository, f"{sha}:refs/heads/main"])
+    plugin = os.path.join(state, "git", *PLUGIN.split("/")) + ".git"
+    run(["git", "init", "--quiet", "--bare", "--initial-branch=main", plugin])
+    run(["git", "-C", root, "push", "--quiet", plugin, f"{sha}:refs/heads/main", "refs/tags/*:refs/tags/*"])
 
     fake = FakeSecrets("local-" + secrets.token_hex(8))
     env = {name: service_env(name, manifests[name], services, fake, sha) for name in services}
@@ -539,6 +548,19 @@ def smoke(root=ROOT, state=STATE, no_up=False):
     owner = PROJECT.split("/")[0]
     say(f"smoke: /loop-build on {concern}, plugin {release}, sponsored by {SPONSOR}, at local @{sha}")
 
+    # plugin-source/plugin-repository C1: the release is the plugin repository's, and the project has none.
+    tags = run(["git", "ls-remote", "--tags", f"{github}/{PROJECT}.git"]).stdout.strip()
+    checks.check("the project's repository has no tag, so no release of its own", tags == "", tags)
+    status, estimate = call("GET", f"{runner}/estimates?skill=loop-build", TOKENS[SPONSOR])
+    checks.check(f"the runner's estimate names {release}, the newest release of the plugin's repository {PLUGIN}",
+                 status == 200 and (estimate or {}).get("plugin_release") == release, f"{status} {estimate}")
+    status, unknown = call("POST", f"{runner}/sessions", TOKENS[SPONSOR],
+                           {"project": PROJECT, "skill": "loop-build", "concern": concern, "budget_usd": 1.0,
+                            "plugin_release": "v999.0.0"})
+    checks.check("a dispatch naming a tag the plugin's repository lacks is refused, naming that repository",
+                 status == 422 and (unknown or {}).get("error") == "unknown-release"
+                 and PLUGIN in (unknown or {}).get("message", ""), f"{status} {unknown}")
+
     # C2: a dispatch to the local runner, claimed in the shared store.
     dispatch = {"project": PROJECT, "skill": "loop-build", "concern": concern, "budget_usd": 1.0,
                 "plugin_release": release}
@@ -609,13 +631,19 @@ def smoke(root=ROOT, state=STATE, no_up=False):
     asked = {(c["fake"], c["method"], c.get("caller")) for c in calls}
     paths = [c["path"] for c in calls]
     checks.check("the runner asked the fakes, not GitHub or Google: who calls, a collaborator check, installation "
-                 "tokens, the concern, the release, a push and a job execution",
+                 "tokens, the concern, a push and a job execution",
                  ("github", "GET", "user") in asked and any(p.endswith(f"/collaborators/{SPONSOR}") for p in paths)
                  and ("github", "MINT", None) in asked and any(p.endswith(f"/contents/docs/loops/{concern}.md")
                                                                for p in paths)
-                 and any(f"/git/ref/tags/{release}" in p for p in paths) and ("github", "PUSH", None) in asked
+                 and ("github", "PUSH", None) in asked
                  and any(c["fake"] == "run" and c["method"] == "EXECUTE" and c.get("session") == sid for c in calls)
                  and any(c["fake"] == "metadata" and c["path"].endswith("/token") for c in calls), f"{sorted(asked)}")
+
+    # plugin-source/plugin-repository C1 and C2 (per plugin-source/D1): git alone reads the plugin's repository.
+    rest = [p for c, p in zip(calls, paths) if c["fake"] == "github" and c["method"] != "REFS" and "/tags" in p]
+    read = [p for c, p in zip(calls, paths) if c["fake"] == "github" and c["method"] == "REFS"]
+    checks.check("the runner read the plugin's repository with git, and asked GitHub's REST API about no tag",
+                 not rest and any(p.startswith(f"/{PLUGIN}.git/") for p in read), f"REST {rest}; git {sorted(set(read))}")
 
     # Nothing leaves the machine: everything but the fakes is on the internal network, which has no route out.
     internal = json.loads(run(["docker", "network", "inspect", "--format", "{{json .Internal}}", INTERNAL]).stdout)

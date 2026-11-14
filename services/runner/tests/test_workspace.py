@@ -15,6 +15,7 @@ import unittest
 from runner import trailers
 from runner.config import SCOPES
 from runner.models import Session
+from runner.plugin import PluginSource
 from runner.workspace import Workspace, WorkspaceError, trailers_for
 from tests.gitrepo import BOT, SLUG, Repo, clean_env, git
 from tests.fakes import CONCERN, PROJECT, SCOPED, scratch
@@ -49,7 +50,8 @@ class WorkspaceTest(unittest.TestCase):
     def setUp(self):
         self.origin = Origin(self)
         self.workdir = scratch(self)
-        self.workspace = Workspace(self.origin.path, self.workdir, BOT, env=clean_env())
+        self.workspace = Workspace(self.origin.path, self.workdir, BOT, PluginSource(self.origin.path, env=clean_env()),
+                                   env=clean_env())
 
     def prepare(self, s=None):
         s = s or session()
@@ -109,12 +111,60 @@ class WorkspaceTest(unittest.TestCase):
             self.prepare(session(release="v9.9.9", sid="b" * 32))
 
 
+class PluginRepositoryTest(unittest.TestCase):
+    """plugin-source/plugin-repository C2: the skills come from the plugin's repository at the dispatched tag, and
+    the project's clone gains nothing from it. The project here has no tag and no `plugin/` at all."""
+
+    def setUp(self):
+        self.plugin_origin = Origin(self)
+        project = Repo(self)
+        project.commit(f"docs/loops/{CONCERN}.md", "# concern\n", "Add the concern")
+        self.project = os.path.join(scratch(self), "project.git")
+        git(project.path, "clone", "-q", "--bare", project.path, self.project)
+        self.workspace = Workspace(self.project, scratch(self), BOT,
+                                   PluginSource(self.plugin_origin.path, env=clean_env()), env=clean_env())
+
+    def prepare(self, s=None):
+        s = s or session()
+        prepared = self.workspace.prepare(s)
+        self.addCleanup(self.workspace.cleanup, s.id)
+        return prepared
+
+    def test_the_release_comes_from_the_plugins_repository(self):
+        prepared = self.prepare()
+        with open(os.path.join(prepared.plugin_dir, "skills", "loop-status", "SKILL.md")) as f:
+            self.assertEqual(f.read(), "released copy\n")
+        self.assertEqual(prepared.plugin_name, "architect-loop")
+        self.assertFalse(os.access(os.path.join(prepared.plugin_dir, "skills", "loop-status", "SKILL.md"), os.W_OK))
+
+    def test_the_projects_clone_gains_no_tag_and_no_file_from_it(self):
+        prepared = self.prepare()
+        self.assertEqual(git(prepared.clone, "tag", "--list"), "")
+        self.assertEqual(git(prepared.clone, "ls-files"), f"README.md\ndocs/loops/{CONCERN}.md")
+        self.assertEqual(git(prepared.clone, "status", "--porcelain"), "")
+        self.assertEqual(git(prepared.clone, "remote"), "origin")
+        self.assertFalse(os.path.commonpath([prepared.plugin_dir, prepared.clone]) == prepared.clone)
+        self.assertEqual(git(self.project, "tag", "--list"), "")
+
+    def test_a_tag_the_plugin_repository_lacks_ends_the_session_naming_it(self):
+        with self.assertRaises(WorkspaceError) as refused:
+            self.prepare(session(release="v9.9.9", sid="b" * 32))
+        self.assertIn("v9.9.9 is not a tag of the plugin's repository", str(refused.exception))
+
+    def test_a_release_with_no_plugin_in_it_ends_the_session(self):
+        git(self.plugin_origin.work.path, "tag", "v0.0.1", self.plugin_origin.work.base)
+        git(self.plugin_origin.work.path, "push", "-q", self.plugin_origin.path, "v0.0.1")
+        with self.assertRaises(WorkspaceError):
+            self.prepare(session(release="v0.0.1", sid="c" * 32))
+
+
 class HookTest(unittest.TestCase):
     """The commit-msg hook the runner installs, and what the trailers check makes of a commit that skipped it."""
 
     def setUp(self):
         self.origin = Origin(self)
-        self.workspace = Workspace(self.origin.path, scratch(self), BOT, env=clean_env())
+        self.workspace = Workspace(self.origin.path, scratch(self), BOT,
+                                   PluginSource(self.origin.path, env=clean_env()), env=clean_env())
         self.prepared = self.workspace.prepare(session(sponsor="ana"))
         self.addCleanup(self.workspace.cleanup, session().id)
         self.base = git(self.prepared.clone, "rev-parse", "HEAD")
@@ -167,7 +217,8 @@ class TrailersPerSkillTest(unittest.TestCase):
 
     def setUp(self):
         self.origin = Origin(self)
-        self.workspace = Workspace(self.origin.path, scratch(self), BOT, env=clean_env())
+        self.workspace = Workspace(self.origin.path, scratch(self), BOT,
+                                   PluginSource(self.origin.path, env=clean_env()), env=clean_env())
 
     def prepared(self, skill, n, scope="concern"):
         s = session(skill=skill, sponsor="ana", sid=f"{n:032x}", scope=scope)
@@ -239,7 +290,8 @@ class PushedBranchesTest(unittest.TestCase):
 
     def setUp(self):
         self.origin = Origin(self)
-        self.workspace = Workspace(self.origin.path, scratch(self), BOT, env=clean_env())
+        self.workspace = Workspace(self.origin.path, scratch(self), BOT,
+                                   PluginSource(self.origin.path, env=clean_env()), env=clean_env())
         self.prepared = self.workspace.prepare(session())
         self.addCleanup(self.workspace.cleanup, session().id)
 

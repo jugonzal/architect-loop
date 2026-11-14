@@ -18,6 +18,11 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(response.json, {"commit": "eee8119"})
         self.assertEqual(api.dispatcher.config.cap_per_sponsor, 3)
 
+    def test_the_service_reads_releases_from_the_plugins_repository_not_the_projects(self):
+        env = {"RUNNER_STORE": os.path.join(scratch(self), "runner.sqlite3"), "RUNNER_PROJECT": "someone/their-project"}
+        api = main.service_from_env(env)
+        self.assertEqual(api.dispatcher.plugin.url, "https://github.com/jugonzal/architect-loop.git")
+
 
 class JobWiringTest(unittest.TestCase):
     def env(self, **extra):
@@ -34,6 +39,13 @@ class JobWiringTest(unittest.TestCase):
         self.assertEqual(job.workspace.identity, ("architect-loop-runner[bot]",
                                                   "4321+architect-loop-runner[bot]@users.noreply.github.com"))
         self.assertEqual(job.github.app_auth.private_key, PEM)
+
+    def test_the_job_installs_the_release_from_the_plugins_repository(self):
+        env = self.env(RUNNER_PROJECT="someone/their-project", RUNNER_PLUGIN_GIT_URL="http://fakes:8711/plugin.git")
+        with mock.patch.object(main.RestGitHub, "bot_user_id", return_value=4321):
+            job, _ = main.job_from_env(env)
+        self.assertEqual(job.workspace.git_url, "https://github.com/someone/their-project.git")
+        self.assertEqual(job.workspace.plugin.url, "http://fakes:8711/plugin.git")
 
     def test_the_job_refuses_to_start_without_the_app(self):
         env = self.env(RUNNER_APP_SLUG="")

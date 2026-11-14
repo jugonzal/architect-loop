@@ -9,7 +9,6 @@ import unittest
 
 from runner.api import Api
 from runner.config import SCOPES, SKILLS
-from runner.github import GitHubError
 from tests.contract import ContractClient
 from tests.fakes import CONCERN, ENVIRONMENT, LOOP, OTHER, PROJECT, dispatch_body, make_runner, scoped_body
 
@@ -23,6 +22,7 @@ class Base(unittest.TestCase):
     def setUp(self):
         self.dispatcher, self.store, self.github, self.launcher, self.clock = make_runner(self, **self.config)
         self.client = ContractClient(self, Api(self.dispatcher))
+        self.plugin = self.dispatcher.plugin
 
     def dispatch(self, token="tok-juan", **body):
         return self.client.call("POST", "/sessions", dispatch_body(**body), token=token)
@@ -375,14 +375,14 @@ class AtomicClaimTest(Base):
     def race(self, bodies, tokens):
         # Every dispatch checks its release, a /loop-prove included, so that is where they all meet before claiming.
         barrier = threading.Barrier(len(bodies))
-        original = self.github.release_exists
+        original = self.plugin.release_exists
 
         def all_pass_the_checks_before_the_claim(tag):
             result = original(tag)
             barrier.wait(timeout=5)
             return result
 
-        self.github.release_exists = all_pass_the_checks_before_the_claim
+        self.plugin.release_exists = all_pass_the_checks_before_the_claim
         results = [None] * len(bodies)
 
         def go(i):
@@ -474,43 +474,75 @@ class LatestReleaseTest(Base):
         return response.json
 
     def test_the_estimate_names_the_newest_release_tag(self):
-        self.github.releases = {"v0.3.0", "v0.4.0", "v0.10.0", "v0.9.1"}
+        self.plugin.releases = {"v0.3.0", "v0.4.0", "v0.10.0", "v0.9.1"}
         self.assertEqual(self.estimate()["plugin_release"], "v0.10.0")
         self.assertEqual(self.estimate("loop-status")["plugin_release"], "v0.10.0")
 
     def test_the_release_the_estimate_names_is_one_a_dispatch_may_run(self):
-        self.github.releases = {"v0.3.0", "v0.4.0"}
+        self.plugin.releases = {"v0.3.0", "v0.4.0"}
         release = self.estimate()["plugin_release"]
         self.assertEqual(self.started(plugin_release=release)["plugin_release"], "v0.4.0")
 
     def test_a_tag_cut_after_the_estimate_does_not_change_what_was_dispatched(self):
-        self.github.releases = {"v0.3.0", "v0.4.0"}
+        self.plugin.releases = {"v0.3.0", "v0.4.0"}
         shown = self.estimate()["plugin_release"]
-        self.github.releases.add("v0.5.0")
+        self.plugin.releases.add("v0.5.0")
         self.assertEqual(self.started(plugin_release=shown)["plugin_release"], "v0.4.0")
         self.assertEqual(self.estimate()["plugin_release"], "v0.5.0")
 
     def test_a_dispatch_naming_a_tag_the_project_does_not_have_is_still_refused(self):
-        self.github.releases = {"v0.3.0", "v0.4.0"}
+        self.plugin.releases = {"v0.3.0", "v0.4.0"}
         response = self.dispatch(plugin_release="v0.5.0")
         self.assertEqual((response.status, response.json["error"]), (422, "unknown-release"))
         self.assertEqual(self.launcher.launched, [])
-        self.assertIn(("release_exists", "v0.5.0"), self.github.calls)
+        self.assertIn(("release_exists", "v0.5.0"), self.plugin.calls)
 
     def test_a_project_without_a_release_tag_has_none_to_name(self):
-        self.github.releases = set()
+        self.plugin.releases = set()
         self.assertIsNone(self.estimate()["plugin_release"])
 
-    def test_github_failing_while_reading_the_tags_is_a_502(self):
-        original = self.github.latest_release
-
-        def failing():
-            original()
-            raise GitHubError("listing tags answered 500")
-
-        self.github.latest_release = failing
+    def test_the_plugins_repository_failing_while_its_tags_are_read_is_a_502(self):
+        self.plugin.down = True
         response = self.client.call("GET", "/estimates", token="tok-juan", query={"skill": "loop-build"})
         self.assertEqual((response.status, response.json["error"]), (502, "upstream-failed"))
+        self.assertEqual(self.dispatch().status, 502)
+        self.assertEqual(self.launcher.launched, [])
+
+
+class PluginRepositoryTest(Base):
+    """plugin-source/plugin-repository C1: the release comes from the plugin's repository, whichever project the
+    runner serves, and the project's own repository is never asked about a release."""
+
+    config = {"project": "someone/their-project", "plugin_repository": "jugonzal/architect-loop"}
+
+    def setUp(self):
+        super().setUp()
+        self.github.concerns = {"their-loop/their-concern"}
+        self.plugin.releases = {"v0.6.0", "v0.7.0"}
+
+    def body(self, **extra):
+        return {"project": "someone/their-project", "concern": "their-loop/their-concern", **extra}
+
+    def test_the_estimate_names_the_plugin_repositorys_newest_tag(self):
+        answer = self.client.call("GET", "/estimates", token="tok-juan", query={"skill": "loop-build"}).json
+        self.assertEqual(answer["plugin_release"], "v0.7.0")
+
+    def test_a_session_starts_on_a_project_with_no_release_of_its_own(self):
+        response = self.dispatch(**self.body(plugin_release="v0.7.0"))
+        self.assertEqual((response.status, response.json["plugin_release"]), (201, "v0.7.0"))
+        self.assertEqual(response.json["project"], "someone/their-project")
+
+    def test_a_tag_the_plugin_repository_lacks_is_refused_naming_that_repository(self):
+        response = self.dispatch(**self.body(plugin_release="v0.8.0"))
+        self.assertEqual((response.status, response.json["error"]), (422, "unknown-release"))
+        self.assertIn("jugonzal/architect-loop", response.json["message"])
+        self.assertNotIn("someone/their-project", response.json["message"])
+
+    def test_the_projects_repository_is_never_asked_about_a_release(self):
+        self.client.call("GET", "/estimates", token="tok-juan", query={"skill": "loop-build"})
+        self.dispatch(**self.body(plugin_release="v0.7.0"))
+        self.assertFalse(hasattr(self.github, "release_exists") or hasattr(self.github, "latest_release"))
+        self.assertEqual({name for name, *_ in self.plugin.calls}, {"latest_release", "release_exists"})
 
 
 if __name__ == "__main__":

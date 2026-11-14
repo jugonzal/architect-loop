@@ -37,7 +37,7 @@ checks against what it started.
   cannot reach an image). For an evidence line, the commit must be on `origin/main`: an evidence line cites
   `local @<sha>` only for a commit on `main` (LOOP.md §6). `up` says whether it is.
 - The release tags fetched (`git fetch --tags`): a session installs the plugin from the latest release tag
-  reachable from HEAD. In CI, check out with `fetch-depth: 0`.
+  reachable from HEAD, which the harness puts in the plugin's repository. In CI, check out with `fetch-depth: 0`.
 - Free ports on 127.0.0.1: 8701 to 8704 (the services, in `SERVICES` order in `scripts/gcp/common.sh`), 8711 to 8713
   (the fakes) and 8721 (the Firestore emulator).
 - No credentials of any kind. Nothing here signs in to GitHub, Google or Anthropic.
@@ -52,8 +52,10 @@ sh scripts/local/up.sh
 ```
 
 It builds `scripts/local/fakes/Dockerfile` and every `services/<name>/Dockerfile` from HEAD's own tree, as
-`deploy.sh` does, tagged `architect-loop-local/<name>:<sha>`; makes the fake GitHub's copy of the repository
-(HEAD as `main`, and every tag); starts Postgres, the emulator and the fakes; creates and migrates the database of
+`deploy.sh` does, tagged `architect-loop-local/<name>:<sha>`; makes the fake GitHub's copy of the project's
+repository (HEAD as `main`, and no tag) and of the plugin's repository `local-plugin/skills` (HEAD as `main`, and
+every tag), so the runner always takes its release from a repository that is not its project
+(plugin-source/plugin-repository); starts Postgres, the emulator and the fakes; creates and migrates the database of
 each service whose manifest names `cloudsql`; starts each service; and waits for each `/version`. It removes what
 an earlier run left first, so the stores start empty. Expected, on a commit not yet on `main`:
 
@@ -123,6 +125,9 @@ rows as in step 2. Expected:
 
 ```
 smoke: /loop-build on command-center/addressed-to-people, plugin v0.4.0, sponsored by local-sponsor, at local @<sha>
+ok   the project's repository has no tag, so no release of its own
+ok   the runner's estimate names <tag>, the newest release of the plugin's repository local-plugin/skills
+ok   a dispatch naming a tag the plugin's repository lacks is refused, naming that repository
 ok   the runner accepts a dispatch from a collaborator
 ok   a second /loop-build on the concern is refused while the first holds it
 ok   the runner refuses a dispatch from someone who does not collaborate
@@ -135,7 +140,8 @@ ok   the session's job ran in its own container, apart from the runner's, and ex
 ok   the session opened a pull request on the fake GitHub, and the session lists it
 ok   its pull request body carries Concern: and Sponsored-by:
 ok   its commit carries Concern: and Sponsored-by: from the runner's hook
-ok   the runner asked the fakes, not GitHub or Google: who calls, a collaborator check, installation tokens, the concern, the release, a push and a job execution
+ok   the runner asked the fakes, not GitHub or Google: who calls, a collaborator check, installation tokens, the concern, a push and a job execution
+ok   the runner read the plugin's repository with git, and asked GitHub's REST API about no tag
 ok   every service, job and store is on architect-loop-local-internal only, a network with no route off the machine
 ok   a container on architect-loop-local-internal reaches neither api.github.com nor 1.1.1.1
 ok   threads answers a member's read of the concern's thread

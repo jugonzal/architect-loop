@@ -23,7 +23,7 @@ from runner.store import SqliteStore
 from runner.workspace import Prepared
 from tests import RealSessionRefused
 from tests.contract import ContractClient
-from tests.fakes import CONCERN, ENVIRONMENT, LOOP, PROJECT, SCOPED, FakeGitHub, FakeLauncher, scratch
+from tests.fakes import CONCERN, ENVIRONMENT, LOOP, PROJECT, SCOPED, FakeGitHub, FakeLauncher, FakePlugin, scratch
 
 PRICE_PER_INPUT = 4.00 / 1_000_000  # Opus 5.5 list price
 
@@ -320,7 +320,7 @@ class OutcomeTest(JobTest):
         ended = self.run_job(session, [(0.01, assistant(1)), (0.01, result(cost=0.2345))])
         self.assertEqual(ended.outcome, "completed")
         self.assertIsNotNone(ended.started_at)
-        estimate = Dispatcher(self.config, self.store, self.github, None).estimate("loop-build")
+        estimate = Dispatcher(self.config, self.store, self.github, None, FakePlugin()).estimate("loop-build")
         self.assertEqual(estimate["estimate"]["usd"], 0.2345)
         self.assertEqual(estimate["estimate"]["sessions"], 1)
 
@@ -482,7 +482,8 @@ class FinalMessageTest(JobTest):
         ended = self.run_job(session, [(0.01, assistant(1, text="Reading the board.")),
                                        (0.01, assistant(2, text=self.BRIEF)), (0.01, result())])
         self.assertEqual(ended.final_message, self.BRIEF)
-        client = ContractClient(self, Api(Dispatcher(self.config, self.store, self.github, FakeLauncher())))
+        client = ContractClient(self, Api(Dispatcher(self.config, self.store, self.github, FakeLauncher(),
+                                                    FakePlugin())))
         self.assertEqual(client.call("GET", f"/sessions/{session.id}", token="tok-juan").json["final_message"],
                          self.BRIEF)
         listed = client.call("GET", "/sessions", token="tok-juan", query={"state": "all"}).json["sessions"]

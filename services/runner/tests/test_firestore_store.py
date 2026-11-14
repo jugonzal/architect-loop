@@ -29,7 +29,7 @@ from runner.firestore_store import CLAIMS, SPONSORS, FirestoreStore, claim_id, s
 from runner.store import SqliteStore
 from tests import test_store
 from tests.contract import ContractClient
-from tests.fakes import CONCERN, OTHER, PROJECT, FakeGitHub, FakeLauncher, dispatch_body, scratch
+from tests.fakes import CONCERN, OTHER, PROJECT, FakeGitHub, FakeLauncher, FakePlugin, dispatch_body, scratch
 from tests.test_github import PEM
 from tests.test_store import NOW, final, session
 
@@ -293,15 +293,16 @@ class DispatchAcrossInstancesTest(Emulated, unittest.TestCase):
         for n in range(1, 11):
             github.tokens[f"tok-p{n}"] = f"p{n}"
             github.collaborators.add(f"p{n}")
-        original = github.release_exists
+        plugin = FakePlugin()
+        original = plugin.release_exists
 
         def all_pass_the_checks_before_the_claim(tag):
             result = original(tag)
             barrier.wait(timeout=10)
             return result
 
-        github.release_exists = all_pass_the_checks_before_the_claim
-        dispatcher = Dispatcher(Config(commit="eee8119"), self.open(seeds=DEFAULT_SEEDS), github, launcher)
+        plugin.release_exists = all_pass_the_checks_before_the_claim
+        dispatcher = Dispatcher(Config(commit="eee8119"), self.open(seeds=DEFAULT_SEEDS), github, launcher, plugin)
         return ContractClient(self, Api(dispatcher)), launcher
 
     def race(self, bodies, tokens):

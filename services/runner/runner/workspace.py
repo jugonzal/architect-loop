@@ -13,6 +13,7 @@ import tarfile
 from dataclasses import dataclass
 
 from .config import CONCERN_TRAILER_SKILLS
+from .plugin import PluginSourceError
 
 HOOK = """#!/bin/sh
 # Installed by the architect-loop runner in this session's clone (session-runner D4): every commit names its
@@ -48,8 +49,9 @@ def trailers_for(session):
 
 
 class Workspace:
-    def __init__(self, git_url, workdir, identity, main_branch="main", credential_helper=None, env=None):
+    def __init__(self, git_url, workdir, identity, plugin, main_branch="main", credential_helper=None, env=None):
         self.git_url, self.workdir, self.identity = git_url, workdir, identity
+        self.plugin = plugin  # the plugin's source, which need not be the project (plugin-source/plugin-repository)
         self.main_branch, self.credential_helper = main_branch, credential_helper
         self.env = env
 
@@ -75,7 +77,7 @@ class Workspace:
             self._git(clone, "config", "--add", "credential.helper", "")
             self._git(clone, "config", "--add", "credential.helper", self.credential_helper)
         self._install_hook(clone, session)
-        plugin_dir = self._install_release(clone, root, session.plugin_release)
+        plugin_dir = self._install_release(root, session.plugin_release)
         with open(os.path.join(plugin_dir, ".claude-plugin", "plugin.json")) as f:
             plugin_name = json.load(f)["name"]
         return Prepared(root, clone, plugin_dir, plugin_name)
@@ -104,15 +106,16 @@ class Workspace:
         # The clone's own config names its hooks, so a user-level core.hooksPath cannot send them elsewhere.
         self._git(clone, "config", "core.hooksPath", hooks)
 
-    def _install_release(self, clone, root, tag):
-        """The plugin as it is at the release tag, extracted outside the clone and made read-only (D17)."""
-        verified = subprocess.run(["git", "rev-parse", "--verify", "--quiet", f"refs/tags/{tag}"], cwd=clone,
-                                  env=self.env, capture_output=True)
-        if verified.returncode != 0:
-            raise WorkspaceError(f"{tag} is not a tag of {self.git_url}")
-        archive = self._git(clone, "archive", "--format=tar", f"refs/tags/{tag}", "plugin", binary=True)
+    def _install_release(self, root, tag):
+        """The plugin as it is at the release tag of the plugin's repository, fetched and extracted outside the
+        clone and made read-only (D17). The project's clone is neither read nor written for it."""
+        source = os.path.join(root, "release", tag, "source")
+        try:
+            self.plugin.fetch(tag, source)
+        except PluginSourceError as error:
+            raise WorkspaceError(str(error)) from error
+        archive = self._git(source, "archive", "--format=tar", f"refs/tags/{tag}", "plugin", binary=True)
         target = os.path.join(root, "release", tag)
-        os.makedirs(target)
         with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
             tar.extractall(target, filter="data")
         plugin_dir = os.path.join(target, "plugin")

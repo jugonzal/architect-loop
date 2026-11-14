@@ -161,6 +161,21 @@ class FakesTest(unittest.TestCase):
         self.assertEqual(pushed.returncode, 0)
         self.assertIn(("github", "PUSH"), [(c["fake"], c["method"]) for c in self.fakes.calls])
 
+    def test_a_second_repository_is_served_over_git_and_each_read_of_refs_is_logged(self):
+        """plugin-source/plugin-repository: the plugin's repository sits beside the project's, and the smoke test
+        tells from the log which one the runner read its release from."""
+        plugin = os.path.join(os.path.dirname(os.path.dirname(self.bare)), "local-plugin", "skills.git")
+        subprocess.run(["git", "clone", "--quiet", "--bare", self.bare, plugin], check=True)
+        subprocess.run(["git", "--git-dir", self.bare, "tag", "-d", "v0.1.0"], check=True, capture_output=True)
+        listed = subprocess.run(["git", "ls-remote", "--tags", "--refs", f"{self.urls['github']}/local-plugin/skills.git"],
+                                capture_output=True, text=True, check=True).stdout
+        self.assertIn("refs/tags/v0.1.0", listed)
+        project = subprocess.run(["git", "ls-remote", "--tags", "--refs", f"{self.urls['github']}/{PROJECT}.git"],
+                                 capture_output=True, text=True, check=True).stdout
+        self.assertEqual(project, "")
+        reads = [c["path"] for c in self.fakes.calls if (c["fake"], c["method"]) == ("github", "REFS")]
+        self.assertEqual(reads, ["/local-plugin/skills.git/info/refs", f"/{PROJECT}.git/info/refs"])
+
     def push_branch(self, branch):
         subprocess.run(["git", "--git-dir", self.bare, "branch", branch, "main"], check=True)
 

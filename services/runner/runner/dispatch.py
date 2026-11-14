@@ -75,8 +75,10 @@ def validate(body):
 
 
 class Dispatcher:
-    def __init__(self, config, store, github, launcher, now=utcnow, new_id=new_session_id):
+    def __init__(self, config, store, github, launcher, plugin, now=utcnow, new_id=new_session_id):
         self.config, self.store, self.github, self.launcher = config, store, github, launcher
+        # Where the skills' releases are read from, which need not be the project (plugin-source/plugin-repository).
+        self.plugin = plugin
         self.now, self.new_id = now, new_id
 
     def _github(self, call, *args):
@@ -112,9 +114,9 @@ class Dispatcher:
                 f"a budget of ${request['budget_usd']:,.2f} is above the runner's ceiling of ${ceiling:,.2f} "
                 f"(session-runner D8)", ceiling_usd=ceiling))
         self._check_target(request["scope"], request["target"])
-        if not self._github(self.github.release_exists, request["plugin_release"]):
+        if not self._github(self.plugin.release_exists, request["plugin_release"]):
             raise ApiError(422, "unknown-release", f"{request['plugin_release']} is not a release tag of "
-                                                   f"{self.config.project}")
+                                                   f"{self.config.plugin_repository}")
         if holds(request["skill"], request.get("concern")):
             # D6: an open pull request holds its concern against another /loop-build or /loop-design; a /loop-prove
             # or /loop-status runs beside it, so a proof can go into that pull request's body.
@@ -194,4 +196,4 @@ class Dispatcher:
         # The release a start from the app shows and sends back (latest-release C1, command-center/D68). The dispatch
         # still names it and is still checked, so a tag cut in between changes nothing that was shown.
         return {"skill": skill, "model": model, "estimate": estimate_from(self.store.measurements(skill, model, 10)),
-                "plugin_release": self._github(self.github.latest_release)}
+                "plugin_release": self._github(self.plugin.latest_release)}

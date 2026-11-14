@@ -10,6 +10,8 @@ class ConfigTest(unittest.TestCase):
     def test_defaults_follow_the_decisions(self):
         config = Config()
         self.assertEqual(config.project, "jugonzal/architect-loop")  # D18
+        self.assertEqual(config.plugin_repository, "jugonzal/architect-loop")  # plugin-source/D3
+        self.assertEqual(config.plugin_url, "https://github.com/jugonzal/architect-loop.git")
         self.assertEqual(config.cap_per_sponsor, 3)  # D22
         self.assertEqual(config.skill_models["loop-status"], "claude-sonnet-5-5")  # D5
         for skill in ("loop-design", "loop-build", "loop-prove", "loop-ship"):
@@ -27,6 +29,19 @@ class ConfigTest(unittest.TestCase):
                                   "environment": ("loop-ship",)})
         self.assertEqual({s for skills in SCOPES.values() for s in skills}, set(SKILLS))
         self.assertTrue(set(HOLDING_SKILLS) <= set(SCOPES["concern"]))
+
+    def test_the_plugin_repository_is_set_apart_from_the_project(self):
+        """plugin-source/D3: a runner set to another project still takes the skills from the plugin's repository,
+        and a fork that releases its own names it."""
+        other = Config.from_env({"RUNNER_PROJECT": "someone/their-project"})
+        self.assertEqual(other.plugin_url, "https://github.com/jugonzal/architect-loop.git")
+        self.assertEqual(other.clone_url, "https://github.com/someone/their-project.git")
+        fork = Config.from_env({"RUNNER_PLUGIN_REPOSITORY": "someone/their-fork"})
+        self.assertEqual(fork.plugin_url, "https://github.com/someone/their-fork.git")
+        local = Config.from_env({"RUNNER_PLUGIN_GIT_URL": "http://fakes:8711/plugin.git"})
+        self.assertEqual(local.plugin_url, "http://fakes:8711/plugin.git")
+        with self.assertRaises(ValueError):
+            Config(plugin_repository="not-a-repository")
 
     def test_a_ceiling_that_is_not_a_positive_amount_is_refused(self):
         for ceiling in (0, -1, float("inf"), float("nan")):

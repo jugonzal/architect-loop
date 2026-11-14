@@ -260,8 +260,8 @@ class RoundTripTest(unittest.TestCase):
         self.assertIn("plugin_release", schemas["EstimateAnswer"]["required"])
         self.assertEqual(schemas["EstimateAnswer"]["properties"]["plugin_release"]["pattern"],
                          schemas["DispatchRequest"]["properties"]["plugin_release"]["pattern"])
-        client, _, _, github, _, _ = runner(self)
-        github.releases = {"v0.3.0", "v0.4.0"}
+        client, dispatcher, _, _, _, _ = runner(self)
+        dispatcher.plugin.releases = {"v0.3.0", "v0.4.0"}
         answer = client.call("GET", "/estimates", token="tok-juan", query={"skill": "loop-build"}).json
         body = dispatch_body(plugin_release=answer["plugin_release"])
         self.assertEqual(request_errors("POST", "/sessions", body), [])

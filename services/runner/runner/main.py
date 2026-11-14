@@ -11,6 +11,7 @@ from .config import Config
 from .dispatch import Dispatcher
 from .github import AppAuth, RestGitHub
 from .launcher import CloudRunJobs
+from .plugin import PluginSource
 from .session import SessionJob, SessionThread
 from .store import SqliteStore
 from .workspace import Workspace
@@ -40,6 +41,11 @@ def github_from(config, private_key):
                       api=config.github_api_url)
 
 
+def plugin_from(config):
+    """The repository the skills' releases come from, read with git and no credentials (plugin-source/D1, D3)."""
+    return PluginSource(config.plugin_url)
+
+
 def launcher_from(config):
     return CloudRunJobs(config.gcp_project, config.region, config.job, api=config.run_api_url,
                         metadata=config.metadata_url)
@@ -65,7 +71,8 @@ def threads_from(config):
 def service_from_env(env):
     config = Config.from_env(env)
     store = store_from(config)
-    return Api(Dispatcher(config, store, github_from(config, env.get(PRIVATE_KEY, "")), launcher_from(config)))
+    return Api(Dispatcher(config, store, github_from(config, env.get(PRIVATE_KEY, "")), launcher_from(config),
+                          plugin_from(config)))
 
 
 _service = None
@@ -92,7 +99,8 @@ def job_from_env(env):
     github = github_from(config, private_key)
     login = config.bot_login
     identity = (login, f"{github.bot_user_id()}+{login}@users.noreply.github.com")
-    workspace = Workspace(config.clone_url, config.workdir, identity, main_branch=config.main_branch,
+    workspace = Workspace(config.clone_url, config.workdir, identity, plugin_from(config),
+                          main_branch=config.main_branch,
                           credential_helper="!gh auth git-credential")
     job = SessionJob(config, store_from(config), github, workspace, client_factory=sdk_client_from(config),
                      threads=threads_from(config))

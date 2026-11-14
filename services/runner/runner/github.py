@@ -34,8 +34,6 @@ class GitHub(Protocol):
     def login(self, token: str) -> str | None: ...
     def is_collaborator(self, login: str) -> bool: ...
     def concern_exists(self, loop: str, concern: str) -> bool: ...
-    def release_exists(self, tag: str) -> bool: ...
-    def latest_release(self) -> str | None: ...
     def loop_exists(self, loop: str) -> bool: ...
     def environments(self) -> list: ...
     def open_pull_requests(self) -> list: ...
@@ -165,22 +163,6 @@ class RestGitHub:
 
     def concern_exists(self, loop, concern):
         return self._exists(f"{self._repo}/contents/docs/loops/{loop}/{concern}.md?ref={self.main_branch}")
-
-    def release_exists(self, tag):
-        return self._exists(f"{self._repo}/git/ref/tags/{urllib.parse.quote(tag)}")
-
-    def latest_release(self):
-        """The newest release tag of the project, the one a start from the app runs (latest-release C1). The same
-        tags `release_exists` accepts, so what the estimate names a dispatch may run."""
-        names, page = [], 1
-        while True:
-            status, answer = self._as_app("GET", f"{self._repo}/tags?per_page=100&page={page}")
-            if status != 200 or not isinstance(answer, list):
-                raise GitHubError(f"listing tags answered {status}")
-            names += [t["name"] for t in answer]
-            if len(answer) < 100:
-                return newest_release(names)
-            page += 1
 
     def loop_exists(self, loop):
         return self._exists(f"{self._repo}/contents/docs/loops/{loop}/README.md?ref={self.main_branch}")
