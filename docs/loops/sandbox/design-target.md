@@ -16,17 +16,24 @@ ships-to: main
 ### Where we are
 
 - The question below exists only to be answered. Its answer changes nothing in the system.
+- Verified (main @e4a2b1e, 2026-11-14): `sandbox/` does not exist on `main`, so no example prints anything yet.
+  `build-target` C1 writes `hello` on a branch that is never merged (per sandbox/D3).
+
+### Approach
+
+- The sandbox's example prints `hello`, the same greeting `build-target` writes (per D1). Nothing is built.
 
 ## Decisions
 
 | # | Decision | Decided by, date | Closes |
 | --- | --- | --- | --- |
+| D1 | The sandbox's example prints `hello`. | Juan, 2026-11-14 | Q1 |
 
 ## Questions
 
 | # | Question | Blocks | Default if unanswered |
 | --- | --- | --- | --- |
-| Q1 | Which greeting does the sandbox's example print? | C1 | `hello` |
+| ~~Q1~~ | ~~Which greeting does the sandbox's example print?~~ → D1 | | |
 
 **Q1 options**
 - **hello**: the shortest, and the one `build-target` already writes. (recommended)
