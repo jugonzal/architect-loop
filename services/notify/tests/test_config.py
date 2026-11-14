@@ -173,9 +173,11 @@ class ManifestTest(unittest.TestCase):
         self.assertEqual(status["STATUS_CALLER_SERVICE_ACCOUNTS"], self.manifest["settings"]["NOTIFY_TICK_SERVICE_ACCOUNTS"])
         self.assertEqual(status["STATUS_AUDIENCE"], self.manifest["settings"]["NOTIFY_STATUS_URL"])
 
-    def test_it_serves_the_one_project_and_names_no_github_app(self):
-        self.assertEqual(self.manifest["settings"]["NOTIFY_PROJECTS"], "jugonzal/architect-loop")
-        self.assertEqual(self.manifest.get("secrets", {}), {})
+    def test_it_takes_its_projects_from_secret_manager_and_names_no_github_app(self):
+        # The manifests are public and a project may be private, so no project's name is committed: each
+        # environment's Secret Manager holds it (docs/runbooks/deploy.md, step 9).
+        self.assertNotIn("NOTIFY_PROJECTS", self.manifest["settings"])
+        self.assertEqual(self.manifest.get("secrets", {}), {"NOTIFY_PROJECTS": "notify-projects"})
 
 
 if __name__ == "__main__":
